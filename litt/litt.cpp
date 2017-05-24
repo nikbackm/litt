@@ -1,7 +1,65 @@
-﻿// litt.cpp : Defines the entry point for the console application.
-//
+﻿/** LITT - now for C++! ***********************************************************************************************
+
+Changelog:
+ * 2017-05-22: Have now decided to finish it and no longer depend on TCC and the SQLite shell. Also for a faster LITT!
+ * 2017-05-20: First tests started. Not using Modern C++ so far though, not for SQLite parts at least.
+ * 2017-05-19: Got inpired by Kenny Kerr's PluralSight course "SQlite with Modern C++".
+ * Previous:   Refer to the litt.btm changelog.
+
+**********************************************************************************************************************/
 
 #include "stdafx.h"
+
+bool toInt(std::string const & str, int& value)
+{
+	char* endPtr;
+	int v = strtol(str.c_str(), &endPtr, 10);
+	if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
+		return false;
+	}
+	value = v;
+	return true;
+}
+
+std::wstring toWide(const char *src, int codePage)
+{
+	if (int const nLen = lstrlenA(src)) {
+		if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
+			std::wstring wstr(sizeNeeded, '\0');
+			int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
+			if (res == sizeNeeded) {
+				return wstr;
+			}
+		}
+	}
+	return std::wstring();
+}
+
+std::string toNarrow(const wchar_t *src, int codePage)
+{
+	if (int const nLen = lstrlenW(src)) {
+		if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
+			std::string str(sizeNeeded, '\0');
+			int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
+			if (res == sizeNeeded) {
+				return str;
+			}
+		}
+	}
+	return std::string();
+}
+
+std::wstring utf8ToWide(const char* utf8String)
+{
+	//return std::wstring(L"TEST!");
+	return toWide(utf8String, CP_UTF8);
+}
+
+std::string toUtf8(const char* str, int codePage)
+{
+	auto wstr = toWide(str, codePage);
+	return toNarrow(wstr.c_str(), CP_UTF8);
+}
 
 const char OptDelim = '.';
 const char* dgSQL = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
@@ -28,9 +86,10 @@ struct ColumnInfo {
 };
 
 struct LittState {
-	int const  consoleCodePageIn  = GetConsoleCP();
-	int const  consoleCodePageOut = GetConsoleOutputCP();
-	bool const stdOutIsConsole    = GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) == FILE_TYPE_CHAR;
+	int const    consoleCodePageIn  = GetConsoleCP();
+	int const    consoleCodePageOut = GetConsoleOutputCP();
+	HANDLE const stdOutputHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
+	bool const   stdOutIsConsole    = GetFileType(stdOutputHandle) == FILE_TYPE_CHAR;
 
 	// Maps short name to column info.
 	std::map<std::string, ColumnInfo> columnInfos;
@@ -40,7 +99,7 @@ struct LittState {
 	bool     showQuery = false;
 	bool     explainQuery = false;
 	bool     showNumberOfRows = false;
-	DumpMode mode     = DumpMode::column;
+	DumpMode mode = DumpMode::column;
 
 	std::string dbPath; // Path to LITT db file
 
@@ -132,6 +191,37 @@ struct LittState {
 		}
 		return res;
 	}
+
+	mutable wchar_t consoleBuffer[32000];
+	mutable DWORD   bufPos = 0;
+
+	void writeOutPut(const char* str, int len) const
+	{
+		if (stdOutIsConsole) {
+			auto s = utf8ToWide(str);
+			lstrcpynW(&consoleBuffer[bufPos], s.c_str(), s.length() + 1);
+			bufPos += s.length();
+			if (bufPos > 30000) {
+				DWORD written;
+				WriteConsole(stdOutputHandle, consoleBuffer, bufPos, &written, 0);
+				bufPos = 0;
+			}
+		}
+		else {
+			fwrite(str, len, 1, stdout);
+		}
+	}
+
+	void flushOutput() const {
+		if (stdOutIsConsole) {
+			DWORD written;
+			WriteConsole(stdOutputHandle, consoleBuffer, bufPos, &written, 0);
+			bufPos = 0;
+		}
+		else {
+			fflush(stdout);
+		}
+	}
 };
 
 struct QueryBuilder {
@@ -140,17 +230,6 @@ struct QueryBuilder {
 	}
 
 };
-
-bool toInt(std::string const & str, int& value)
-{
-	char* endPtr;
-	int v = strtol(str.c_str(), &endPtr, 10);
-	if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
-		return false;
-	}
-	value = v;
-	return true;
-}
 
 bool parseCommandLine(int argc, char **argv, LittState& ls)
 {
@@ -183,6 +262,9 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 			case 'c': 
 				ls.selectedColumns = ls.getColumns(optVal);
 				if (ls.selectedColumns.empty()) { return false; }
+				break;
+			case 'l': 
+				ls.dbPath = optVal;
 				break;
 			case 'a': {
 				auto add = ls.getColumns(optVal);
@@ -335,10 +417,11 @@ Options:
     -a[addColumns]  (Include these columns in addition to the default ones for the action)
     -o[colOrder]    (Determines sort order for results)
     -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
-                     If several -w options are included their values will be OR:ed.)
+                     If several -w options are included their values will be OR:ed)
     -s[colSizes]    (Override the default column sizes)
-    -q              (Debug - dumps the SQLITE commands instead of producing results.)
+    -q              (Debug - dumps the SQLITE commands instead of producing results)
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
+    -l[dbPath]      (Can specify an alternate litt database file)
     
     Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
 )"
@@ -386,12 +469,18 @@ Column short name values:
 	return 0;
 }
 
-void configureOutputSettingsIfConsole(LittState const & ls)
+void configureOutputSettingsIfConsole(LittState ls)
 {
 	if (ls.stdOutIsConsole) {
-		SetConsoleOutputCP(CP_UTF8); // Note: will break if the bytes of the character are not all written at once, this may happen if split over output buffers.
-		static char buf[1000*10]; // OBS! Setting to too large or too small values will break CP_UTF8 above it seems! The WriteConsoleW limit?
-		setvbuf(stdout, buf, _IOFBF, sizeof buf); // line buffer not supported on win32
+		// Note: will break if the bytes of the character are not all written at once, this may happen if split over output buffers.
+		//SetConsoleOutputCP(CP_UTF8);
+		// OBS! Setting to too large or too small values will break CP_UTF8 above it seems! The WriteConsoleW limit?
+		// Also noticed that utf8 breaks when the printed lines became short (no genre when tested with older db! Added dummy genre in print routine fixed it!)
+		// probably because some windows code page detection fails to detect correct encoding in that case?
+		// Need to study this more! Might have to convert to Unicode and use WriteConsoleW if console? Or convert further from UC to current console code page.
+		// Hmm, worked when ran chcp 65001 first with the short lines! Why? Also works when no buffer at all is set. 
+		//static char buf[1000*10]; 
+		//setvbuf(stdout, buf, _IOFBF, sizeof buf); // line buffer not supported on win32
 	}
 }
 
@@ -406,24 +495,32 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 {
 	if (ls.showQuery) {
 		// !!! also print relevant options?
-		printf("%s", sql.c_str());
+		ls.writeOutPut(sql.c_str(), sql.length());
 		return 0;
 	}
 
 	auto callback = [](void *pArg, int argc, char **argv, char **azColName) {
-		auto ls = const_cast<LittState const*>(static_cast<LittState*>(pArg));
+		auto ls = static_cast<LittState const*>(pArg);
+		char row[1000]; // !!! check size! below too!!
+		char *p = row;
+
 		if (ls->rowCount++ == 0) {
 			for (int i = 0; i < argc; i++) {
-				printf("%s", azColName[i]);
-				if (i + 1 != argc) putchar('|');
+				p += sprintf(p, "%s", azColName[i]);
+				if (i + 1 != argc) *p++ = '|';
 			}
-			printf("\n");
+			*p++ = '\n'; *p++ = '\0';
+			ls->writeOutPut(row, strlen(row));
+			p = row;
 		}
 		for (int i = 0; i < argc; i++) {
-			printf("%s", argv[i] ? argv[i] : "");
-			if (i + 1 != argc) putchar('|');
+			p += sprintf(p, "%s", argv[i] ? argv[i] : "");
+			if (i + 1 != argc) *p++ = '|';
 		}
-		printf("\n");
+		*p++ = '\n'; *p++ = '\0';
+		ls->writeOutPut(row, strlen(row));
+		p = row;
+
 		return 0;
 	};
 
@@ -446,8 +543,10 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		sqlite3_free(zErrMsg);
 	}
 
+	ls.flushOutput();
+
 	if (ls.showNumberOfRows) {
-		printf("# = %i\n", ls.rowCount);
+		printf("# = %i\n", ls.rowCount); // !!! also stderr output??? Need to sync console and stdio streams most likely!
 	}
 
 	restoreOutputSettingsIfConsole(ls); 
@@ -498,8 +597,27 @@ ORDER BY \"Date read\", Books.\"BookID\", \"Last Name\", \"First Name\", \"Title
 	return runSelectQuery(ls, sql);
 }
 
+// Making a query:
+// Inputs: 
+// - default col widths
+// - defCols (can include widths) and defColOrder from the action, always there
+// - selColumns, colOrder, addColumns, colWidths, main whereCond values, extra whereConds from the command line, all optional, will have precedense over def values
+// Ouptputs:
+// - an SQL query string
+// - will set "active" widths according to inputs (should likely be an array that corresponds to the selected columns (in same order)), only needed for column mode
+// Intermediate state:
+// - will need access to all referenced columns (selected, where, order by) while building the query (calling Add* methods) as some additions will depend on this.
+// NOTES:
+// - Currently a bug in btmlitt to use selColumns as colOrder if no colOrder, as selColumns can include widths, and that will cause an error (no such short name!)
+
+//#include <io.h>
+//#include <fcntl.h>
+
 int main(int argc, char **argv)
 {
+	//_setmode(_fileno(stdout), _O_U8TEXT);
+	//printf("\xc3\xbc\n"); return 0;
+
 	if (argc <= 1) {
 		return showHelp();
 	}
