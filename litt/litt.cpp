@@ -215,6 +215,10 @@ struct LittState {
 		writeOutPut(str, strlen(str));
 	}
 
+	void writeOutPut(char c) const {
+		writeOutPut(&c, 1);
+	}
+
 	void doWriteOutPut(const char* str, int len) const
 	{
 		if (stdOutIsConsole) {
@@ -513,15 +517,15 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		if (ls->rowCount++ == 0) {
 			for (int i = 0; i < argc; i++) {
 				ls->writeOutPut(azColName[i]);
-				if (i + 1 != argc) ls->writeOutPut("|", 1);
+				if (i + 1 != argc) ls->writeOutPut('|');
 			}
-			ls->writeOutPut("\n", 1);
+			ls->writeOutPut('\n');
 		}
 		for (int i = 0; i < argc; i++) {
 			ls->writeOutPut(argv[i] ? argv[i] : "");
-			if (i + 1 != argc) ls->writeOutPut("|", 1);
+			if (i + 1 != argc) ls->writeOutPut('|');
 		}
-		ls->writeOutPut("\n", 1);
+		ls->writeOutPut('\n');
 
 		return 0;
 	};
@@ -536,6 +540,7 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 	//configureOutputSettingsIfConsole(ls);
 
 	// !!! convert sql to utf-8 if not already
+	// !!!! error handling of all API calls!!!!
 
 	ls.rowCount = 0;
 	char *zErrMsg = nullptr;
