@@ -108,7 +108,7 @@ struct LittState {
 	std::vector<ColumnInfo*> additionalColumns; // Added to the action or overridden columns.
 
 	std::string action;
-	std::vector<std::string> actionArgs; 
+	std::vector<std::string> actionArgs;
 	std::string actionRightWildCard;
 	std::string actionLeftWildCard;
 
@@ -143,7 +143,7 @@ struct LittState {
 			{"lnl",  {"length(\"Last Name\")", 4, ColumnType::numeric }},
 			{"fnl",  {"length(\"First Name\")", 4, ColumnType::numeric }},
 			{"dwl",  {"case cast (strftime('%w',\"Date Read\") as integer)"
-					  " when 0 then 'Sun' when 1 then 'Mon' when 2 then 'Tue' when 3 then 'Wed' when 4 then 'Thu' when 5 then 'Fri' when 6 then 'Sat' else '' end", 
+					  " when 0 then 'Sun' when 1 then 'Mon' when 2 then 'Tue' when 3 then 'Wed' when 4 then 'Thu' when 5 then 'Fri' when 6 then 'Sat' else '' end",
 					  5, ColumnType::text, "DoW" }},
 			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
 
@@ -161,7 +161,7 @@ struct LittState {
 			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
 			// This is for the "number of books" column in listGenreBookCounts
 			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
-		})
+	})
 	{
 	}
 
@@ -183,8 +183,8 @@ struct LittState {
 		std::stringstream ss(sns);
 		std::string sn;
 		while (std::getline(ss, sn, OptDelim)) {
-			auto column = getColumn(sn); 
-			if (column == nullptr) { 
+			auto column = getColumn(sn);
+			if (column == nullptr) {
 				return std::vector<ColumnInfo*>();
 			}
 			res.push_back(column);
@@ -192,20 +192,35 @@ struct LittState {
 		return res;
 	}
 
-	mutable wchar_t consoleBuffer[32000];
-	mutable DWORD   bufPos = 0;
+	static const int BufSize = 32000;
+	mutable char  consoleBuffer[BufSize + 1];
+	mutable DWORD bufPos = 0;
 
 	void writeOutPut(const char* str, int len) const
 	{
-		if (stdOutIsConsole) {
-			auto s = utf8ToWide(str);
-			lstrcpynW(&consoleBuffer[bufPos], s.c_str(), s.length() + 1);
-			bufPos += s.length();
-			if (bufPos > 30000) {
-				DWORD written;
-				WriteConsole(stdOutputHandle, consoleBuffer, bufPos, &written, 0);
-				bufPos = 0;
+		if (BufSize < len) {
+			flushOutput();
+			doWriteOutPut(str, len);
+		}
+		else {
+			if ((BufSize - bufPos) < len) { // !!!! check range
+				flushOutput();
 			}
+			lstrcpynA(&consoleBuffer[bufPos], str, len + 1);
+			bufPos += len;
+		}
+	}
+
+	void writeOutPut(const char* str) const {
+		writeOutPut(str, strlen(str));
+	}
+
+	void doWriteOutPut(const char* str, int len) const
+	{
+		if (stdOutIsConsole) {
+			auto ws = utf8ToWide(str);
+			DWORD written;
+			WriteConsole(stdOutputHandle, ws.c_str(), ws.length(), &written, 0);
 		}
 		else {
 			fwrite(str, len, 1, stdout);
@@ -213,14 +228,8 @@ struct LittState {
 	}
 
 	void flushOutput() const {
-		if (stdOutIsConsole) {
-			DWORD written;
-			WriteConsole(stdOutputHandle, consoleBuffer, bufPos, &written, 0);
-			bufPos = 0;
-		}
-		else {
-			fflush(stdout);
-		}
+		doWriteOutPut(consoleBuffer, bufPos);
+		bufPos = 0;
 	}
 };
 
@@ -501,25 +510,18 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 
 	auto callback = [](void *pArg, int argc, char **argv, char **azColName) {
 		auto ls = static_cast<LittState const*>(pArg);
-		char row[1000]; // !!! check size! below too!!
-		char *p = row;
-
 		if (ls->rowCount++ == 0) {
 			for (int i = 0; i < argc; i++) {
-				p += sprintf(p, "%s", azColName[i]);
-				if (i + 1 != argc) *p++ = '|';
+				ls->writeOutPut(azColName[i]);
+				if (i + 1 != argc) ls->writeOutPut("|", 1);
 			}
-			*p++ = '\n'; *p++ = '\0';
-			ls->writeOutPut(row, strlen(row));
-			p = row;
+			ls->writeOutPut("\n", 1);
 		}
 		for (int i = 0; i < argc; i++) {
-			p += sprintf(p, "%s", argv[i] ? argv[i] : "");
-			if (i + 1 != argc) *p++ = '|';
+			ls->writeOutPut(argv[i] ? argv[i] : "");
+			if (i + 1 != argc) ls->writeOutPut("|", 1);
 		}
-		*p++ = '\n'; *p++ = '\0';
-		ls->writeOutPut(row, strlen(row));
-		p = row;
+		ls->writeOutPut("\n", 1);
 
 		return 0;
 	};
@@ -531,25 +533,26 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		goto out;
 	}
 
-	configureOutputSettingsIfConsole(ls);
+	//configureOutputSettingsIfConsole(ls);
 
 	// !!! convert sql to utf-8 if not already
 
 	ls.rowCount = 0;
 	char *zErrMsg = nullptr;
 	res = sqlite3_exec(db, sql.c_str(), callback, const_cast<LittState*>(&ls), &zErrMsg);
+
+	ls.flushOutput();
+
 	if (res != SQLITE_OK) {
 		fprintf(stderr, "SQL error: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
 	}
 
-	ls.flushOutput();
-
 	if (ls.showNumberOfRows) {
 		printf("# = %i\n", ls.rowCount); // !!! also stderr output??? Need to sync console and stdio streams most likely!
 	}
 
-	restoreOutputSettingsIfConsole(ls); 
+	//restoreOutputSettingsIfConsole(ls); 
 out:
 	sqlite3_close(db);
 	return res;
