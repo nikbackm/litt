@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-05-24: Decided to use WriteConsoleW for writing (converted) utf-8 output. Least problems and faster too.
  * 2017-05-22: Have now decided to finish it and no longer depend on TCC and the SQLite shell. Also for a faster LITT!
  * 2017-05-20: First tests started. Not using Modern C++ so far though, not for SQLite parts at least.
  * 2017-05-19: Got inpired by Kenny Kerr's PluralSight course "SQlite with Modern C++".
@@ -8,67 +9,90 @@ Changelog:
 
 **********************************************************************************************************************/
 
+// !!!! error handling of all API calls!!!!
+
+
 #include "stdafx.h"
 
-bool toInt(std::string const & str, int& value)
+namespace Utils
 {
-	char* endPtr;
-	int v = strtol(str.c_str(), &endPtr, 10);
-	if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
-		return false;
+	bool toInt(std::string const & str, int& value)
+	{
+		char* endPtr;
+		int v = strtol(str.c_str(), &endPtr, 10);
+		if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
+			return false;
+		}
+		value = v;
+		return true;
 	}
-	value = v;
-	return true;
-}
 
-std::wstring toWide(const char *src, int codePage)
-{
-	if (int const nLen = lstrlenA(src)) {
-		if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
-			std::wstring wstr(sizeNeeded, '\0');
-			int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
-			if (res == sizeNeeded) {
-				return wstr;
+	std::wstring toWide(int codePage, const char *src, int len = 0)
+	{
+		if (int const nLen = (len > 0 ? len : lstrlenA(src))) {
+			if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
+				std::wstring wstr(sizeNeeded, '\0');
+				int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
+				if (res == sizeNeeded) {
+					return wstr;
+				}
 			}
 		}
+		return std::wstring();
 	}
-	return std::wstring();
-}
 
-std::string toNarrow(const wchar_t *src, int codePage)
-{
-	if (int const nLen = lstrlenW(src)) {
-		if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
-			std::string str(sizeNeeded, '\0');
-			int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
-			if (res == sizeNeeded) {
-				return str;
+	std::wstring toWide(int codePage, std::string const & str) 
+	{ 
+		return toWide(codePage, str.c_str(), str.length()); 
+	}
+
+	std::string toNarrow(int codePage, const wchar_t *src, int len = 0)
+	{
+		if (int const nLen = (len > 0 ? len : lstrlenW(src))) {
+			if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
+				std::string str(sizeNeeded, '\0');
+				int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
+				if (res == sizeNeeded) {
+					return str;
+				}
 			}
 		}
+		return std::string();
 	}
-	return std::string();
-}
+	
+	std::wstring utf8ToWide(const char* utf8String, int len = 0)
+	{
+		return toWide(CP_UTF8, utf8String, len);
+	}
 
-std::wstring utf8ToWide(const char* utf8String)
-{
-	//return std::wstring(L"TEST!");
-	return toWide(utf8String, CP_UTF8);
-}
+	std::string toUtf8(int codePage, const char* str, int len = 0)
+	{
+		auto wstr = toWide(codePage, str, len);
+		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
+	}
 
-std::string toUtf8(const char* str, int codePage)
-{
-	auto wstr = toWide(str, codePage);
-	return toNarrow(wstr.c_str(), CP_UTF8);
-}
+	std::string toUtf8(int codePage, std::string const & str)
+	{
+		auto wstr = toWide(codePage, str);
+		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
+	}
+} // Utils
+using namespace Utils;
 
-const char OptDelim = '.';
+const char* DefDbName = "litt.sqlite";
+const char  OptDelim = '.';
+const int   MaxColumnWidth = 300;
+
 const char* dgSQL = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 const char* ngSQL = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
 
-enum class DumpMode {
+enum class DisplayMode {
 	column,
 	csv,
+	html,
+	line,
 	list,
+	tabs,
 };
 
 enum class ColumnType {
@@ -86,20 +110,16 @@ struct ColumnInfo {
 };
 
 struct LittState {
-	int const    consoleCodePageIn  = GetConsoleCP();
-	int const    consoleCodePageOut = GetConsoleOutputCP();
-	HANDLE const stdOutputHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
-	bool const   stdOutIsConsole    = GetFileType(stdOutputHandle) == FILE_TYPE_CHAR;
-
 	// Maps short name to column info.
 	std::map<std::string, ColumnInfo> columnInfos;
 
-	bool     headerOn = true;
-	bool     selectDistinct = false;
-	bool     showQuery = false;
-	bool     explainQuery = false;
-	bool     showNumberOfRows = false;
-	DumpMode mode = DumpMode::column;
+	bool headerOn = true;
+	bool selectDistinct = false;
+	bool showQuery = false;
+	bool explainQuery = false;
+	bool showNumberOfRows = false;
+	DisplayMode mode = DisplayMode::column;
+	std::string listSep = "|";
 
 	std::string dbPath; // Path to LITT db file
 
@@ -109,8 +129,8 @@ struct LittState {
 
 	std::string action;
 	std::vector<std::string> actionArgs;
-	std::string actionRightWildCard;
-	std::string actionLeftWildCard;
+	bool actionRightWildCard = false;
+	bool actionLeftWildCard = false;
 
 	mutable int rowCount = 0; // The number of rows printed so far.
 
@@ -147,9 +167,7 @@ struct LittState {
 					  5, ColumnType::text, "DoW" }},
 			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
 
-			//
 			// Some special-purpose virtual columns, these are not generally usable:
-			//	
 
 			// Intended for use in -w for booksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 			{"drc", {"Count(BookID)", 0, ColumnType::numeric, nullptr, true }},
@@ -192,8 +210,13 @@ struct LittState {
 		return res;
 	}
 
+	DWORD        consoleMode = 0;
+	int    const consoleCodePage = GetConsoleCP();
+	HANDLE const stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
+	bool   const stdOutIsConsole = stdOutHandle != NULL && GetConsoleMode(stdOutHandle, &consoleMode);
+
 	static const int BufSize = 32000;
-	mutable char  consoleBuffer[BufSize + 1];
+	mutable char  buffer[BufSize];
 	mutable DWORD bufPos = 0;
 
 	void writeOutPut(const char* str, int len) const
@@ -203,36 +226,45 @@ struct LittState {
 			doWriteOutPut(str, len);
 		}
 		else {
-			if ((BufSize - bufPos) < len) { // !!!! check range
+			if ((BufSize - bufPos) < len) {
 				flushOutput();
 			}
-			lstrcpynA(&consoleBuffer[bufPos], str, len + 1);
+			_ASSERT(len <= (BufSize - bufPos));
+			memcpy(&buffer[bufPos], str, len);
 			bufPos += len;
 		}
 	}
 
-	void writeOutPut(const char* str) const {
+	void writeOutPut(std::string const & str) const 
+	{
+		writeOutPut(str.c_str(), str.length());
+	}
+
+	void writeOutPut(const char* str) const 
+	{
 		writeOutPut(str, strlen(str));
 	}
 
-	void writeOutPut(char c) const {
+	void writeOutPut(char c) const 
+	{
 		writeOutPut(&c, 1);
 	}
 
 	void doWriteOutPut(const char* str, int len) const
 	{
 		if (stdOutIsConsole) {
-			auto ws = utf8ToWide(str);
+			auto ws = utf8ToWide(str, len);
 			DWORD written;
-			WriteConsole(stdOutputHandle, ws.c_str(), ws.length(), &written, 0);
+			WriteConsole(stdOutHandle, ws.c_str(), ws.length(), &written, 0);
 		}
 		else {
 			fwrite(str, len, 1, stdout);
 		}
 	}
 
-	void flushOutput() const {
-		doWriteOutPut(consoleBuffer, bufPos);
+	void flushOutput() const 
+	{
+		doWriteOutPut(buffer, bufPos);
 		bufPos = 0;
 	}
 };
@@ -241,46 +273,54 @@ struct QueryBuilder {
 	QueryBuilder(LittState const & ls) {
 
 	}
-
 };
 
 bool parseCommandLine(int argc, char **argv, LittState& ls)
 {
 	for (int i = 1; i < argc; ++i) {
-		if (argv[i][0] == '-' && argv[i][1] != '\0') { // NOTE: We will allow a single '-' to be used as an action argument.
-			char const        opt    = argv[i][1];
-			std::string const optVal = argv[i][2] != '\0' ? &argv[i][2] : "";
+		if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
+			auto const opt = argv[i][1];
+			auto const val = std::string(argv[i][2] != '\0' ? &argv[i][2] : "");
 			switch (opt) {
 			case 'd':
-				if (optVal == "col" || optVal == "column") ls.mode = DumpMode::column;
-				else if (optVal == "csv") ls.mode = DumpMode::csv;
-				else if (optVal == "list") ls.mode = DumpMode::list;
+				if (val == "col" || val == "column") ls.mode = DisplayMode::column;
+				else if (val == "csv") ls.mode = DisplayMode::csv;
+				else if (val == "html") ls.mode = DisplayMode::html;
+				else if (val == "line") ls.mode = DisplayMode::line;
+				else if (val == "tabs") ls.mode = DisplayMode::tabs;
+				else if (val.substr(0, 4) == "list") {
+					ls.mode = DisplayMode::list;
+					if (4 < val.length()) {
+						if (val[4] == ':' && 5 < val.length()) {
+							ls.listSep = toUtf8(ls.consoleCodePage, val.substr(5).c_str());
+						}
+						else {
+							goto optionError;
+						}
+					}
+				}
 				else {
-					fprintf(stderr, "Invalid dump mode option value '%s'\n", optVal.c_str());
-					return false;
+					goto optionError;
 				}
 				break;
 			case 'h':
-				if (optVal == "on") ls.headerOn = true;
-				else if (optVal == "off") ls.headerOn = false;
-				else {
-					fprintf(stderr, "Invalid header option value '%s'\n", optVal.c_str());
-					return false;
-				}
+				if (val == "on") ls.headerOn = true;
+				else if (val == "off") ls.headerOn = false;
+				else goto optionError;
 				break;
 			case 'o': 
-				ls.orderBy = ls.getColumns(optVal);
+				ls.orderBy = ls.getColumns(val);
 				if (ls.orderBy.empty()) { return false; }
 				break;
 			case 'c': 
-				ls.selectedColumns = ls.getColumns(optVal);
+				ls.selectedColumns = ls.getColumns(val);
 				if (ls.selectedColumns.empty()) { return false; }
 				break;
 			case 'l': 
-				ls.dbPath = optVal;
+				ls.dbPath = val;
 				break;
 			case 'a': {
-				auto add = ls.getColumns(optVal);
+				auto add = ls.getColumns(val);
 				if (add.empty()) { return false; }
 				ls.additionalColumns.insert(ls.additionalColumns.end(), add.begin(), add.end());
 				}
@@ -289,7 +329,7 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 				// add to where condition
 				break;
 			case 's': {
-				std::stringstream ss(optVal);
+				std::stringstream ss(val);
 				std::string sn;
 				while (std::getline(ss, sn, OptDelim)) {
 					auto column = ls.getColumn(sn); 
@@ -317,7 +357,7 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 			case 'n': 
 				ls.showNumberOfRows = true;
 				break;
-			default:
+			default: optionError:
 				fprintf(stderr, "Invalid option '%s'\n", argv[i]);
 				return false;
 			}
@@ -326,11 +366,11 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 			if (ls.action.empty()) {
 				ls.action = argv[i]; 
 				if (ls.action.length() >= 2 && ls.action[0] == '*') {
-					ls.actionLeftWildCard = "*"; 
+					ls.actionLeftWildCard = true; 
 					ls.action.erase(0, 1);
 				}
 				if (ls.action.length() >= 2 && ls.action.back() == '*') {
-					ls.actionRightWildCard = "*"; 
+					ls.actionRightWildCard = true; 
 					ls.action.pop_back();
 				}
 			}
@@ -346,16 +386,14 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 	}
 
 	if (ls.dbPath.empty()) {
-		const char* defDbName = "litt.sqlite";
 		char mydocs[MAX_PATH];
 		if (GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)) {
-			ls.dbPath = std::string(mydocs) + "\\litt\\" + defDbName;
+			ls.dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
 		}
 		else {
-			ls.dbPath = defDbName;
+			ls.dbPath = DefDbName;
 		}
 	}
-
 	if (GetFileAttributesA(ls.dbPath.c_str()) == -1) {
 		fprintf(stderr, "Cannot find '%s'\n", ls.dbPath.c_str());
 		return false;
@@ -424,7 +462,7 @@ NOTE: As wildcards in most match arguments "*" (any string) and "_" (any charact
       b* will list books starting with it instead.
       
 Options:
-    -d[dumpMode]    (Determines how the results are displayed)
+    -d[DisplayMode] (Determines how the results are displayed)
     -h[on|off]      (Determines if a header row is shown or not)
     -c[selColumns]  (Determines the included colums, overrides default columns for the action)
     -a[addColumns]  (Include these columns in addition to the default ones for the action)
@@ -449,21 +487,19 @@ whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmp
 colSizes format: Same as selColumns format
 
 bookCountCond and booksReadCond formats:
-	<number>        Only includes authors with book count >= <number>
-	lt.<number>     Only includes authors with book count < <number>
-	gt.<number>     Only includes authors with book count > <number>
-	eq.<number>     Only includes authors with book count = <number>
-	range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
+    <number>        Only includes authors with book count >= <number>
+    lt.<number>     Only includes authors with book count < <number>
+    gt.<number>     Only includes authors with book count > <number>
+    eq.<number>     Only includes authors with book count = <number>
+    range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
 
-Dumpmode values:
-    csv      Comma-separated values
-    column   Left-aligned columns. (specified (or default) widths are used)
-    html     HTML <table> code
-    line     One value per line
-    insert   SQL insert statements for TABLE
-    list     Values delimited by .separator string
-    tabs     Tab-separated values
-    tcl      TCL list elements
+DisplayMode values:
+    col/column  Left-aligned columns (Specified or default widths are used)
+    csv         Comma-separated values
+    html        HTML <table> code
+    line        One value per line
+    list[:sep]  Values delimited by separator string, default is "|"
+    tabs        Tab-separated values
 
 Column short name values:
     bt,bi,btl       - Book title, BookID, length of book title
@@ -482,33 +518,14 @@ Column short name values:
 	return 0;
 }
 
-void configureOutputSettingsIfConsole(LittState ls)
-{
-	if (ls.stdOutIsConsole) {
-		// Note: will break if the bytes of the character are not all written at once, this may happen if split over output buffers.
-		//SetConsoleOutputCP(CP_UTF8);
-		// OBS! Setting to too large or too small values will break CP_UTF8 above it seems! The WriteConsoleW limit?
-		// Also noticed that utf8 breaks when the printed lines became short (no genre when tested with older db! Added dummy genre in print routine fixed it!)
-		// probably because some windows code page detection fails to detect correct encoding in that case?
-		// Need to study this more! Might have to convert to Unicode and use WriteConsoleW if console? Or convert further from UC to current console code page.
-		// Hmm, worked when ran chcp 65001 first with the short lines! Why? Also works when no buffer at all is set. 
-		//static char buf[1000*10]; 
-		//setvbuf(stdout, buf, _IOFBF, sizeof buf); // line buffer not supported on win32
-	}
-}
-
-void restoreOutputSettingsIfConsole(LittState const & ls)
-{
-	if (ls.stdOutIsConsole) {
-		SetConsoleOutputCP(ls.consoleCodePageOut);
-	}
-}
-
 int runSelectQuery(LittState const & ls, std::string const & sql)
 {
+	auto sqlUtf8 = toUtf8(ls.consoleCodePage, sql); // !!! will be done by querybuilder.....
+
 	if (ls.showQuery) {
 		// !!! also print relevant options?
-		ls.writeOutPut(sql.c_str(), sql.length());
+		ls.writeOutPut(sqlUtf8.c_str(), sqlUtf8.length());
+		ls.flushOutput();
 		return 0;
 	}
 
@@ -517,13 +534,13 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		if (ls->rowCount++ == 0) {
 			for (int i = 0; i < argc; i++) {
 				ls->writeOutPut(azColName[i]);
-				if (i + 1 != argc) ls->writeOutPut('|');
+				if (i + 1 != argc) ls->writeOutPut(ls->listSep);
 			}
 			ls->writeOutPut('\n');
 		}
 		for (int i = 0; i < argc; i++) {
 			ls->writeOutPut(argv[i] ? argv[i] : "");
-			if (i + 1 != argc) ls->writeOutPut('|');
+			if (i + 1 != argc) ls->writeOutPut(ls->listSep);
 		}
 		ls->writeOutPut('\n');
 
@@ -537,17 +554,10 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		goto out;
 	}
 
-	//configureOutputSettingsIfConsole(ls);
-
-	// !!! convert sql to utf-8 if not already
-	// !!!! error handling of all API calls!!!!
-
 	ls.rowCount = 0;
 	char *zErrMsg = nullptr;
-	res = sqlite3_exec(db, sql.c_str(), callback, const_cast<LittState*>(&ls), &zErrMsg);
-
+	res = sqlite3_exec(db, sqlUtf8.c_str(), callback, const_cast<LittState*>(&ls), &zErrMsg);
 	ls.flushOutput();
-
 	if (res != SQLITE_OK) {
 		fprintf(stderr, "SQL error: %s\n", zErrMsg);
 		sqlite3_free(zErrMsg);
@@ -557,7 +567,6 @@ int runSelectQuery(LittState const & ls, std::string const & sql)
 		printf("# = %i\n", ls.rowCount); // !!! also stderr output??? Need to sync console and stdio streams most likely!
 	}
 
-	//restoreOutputSettingsIfConsole(ls); 
 out:
 	sqlite3_close(db);
 	return res;
@@ -618,14 +627,8 @@ ORDER BY \"Date read\", Books.\"BookID\", \"Last Name\", \"First Name\", \"Title
 // NOTES:
 // - Currently a bug in btmlitt to use selColumns as colOrder if no colOrder, as selColumns can include widths, and that will cause an error (no such short name!)
 
-//#include <io.h>
-//#include <fcntl.h>
-
 int main(int argc, char **argv)
 {
-	//_setmode(_fileno(stdout), _O_U8TEXT);
-	//printf("\xc3\xbc\n"); return 0;
-
 	if (argc <= 1) {
 		return showHelp();
 	}
