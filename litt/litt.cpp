@@ -11,7 +11,6 @@ Changelog:
 
 // !!!! error handling of all API calls!!!!
 
-
 #include "stdafx.h"
 
 namespace Utils
@@ -79,12 +78,18 @@ namespace Utils
 } // Utils
 using namespace Utils;
 
-const char* DefDbName = "litt.sqlite";
-const char  OptDelim = '.';
-const int   MaxColumnWidth = 300;
+namespace LittConstants 
+{
+	const char* DefDbName = "litt.sqlite";
+	const char  OptDelim = '.';
+	const int   MaxColumnWidth = 300;
+	const char* LogOp_OR = "OR";
+	const char* LogOp_AND = "AND";
 
-const char* dgSQL = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
-const char* ngSQL = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
+	const char* dgSQL = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
+	const char* ngSQL = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
+}
+using namespace LittConstants;
 
 enum class DisplayMode {
 	column,
@@ -100,13 +105,32 @@ enum class ColumnType {
 	numeric = 1,
 };
 
+enum class ColumnSortOrder {
+	Asc = 0,
+	Desc = 1,
+};
+
+// Note: All member value types are chosen/designed so that zero-init will set the desired default.
 struct ColumnInfo {
+	// These values are pre-configured:
 	char const* name;
 	int         defWidth;
 	ColumnType  type;
 	char const* label; // optional
 	bool        isGroupAggregate;
-	int         width;
+
+	// These values are set at runtime. Stored here for convenience.
+	int  overriddenWidth;
+	bool usedInQuery;
+};
+
+// A collection of columns and their associated widths (Which can also be interpreted as sort order!)
+using Columns = std::vector<std::pair<ColumnInfo*, int>>; 
+
+enum class ColumnsDataKind {
+	none,
+	width,
+	sortOrder
 };
 
 struct LittState {
@@ -123,14 +147,15 @@ struct LittState {
 
 	std::string dbPath; // Path to LITT db file
 
-	std::vector<ColumnInfo*> orderBy; // Overrides the default action order.
-	std::vector<ColumnInfo*> selectedColumns; // Overrides the default action columns.
-	std::vector<ColumnInfo*> additionalColumns; // Added to the action or overridden columns.
+	Columns orderBy; // Overrides the default action order.
+	Columns selectedColumns; // Overrides the default action columns.
+	Columns additionalColumns; // Added to the action or overridden columns.
+	mutable std::string whereCondition;
 
 	std::string action;
 	std::vector<std::string> actionArgs;
-	bool actionRightWildCard = false;
-	bool actionLeftWildCard = false;
+	std::string actionRightWildCard;
+	std::string actionLeftWildCard;
 
 	mutable int rowCount = 0; // The number of rows printed so far.
 
@@ -190,24 +215,107 @@ struct LittState {
 			return &it->second;
 		}
 		else {
-			fprintf(stderr, "Invalid short column name '%s'", sn.c_str());
+			fprintf(stderr, "Invalid short column name '%s'\n", sn.c_str());
 			return nullptr;
 		}
 	}
 
-	std::vector<ColumnInfo*> getColumns(std::string const & sns)
+	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery, bool& ok)
 	{
-		std::vector<ColumnInfo*> res;
+		Columns res;
 		std::stringstream ss(sns);
 		std::string sn;
-		while (std::getline(ss, sn, OptDelim)) {
+		for (;;) {
+			if (sn.empty()) {
+				if (!std::getline(ss, sn, OptDelim)) {
+					break;
+				}
+			}
 			auto column = getColumn(sn);
 			if (column == nullptr) {
-				return std::vector<ColumnInfo*>();
+				goto error;
 			}
-			res.push_back(column);
-		}
+
+			if (usedInQuery) {
+				column->usedInQuery = true;
+			}
+
+			// Now get the optional sortOrder/width.
+			int data = -1;
+			bool endOfInput = false;
+			if (std::getline(ss, sn, OptDelim)) {
+				if (kind == ColumnsDataKind::sortOrder) {
+					if (sn == "asc") {
+						data = (int)ColumnSortOrder::Asc;
+					}
+					else if (sn == "desc") {
+						data = (int)ColumnSortOrder::Desc;
+					}
+				}
+				else if (kind == ColumnsDataKind::width) {
+					if (toInt(sn, data)) {
+						if (MaxColumnWidth < data) {
+							fprintf(stderr, "Invalid column width '%i'\n", data);
+							goto error;
+						}
+					}
+				}
+				if (data >= 0) {
+					sn.clear();
+				}
+				else {
+					// lookup sn as column next iteration
+				}
+			}
+			else {
+				endOfInput = true;
+			}
+
+			if (data < 0) { // Provide default values
+				switch (kind) {
+				case ColumnsDataKind::width: data = column->defWidth; break;
+				case ColumnsDataKind::sortOrder: data = (int)ColumnSortOrder::Asc; break;
+				}
+			}
+			res.push_back(std::make_pair(column, data));
+			if (endOfInput) {
+				break;
+			}
+		} // for
+
+		ok = true;
 		return res;
+	error:
+		ok = false;
+		return Columns();
+	}
+
+	bool addToWhereCondition(const char* logicalOp, std::string const & predicate) const
+	{
+		std::string wcond;
+		// !!!
+
+		if (!wcond.empty()) {
+			if (whereCondition.empty()) {
+				whereCondition = "(" + wcond + ")";
+			}
+			else {
+				whereCondition = "(" + whereCondition + ")" + logicalOp + "(" + wcond + ")";
+			}
+		}
+
+		return true;
+	}
+
+	bool addActionWhereCondition(const char* sn, int actionArgIndex) const
+	{
+		if (actionArgIndex < actionArgs.size()) {
+			auto value = actionLeftWildCard + actionArgs[actionArgIndex] + actionRightWildCard;
+			return addToWhereCondition(LogOp_AND, std::string(sn) + "." + value);
+		}
+		else {
+			return true;
+		}
 	}
 
 	DWORD        consoleMode = 0;
@@ -270,13 +378,14 @@ struct LittState {
 };
 
 struct QueryBuilder {
-	QueryBuilder(LittState const & ls) {
-
+	LittState const & ls;
+	QueryBuilder(LittState const & ls) : ls(ls) {
 	}
 };
 
 bool parseCommandLine(int argc, char **argv, LittState& ls)
 {
+	bool ok = true;
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
 			auto const opt = argv[i][1];
@@ -308,42 +417,33 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 				else if (val == "off") ls.headerOn = false;
 				else goto optionError;
 				break;
-			case 'o': 
-				ls.orderBy = ls.getColumns(val);
-				if (ls.orderBy.empty()) { return false; }
+			case 'o':
+				ls.orderBy = ls.getColumns(val, ColumnsDataKind::sortOrder, true, ok);
+				if (!ok) { return false; }
 				break;
 			case 'c': 
-				ls.selectedColumns = ls.getColumns(val);
-				if (ls.selectedColumns.empty()) { return false; }
+				ls.selectedColumns = ls.getColumns(val, ColumnsDataKind::width, true, ok);
+				if (!ok) { return false; }
 				break;
 			case 'l': 
 				ls.dbPath = val;
 				break;
 			case 'a': {
-				auto add = ls.getColumns(val);
-				if (add.empty()) { return false; }
+				auto add = ls.getColumns(val, ColumnsDataKind::width, true, ok);
+				if (!ok) { return false; }
 				ls.additionalColumns.insert(ls.additionalColumns.end(), add.begin(), add.end());
 				}
 				break;
 			case 'w': 
-				// add to where condition
+				ls.addToWhereCondition(LogOp_OR, val);
 				break;
-			case 's': {
-				std::stringstream ss(val);
-				std::string sn;
-				while (std::getline(ss, sn, OptDelim)) {
-					auto column = ls.getColumn(sn); 
-					if (column == nullptr) { return false; }
-					int width = 0; std::string w;
-					if (std::getline(ss, w, OptDelim) && toInt(w, width) && width > 0) {
-						column->width = width;
-					}
-					else {
-						fprintf(stderr, "Invalid column width '%s' for '%s'", w.c_str(), sn.c_str());
-						return false;
-					}
+			case 's':
+				// Note: The specified columns might actually not be used in the query. 
+				// Depends on the other parameters.
+				for (auto& c : ls.getColumns(val, ColumnsDataKind::width, false, ok)) { 
+					c.first->overriddenWidth = c.second;
 				}
-				}
+				if (!ok) { return false; }
 				break;
 			case 'q':
 				ls.showQuery = true;
@@ -366,11 +466,11 @@ bool parseCommandLine(int argc, char **argv, LittState& ls)
 			if (ls.action.empty()) {
 				ls.action = argv[i]; 
 				if (ls.action.length() >= 2 && ls.action[0] == '*') {
-					ls.actionLeftWildCard = true; 
+					ls.actionLeftWildCard = "*"; 
 					ls.action.erase(0, 1);
 				}
 				if (ls.action.length() >= 2 && ls.action.back() == '*') {
-					ls.actionRightWildCard = true; 
+					ls.actionRightWildCard = "*"; 
 					ls.action.pop_back();
 				}
 			}
@@ -466,7 +566,7 @@ Options:
     -h[on|off]      (Determines if a header row is shown or not)
     -c[selColumns]  (Determines the included colums, overrides default columns for the action)
     -a[addColumns]  (Include these columns in addition to the default ones for the action)
-    -o[colOrder]    (Determines sort order for results)
+    -o[colOrder]    (Determines sort order for results, by default sorts by included columns starting from left)
     -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
                      If several -w options are included their values will be OR:ed)
     -s[colSizes]    (Override the default column sizes)
@@ -588,14 +688,15 @@ int runListData(LittState const & ls, const char* selectedColumns, const char* o
 
 int listAuthors(LittState const & ls)
 {
-	// addMainWhereCond %ln% ln & addMainWhereCond %fn% fn
+	if (!ls.addActionWhereCondition("ln", 0) && ls.addActionWhereCondition("fn", 1)) {
+		return false;
+	}
 	if (ls.action == "a") {
 		return runSingleTableOutputCmd(ls, "ai.ln.fn", "Authors", "ai");
 	}
 	else {
 		return runListData(ls, "bi.ln.fn.bt.dr.so.ge", "ln.fn.dr.bi");
 	}
-	return 1;
 }
 
 int listBooks(LittState const & ls)
