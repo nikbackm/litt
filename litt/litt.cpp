@@ -14,10 +14,11 @@ Changelog:
 // display modes, esp. columns!
 // rest of selects!
 // input actions!
+// would be nice with litt state that does not change from query to query when reusing list methods for input actions!
 
 #include "stdafx.h"
 
-namespace Utils
+namespace Utils 
 {
 	bool toInt(std::string const & str, int& value)
 	{
@@ -130,7 +131,7 @@ struct ColumnInfo {
 	mutable bool usedInQuery;
 };
 
-// A collection of columns and their associated widths (Which can also be interpreted as sort order!)
+// A collection of columns including some integer data (width, sortOrder).
 using Columns = std::vector<std::pair<ColumnInfo const *, int>>; 
 
 enum class ColumnsDataKind {
@@ -139,7 +140,7 @@ enum class ColumnsDataKind {
 	sortOrder
 };
 
-struct Litt{
+struct Litt {
 	// Maps short name to column info.
 	std::map<std::string, ColumnInfo> columnInfos;
 
@@ -649,8 +650,7 @@ Column short name values:
 	return 0;
 }
 
-struct SelectQuery {
-private:
+class SelectQuery {
 	std::stringstream m_sstr;
 	Columns m_orderBy;
 public:
@@ -675,22 +675,20 @@ public:
 
 		auto selCols = litt.selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.selectedColumns;
 		selCols.insert(selCols.end(), litt.additionalColumns.begin(), litt.additionalColumns.end());
-		int addedFirstCol = false;
-		for (auto const & col : selCols) {
-			auto ci = col.first;
-			if (addedFirstCol) {
+		for (unsigned i = 0; i < selCols.size(); ++i) {
+			if (i != 0) {
 				m_sstr << ",";
 			}
+			auto ci = selCols[i].first;
 			m_sstr << ci->name;
 			if (ci->label != nullptr) {
 				m_sstr << " AS " << ci->label;
 			}
 			if (litt.displayMode == DisplayMode::column) {
-				auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : col.second;
+				auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : selCols[i].second;
 				_ASSERT(width > 0);
 				columnWidths.push_back(width);
 			}
-			addedFirstCol = true;
 		}
 
 		m_sstr << "\nFROM " << from;
@@ -699,7 +697,7 @@ public:
 			columnWidths = { 10, 10, 10, 100 }; // !!!! check shell code?
 		}
 
-		// Not used here, but we must execute it anyway in order to clarify all columns used in the query for later "addIfColumns" calls.
+		// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 		m_orderBy = litt.orderBy.empty() ? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true) : litt.orderBy;
 	}
 
@@ -755,19 +753,17 @@ public:
 	void addOrderBy()
 	{
 		if (!m_orderBy.empty()) { 
-			m_sstr << "\nORDER BY "; // !!!!!
-			bool addedFirst = false;
-			for (auto const & col : m_orderBy) {
-				if (addedFirst) {
+			m_sstr << "\nORDER BY ";
+			for (unsigned i = 0; i < m_orderBy.size(); ++i) {
+				if (i != 0) {
 					m_sstr << ",";
 				}
-				auto ci = col.first;
-				auto order = (ColumnSortOrder)col.second;
+				auto ci = m_orderBy[i].first;
+				auto order = (ColumnSortOrder)m_orderBy[i].second;
 				m_sstr << (ci->label != nullptr ? ci->label : ci->name);
 				if (order == ColumnSortOrder::Desc) {
 					m_sstr << " DESC"; // ASC is default.
 				}
-				addedFirst = true;
 			}
 		}
 	}
