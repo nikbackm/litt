@@ -129,6 +129,15 @@ struct ColumnInfo {
 	// These values are set at runtime. Stored here for convenience.
 	mutable int  overriddenWidth;
 	mutable bool usedInQuery;
+
+	std::string getLikeArg(std::string val) const {
+		makeLikeArg(val);
+		int ival;
+		if (type != ColumnType::numeric || !toInt(val, ival)) {
+			val = "'" + val + "'";
+		}
+		return val;
+	}
 };
 
 // A collection of columns including some integer data (width, sortOrder).
@@ -218,12 +227,10 @@ struct Litt {
 	ColumnInfo const* getColumn(std::string const & sn) const
 	{
 		auto it = columnInfos.find(sn);
-		if (it != columnInfos.end()) {
-			return &it->second;
-		}
-		else {
+		if (it == columnInfos.end()) {
 			throw std::invalid_argument("Invalid short column name: " + sn);
 		}
+		return &it->second;
 	}
 
 	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery) const
@@ -284,14 +291,14 @@ struct Litt {
 		return res;
 	}
 
-	void addToWhereCondition(const char* logicalOp, std::string const & predicate) const
+	std::string getWherePredicate(std::string const & value) const
 	{
-		std::stringstream ss(predicate);
+		std::stringstream ss(value);
 
 		auto getNext = [&]() {
 			std::string next;
 			if (!std::getline(ss, next, OptDelim)) {
-				throw std::invalid_argument(std::string("Faulty whereCondition: ") + predicate);
+				throw std::invalid_argument(std::string("Faulty where value: ") + value);
 			}
 			return next;
 		};
@@ -320,11 +327,7 @@ struct Litt {
 				}
 			}
 
-			makeLikeArg(val);
-
-			if (col->type != ColumnType::numeric) {
-				val = "'" + val + "'";
-			}
+			val = col->getLikeArg(val);
 
 			std::string snCond;
 			std::string colName(col->name); // !!! use label instead if found!!??? test and see
@@ -341,13 +344,17 @@ struct Litt {
 				wcond = wcond + LogOp_AND + snCond;
 			}
 		}
+		return wcond;
+	}
 		
-		if (!wcond.empty()) {
+	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
+	{
+		if (!predicate.empty()) {
 			if (whereCondition.empty()) {
-				whereCondition = "(" + wcond + ")";
+				whereCondition = "(" + predicate + ")";
 			}
 			else {
-				whereCondition = "(" + whereCondition + ")" + logicalOp + "(" + wcond + ")";
+				whereCondition = "(" + whereCondition + ")" + logicalOp + "(" + predicate + ")";
 			}
 		}
 	}
@@ -355,8 +362,10 @@ struct Litt {
 	void addActionWhereCondition(const char* sn, unsigned actionArgIndex) const
 	{
 		if (actionArgIndex < actionArgs.size()) {
-			auto value = actionLeftWildCard + actionArgs[actionArgIndex] + actionRightWildCard;
-			addToWhereCondition(LogOp_AND, std::string(sn) + OptDelim + value);
+			auto val = actionLeftWildCard + actionArgs[actionArgIndex] + actionRightWildCard;
+			auto col = getColumn(sn);
+			col->usedInQuery = true;
+			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
@@ -474,7 +483,7 @@ void parseCommandLine(int argc, char **argv, Litt& litt)
 				}
 				break;
 			case 'w': 
-				litt.addToWhereCondition(LogOp_OR, val);
+				litt.appendToWhereCondition(LogOp_OR, litt.getWherePredicate(val));
 				break;
 			case 's':
 				// Not necessarily included in the query, hence "false".
