@@ -364,9 +364,7 @@ struct Litt{
 	HANDLE const stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
 	bool   const stdOutIsConsole = stdOutHandle != NULL && GetConsoleMode(stdOutHandle, &consoleMode);
 
-	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far...
-	// 32K seems to work at home with Win10 though, but not at work with Win7.
-	static const int BufSize = 1000*20; 
+	static const int BufSize = 1000*20; // Got missing WriteConsole output with 32K buffer! 20K seems ok so far...
 	mutable char buffer[BufSize];
 	mutable int  bufPos = 0;
 
@@ -408,9 +406,8 @@ struct Litt{
 		if (stdOutIsConsole) {
 			auto ws = utf8ToWide(str, len);
 			DWORD written;
-			if (!WriteConsole(stdOutHandle, ws.c_str(), ws.length(), &written, 0)) {
-				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
-			}
+			//WriteConsoleA(stdOutHandle, str, len, &written, 0);
+			WriteConsole(stdOutHandle, ws.c_str(), ws.length(), &written, 0);
 		}
 		else {
 			fwrite(str, len, 1, stdout);
@@ -791,27 +788,22 @@ void runSelectQuery(SelectQuery& query)
 	}
 
 	auto callback = [](void *pArg, int argc, char **argv, char **azColName) {
-		try {
-			auto query = static_cast<SelectQuery*>(pArg);
-			auto litt = &query->litt;
-			if (litt->rowCount++ == 0) {
-				for (int i = 0; i < argc; i++) {
-					litt->writeOutPut(azColName[i]);
-					if (i + 1 != argc) litt->writeOutPut(litt->listSep);
-				}
-				litt->writeOutPut('\n');
-			}
+		// OBS! Don't throw in the callback!
+		auto query = static_cast<SelectQuery*>(pArg);
+		auto litt = &query->litt;
+		if (litt->rowCount++ == 0) {
 			for (int i = 0; i < argc; i++) {
-				litt->writeOutPut(argv[i] ? argv[i] : "");
+				litt->writeOutPut(azColName[i]);
 				if (i + 1 != argc) litt->writeOutPut(litt->listSep);
 			}
 			litt->writeOutPut('\n');
-			return 0;
 		}
-		catch (std::exception& ex) {
-			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
-			return 1;
+		for (int i = 0; i < argc; i++) {
+			litt->writeOutPut(argv[i] ? argv[i] : "");
+			if (i + 1 != argc) litt->writeOutPut(litt->listSep);
 		}
+		litt->writeOutPut('\n');
+		return 0;
 	};
 
 	std::string errMsg;
@@ -826,7 +818,7 @@ void runSelectQuery(SelectQuery& query)
 	litt.rowCount = 0;
 	char *zErrMsg = nullptr;
 	res = sqlite3_exec(db, sql.c_str(), callback, &query, &zErrMsg);
-	try { litt.flushOutput(); } catch (std::exception& ex) { fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); }
+	litt.flushOutput();
 	if (res != SQLITE_OK) {
 		errMsg = std::string("SQL error: ") + zErrMsg;
 		sqlite3_free(zErrMsg);
