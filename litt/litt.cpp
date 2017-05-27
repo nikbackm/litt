@@ -14,6 +14,7 @@ Changelog:
 // rest of selects!
 // rest of display modes, html and csv
 // error handling of all API calls!
+// decide whether to add the actions that run defined VIEWs. If not remove from help. (Can be done in columns mode by setting col size by col name + 2 and also size of first row)
 // input actions! maybe make SQLITE c++ wrapper for that.
 // would be nice with litt state that does not change from query to query when reusing list methods for input actions!
 
@@ -178,7 +179,7 @@ struct Litt {
 	mutable int rowCount = 0; // The number of rows printed so far.
 
 	Litt() :
-		columnInfos({
+		columnInfos({ // OBS! Don't use "desc" and "asc" and short names! :)
 			{"ai",   {"Authors.AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
@@ -1029,6 +1030,41 @@ void listStories(Litt const & litt)
 	runListData(litt, "bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
 }
 
+void listSources(Litt const & litt)
+{
+	litt.addActionWhereCondition("so", 0);
+	if (litt.action == "so") {
+		runSingleTableOutputCmd(litt, "soid.so", "Sources", "so");
+	}
+	else {
+		runListData(litt, "dr.so.50.bt.30.ln.fn", "so");
+	}
+}
+
+void listRereads(Litt const & litt)
+{
+	SelectQuery query(litt);
+	const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
+	query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", true);
+	query.add("INNER JOIN Books USING(BookID)");
+	query.addAuxTables();
+	query.addWhere();
+	query.addOrderBy();
+	runSelectQuery(query);
+}
+
+void listSametitle(Litt const & litt)
+{
+	SelectQuery query(litt);
+	const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
+	query.initSelect("bi.bt.ng.btc", from, "bt.bi", true);
+	query.add("INNER JOIN Books USING(Title)");
+	query.addAuxTables();
+	query.addWhere();
+	query.addOrderBy();
+	runSelectQuery(query);
+}
+
 int main(int argc, char **argv)
 {
 	if (argc <= 1) {
@@ -1060,6 +1096,15 @@ int main(int argc, char **argv)
 		}
 		else if (action == "st") {
 			listStories(litt);
+		}
+		else if (action == "so" || action == "soo") {
+			listSources(litt);
+		}
+		else if (action == "rereads") {
+			listRereads(litt);
+		}
+		else if (action == "sametitle") {
+			listSametitle(litt);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
