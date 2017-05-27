@@ -11,6 +11,7 @@ Changelog:
 
 **********************************************************************************************************************/
 
+// add parameters to list functions, at least re-usable ones!
 // rest of selects!
 // rest of display modes, html and csv
 // error handling of all API calls!
@@ -151,6 +152,40 @@ enum class ColumnsDataKind {
 	sortOrder
 };
 
+struct OptionParser {
+	std::stringstream ss;
+	const char* type;
+	OptionParser(std::string const & value, const char* type = "option")
+		: ss(value), type(type)
+	{}
+
+	bool getNext(std::string& next)
+	{
+		return !!std::getline(ss, next, OptDelim);
+	}
+	
+	__declspec(noreturn) void throwError() 
+	{
+		throw std::invalid_argument(std::string("Faulty ") + type + " value: " + ss.str());
+	}
+
+	std::string getNext()
+	{
+		std::string value;
+		if (!getNext(value)) { throwError(); }
+		return value;
+	}
+
+	int nextInt()
+	{
+		auto val = getNext();
+		int ival; if (!toInt(val, ival)) { throwError(); }
+		return ival;
+	}
+
+	std::string nextIntAsStr() { return std::to_string(nextInt()); }
+};
+
 struct Litt {
 	// Maps short name to column info.
 	std::map<std::string, ColumnInfo> columnInfos;
@@ -239,11 +274,11 @@ struct Litt {
 	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery) const
 	{
 		Columns res;
-		std::stringstream ss(sns);
+		OptionParser opts(sns);
 		std::string sn;
 		for (;;) {
 			if (sn.empty()) {
-				if (!std::getline(ss, sn, OptDelim)) {
+				if (!opts.getNext(sn)) {
 					break;
 				}
 			}
@@ -255,7 +290,7 @@ struct Litt {
 			// Now get the optional data (sortOrder/width).
 			int data = -1;
 			bool endOfInput = false;
-			if (std::getline(ss, sn, OptDelim)) {
+			if (opts.getNext(sn)) {
 				if (kind == ColumnsDataKind::sortOrder) {
 					if (sn == "asc") {
 						data = (int)ColumnSortOrder::Asc;
@@ -296,24 +331,15 @@ struct Litt {
 
 	std::string getWherePredicate(std::string const & value) const
 	{
-		std::stringstream ss(value);
-
-		auto getNext = [&]() {
-			std::string next;
-			if (!std::getline(ss, next, OptDelim)) {
-				throw std::invalid_argument(std::string("Faulty where value: ") + value);
-			}
-			return next;
-		};
-
+		OptionParser opts(value, "where");
 		std::string wcond;
 
 		std::string sn;
-		while (std::getline(ss, sn, OptDelim)) {
+		while (opts.getNext(sn)) {
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
 
-			auto val = getNext(); // Either a value or an operation for the value coming up.
+			auto val = opts.getNext(); // Either a value or an operation for the value coming up.
 			std::string oper;
 			if (val == "lt") oper = "<";
 			else if (val == "gt") oper = ">";
@@ -326,7 +352,7 @@ struct Litt {
 			}
 			else {
 				if (oper != "isnull" && oper != "isempty") {
-					val = getNext();
+					val = opts.getNext();
 				}
 			}
 
@@ -350,6 +376,23 @@ struct Litt {
 		return wcond;
 	}
 
+	std::string parseCountCondition(std::string const & name, std::string const & value) const
+	{
+		OptionParser opts(value, "count condition");
+		auto val = opts.getNext(); 
+		int iVal;
+		if (toInt(val, iVal)) { return name + " >= " + val; }
+		else if (val == "lt") { return name + " < " + opts.nextIntAsStr(); }
+		else if (val == "gt") { return name + " > " + opts.nextIntAsStr(); }
+		else if (val == "eq") { return name + " = " + opts.nextIntAsStr(); }
+		else if (val == "range") { 
+			auto r1 = opts.nextIntAsStr(); auto r2 = opts.nextIntAsStr();
+			return r1 + " <= " + name + " AND " + name + " <= " + r2; }
+		else {
+			throw std::invalid_argument("Invalid operator " + val + " in count condition value: " + value);
+		}
+	}
+
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
 	{
 		if (!predicate.empty()) {
@@ -370,6 +413,10 @@ struct Litt {
 			col->usedInQuery = true;
 			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
 		}
+	}
+
+	std::string actionArg(unsigned index) const {
+		return index < actionArgs.size() ? actionArgs[index] : "";
 	}
 
 	DWORD        consoleMode = 0;
@@ -650,7 +697,6 @@ R"(
    set-g <BookID> [C|D CurGenreID] (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
    
    all                             (Lists "everything")
-   dump                            (Dumps the database as SQL)
    h                               (Show more extensive help)
    
 NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
@@ -721,6 +767,11 @@ enum InnerJoinFor : unsigned {
 	IJF_OrigTitle = 0x04,
 };
 
+enum class SelectOption {
+	normal,
+	distinct,
+};
+
 class SelectQuery {
 	std::stringstream m_sstr;
 	Columns m_orderBy;
@@ -733,14 +784,14 @@ public:
 	{
 	}
 
-	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, bool selectDistinct = false)
+	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
 	{
 		m_sstr.clear();
 		if (litt.explainQuery) {
 			m_sstr << "EXPLAIN QUERY PLAN ";
 		}
 		m_sstr << "SELECT ";
-		if (litt.selectDistinct || selectDistinct) {
+		if (litt.selectDistinct || selectOption == SelectOption::distinct) {
 			m_sstr << "DISTINCT ";
 		}
 
@@ -794,6 +845,16 @@ public:
 		m_sstr << "\n" << line;
 	}
 
+	void add(std::string const & line)
+	{
+		add(line.c_str());
+	}
+
+	void addIf(bool cond, const char* line)
+	{
+		if (cond) add(line);
+	}
+
 	void addIfColumns(const char* columns, const char* line) 
 	{
 		for (auto& col : litt.getColumns(columns, ColumnsDataKind::none, false)) {
@@ -802,6 +863,11 @@ public:
 				return;
 			}
 		}
+	}
+
+	void addIfColumns(const char* columns, std::string const & line)
+	{
+		addIfColumns(columns, line.c_str());
 	}
 
 	void addAuxTables(InnerJoinFor ijf = IJF_DefaultsOnly)
@@ -818,10 +884,10 @@ public:
 		addIfColumns("dg",          "INNER JOIN " dgSqlSelect " USING(BookID)");
 		addIfColumns("fn.ln.nn.st", "INNER JOIN AuthorBooks USING(BookID)");
 		addIfColumns("fn.ln.nn",    "INNER JOIN Authors USING(AuthorID)");
-		addIfColumns("ot",          (ortJoin + " JOIN OriginalTitles USING(BookID)").c_str());
-		addIfColumns("st",          (stoJoin + " JOIN Stories USING(AuthorID, BookID)").c_str());
-		addIfColumns("sp.se",       (serJoin + " JOIN BookSeries USING(BookID)").c_str());
-		addIfColumns("se",          (serJoin + " JOIN Series USING(SeriesID)").c_str());
+		addIfColumns("ot",           ortJoin + " JOIN OriginalTitles USING(BookID)");
+		addIfColumns("st",           stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+		addIfColumns("sp.se",        serJoin + " JOIN BookSeries USING(BookID)");
+		addIfColumns("se",           serJoin + " JOIN Series USING(SeriesID)");
 		addIfColumns("so",          "LEFT OUTER JOIN Sources USING(SourceID)");
 		addIfColumns("ge.gi",       "LEFT OUTER JOIN BookGenres USING(BookID)");
 		addIfColumns("ge",          "LEFT OUTER JOIN Genres USING(GenreID)");
@@ -1045,7 +1111,7 @@ void listRereads(Litt const & litt)
 {
 	SelectQuery query(litt);
 	const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-	query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", true);
+	query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", SelectOption::distinct);
 	query.add("INNER JOIN Books USING(BookID)");
 	query.addAuxTables();
 	query.addWhere();
@@ -1057,12 +1123,64 @@ void listSametitle(Litt const & litt)
 {
 	SelectQuery query(litt);
 	const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
-	query.initSelect("bi.bt.ng.btc", from, "bt.bi", true);
+	query.initSelect("bi.bt.ng.btc", from, "bt.bi", SelectOption::distinct);
 	query.add("INNER JOIN Books USING(Title)");
 	query.addAuxTables();
 	query.addWhere();
 	query.addOrderBy();
 	runSelectQuery(query);
+}
+
+void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
+{
+	SelectQuery query(litt);
+	const char* from = "Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)";
+	query.initSelect("nn.abc", from, "abc.desc");
+	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
+	query.addWhere();
+	query.add("GROUP BY AuthorID");
+	if (!countCond.empty()) {
+		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("abc")->name, countCond));
+	}
+	query.addOrderBy();
+	runSelectQuery(query);
+}
+
+void listGenreBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
+{
+	SelectQuery query(litt);
+	const char* from = "Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID)";
+	query.initSelect("ge.35.gbc", from, "gbc.desc");
+	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
+	query.addWhere();
+	query.add("GROUP BY GenreID");
+	if (!countCond.empty()) {
+		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("gbc")->name, countCond));
+	}
+	query.addOrderBy();
+	runSelectQuery(query);
+}
+
+void listBooksReadPerDate(Litt const & litt, std::string countCond)
+{
+	if (countCond.empty()) countCond = "2";
+
+	#define calcDRTimeWindow R"(case when (time("Date Read") > '00:00:00' and time("Date Read") < '06:00:00') then date("Date Read", '-6 hours') else date("Date Read") end)"
+
+	SelectQuery query(litt);
+	const char* from = "Books INNER JOIN DatesRead USING(BookID) INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)";
+	query.initSelect("dr.bt.ln.fn", from, "dr");
+	query.add("WHERE " calcDRTimeWindow " IN");
+	query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead WHERE \"Date Read\" > \"2001-10\")");
+	query.add("  GROUP BY CalcDR");
+	query.add("  HAVING " + litt.parseCountCondition("Count(CalcDR)", countCond) + ")");
+	if (!litt.whereCondition.empty()) {
+		query.add(" AND " + litt.whereCondition);
+	}
+	query.addOrderBy();
+	runSelectQuery(query);
+
+	#undef calcDRTimeWindow
 }
 
 int main(int argc, char **argv)
@@ -1105,6 +1223,15 @@ int main(int argc, char **argv)
 		}
 		else if (action == "sametitle") {
 			listSametitle(litt);
+		}
+		else if (action == "abc") {
+			listAuthorBookCounts(litt, litt.actionArg(0), litt.actionArg(1) == "1");
+		}
+		else if (action == "gbc") {
+			listGenreBookCounts(litt, litt.actionArg(0), litt.actionArg(1) == "1");
+		}
+		else if (action == "brd") {
+			listBooksReadPerDate(litt, litt.actionArg(0));
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
