@@ -193,7 +193,7 @@ struct Litt {
 			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 20, ColumnType::text, "Author" }},
 			{"la",   {"Language", 4 }},
 			{"own",  {"Owned", 3, ColumnType::numeric }},
-			{"ot",   {"Original Title", 30 }},
+			{"ot",   {"\"Original Title\"", 30 }},
 			{"se",   {"Series", 27 }},
 			{"si",   {"SeriesID", 8, ColumnType::numeric }},
 			{"sp",   {"\"Part in Series\"", 4 }},
@@ -606,6 +606,7 @@ Supported actions:
    aa [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
    b  [<title>]                    (Lists all books matching the given title).
    bb [<title>]                    (Same as above, but includes more details)
+   ot [<origTitle>]                (Only lists books with original titles)
    st [<story>]                    (Only lists books with separate stories)
    s  [<series>]                   (Lists series)
    g  [<genre>]                    (Lists genre)
@@ -712,6 +713,13 @@ Column short name values:
 	return 0;
 }
 
+enum InnerJoinFor : unsigned {
+	IJF_DefaultsOnly = 0x00,
+	IJF_Stories = 0x01,
+	IJF_Series = 0x02,
+	IJF_OrigTitle = 0x04,
+};
+
 class SelectQuery {
 	std::stringstream m_sstr;
 	Columns m_orderBy;
@@ -724,7 +732,7 @@ public:
 	{
 	}
 
-	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, bool selectDistinct = false) 
+	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, bool selectDistinct = false)
 	{
 		m_sstr.clear();
 		if (litt.explainQuery) {
@@ -780,7 +788,7 @@ public:
 		}
 	}
 
-	void addLine(const char* line)
+	void add(const char* line)
 	{
 		m_sstr << "\n" << line;
 	}
@@ -789,26 +797,30 @@ public:
 	{
 		for (auto& col : litt.getColumns(columns, ColumnsDataKind::none, false)) {
 			if (col.first->usedInQuery) {
-				addLine(line);
+				add(line);
 				return;
 			}
 		}
 	}
 
-	void addAuxTables()
+	void addAuxTables(InnerJoinFor ijf = IJF_DefaultsOnly)
 	{
 		#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
 		#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
+
+		std::string serJoin = (ijf & IJF_Series)    ? "INNER" : "LEFT OUTER";
+		std::string stoJoin = (ijf & IJF_Stories)   ? "INNER" : "LEFT OUTER";
+		std::string ortJoin = (ijf & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
 
 		addIfColumns("dr.so",       "INNER JOIN DatesRead USING(BookID)");
 		addIfColumns("ng",          "INNER JOIN " ngSqlSelect " USING(BookID)");
 		addIfColumns("dg",          "INNER JOIN " dgSqlSelect " USING(BookID)");
 		addIfColumns("fn.ln.nn.st", "INNER JOIN AuthorBooks USING(BookID)");
 		addIfColumns("fn.ln.nn",    "INNER JOIN Authors USING(AuthorID)");
-		addIfColumns("ot",          "LEFT OUTER JOIN OriginalTitles USING(BookID)");
-		addIfColumns("st",          "LEFT OUTER JOIN Stories USING(AuthorID, BookID)");
-		addIfColumns("sp.se",       "LEFT OUTER JOIN BookSeries USING(BookID)");
-		addIfColumns("se",          "LEFT OUTER JOIN Series USING(SeriesID)");
+		addIfColumns("ot",          (ortJoin + " JOIN OriginalTitles USING(BookID)").c_str());
+		addIfColumns("st",          (stoJoin + " JOIN Stories USING(AuthorID, BookID)").c_str());
+		addIfColumns("sp.se",       (serJoin + " JOIN BookSeries USING(BookID)").c_str());
+		addIfColumns("se",          (serJoin + " JOIN Series USING(SeriesID)").c_str());
 		addIfColumns("so",          "LEFT OUTER JOIN Sources USING(SourceID)");
 		addIfColumns("ge.gi",       "LEFT OUTER JOIN BookGenres USING(BookID)");
 		addIfColumns("ge",          "LEFT OUTER JOIN Genres USING(GenreID)");
@@ -950,11 +962,11 @@ void runSingleTableOutputCmd(Litt const & litt, const char* defColumns, const ch
 	runSelectQuery(query);
 }
 
-void runListData(Litt const & litt, const char* defColumns, const char* defOrderBy)
+void runListData(Litt const & litt, const char* defColumns, const char* defOrderBy, InnerJoinFor ijf = IJF_DefaultsOnly)
 {
 	SelectQuery query(litt);
 	query.initSelect(defColumns, "Books", defOrderBy);
-	query.addAuxTables();
+	query.addAuxTables(ijf);
 	query.addWhere();
 	query.addOrderBy();
 	runSelectQuery(query);
@@ -990,7 +1002,7 @@ void listSeries(Litt const & litt)
 		runSingleTableOutputCmd(litt, "si.se", "Series", "si");
 	}
 	else {
-		runListData(litt, "se.sp.bt.dr.bi.ln.fn", "dr.bi.bt");
+		runListData(litt, "se.sp.bt.dr.bi.ln.fn", "dr.bi.bt", IJF_Series);
 	}
 }
 
@@ -1003,6 +1015,18 @@ void listGenres(Litt const & litt)
 	else {
 		runListData(litt, "bi.bt.ge.dr.nn", "dr.bi.bt");
 	}
+}
+
+void listOriginalTitles(Litt const & litt)
+{
+	litt.addActionWhereCondition("ot", 0);
+	runListData(litt, "bi.nn.ot.bt.dr.so.20.ge", "ot.dr.bi.ln.fn.bt", IJF_OrigTitle);
+}
+
+void listStories(Litt const & litt)
+{
+	litt.addActionWhereCondition("st", 0);
+	runListData(litt, "bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
 }
 
 int main(int argc, char **argv)
@@ -1030,6 +1054,12 @@ int main(int argc, char **argv)
 		}
 		else if (action == "g" || action == "gg") {
 			listGenres(litt);
+		}
+		else if (action == "ot") {
+			listOriginalTitles(litt);
+		}
+		else if (action == "st") {
+			listStories(litt);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
