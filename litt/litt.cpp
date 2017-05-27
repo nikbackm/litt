@@ -11,7 +11,6 @@ Changelog:
 
 **********************************************************************************************************************/
 
-// does not match! bccmd `litt bb -cbt.ng -q` `litt.exe bb -cbt.ng -q`
 // rest of selects!
 // rest of display modes, html and csv
 // error handling of all API calls!
@@ -761,7 +760,12 @@ public:
 		}
 
 		// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
-		m_orderBy = litt.orderBy.empty() ? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true) : litt.orderBy;
+		auto asc = [](Columns cols) { for (auto& c : cols) { c.second = (int)ColumnSortOrder::Asc; } return cols; };
+		m_orderBy = litt.orderBy.empty()
+			? (litt.selectedColumns.empty()
+				? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true)
+				: asc(litt.selectedColumns))
+			: litt.orderBy;
 	}
 
 	void addWhere(const char* additionalCond = nullptr)
