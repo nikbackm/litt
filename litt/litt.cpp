@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-05-27: Now have column and list display modes working. File output format is utf-8 with bom (bom for V/VIEW).
  * 2017-05-26: Decided to use exceptions for error handling after all!
  * 2017-05-24: Decided to use WriteConsoleW for writing (converted) utf-8 output. Least problems and faster too.
  * 2017-05-22: Have now decided to finish it and no longer depend on TCC and the SQLite shell. Also for a faster LITT!
@@ -10,10 +11,10 @@ Changelog:
 
 **********************************************************************************************************************/
 
-// error handling of all API calls!
-// display modes, esp. columns!
 // rest of selects!
-// input actions!
+// rest of display modes, html and csv
+// error handling of all API calls!
+// input actions! maybe make SQLITE c++ wrapper for that.
 // would be nice with litt state that does not change from query to query when reusing list methods for input actions!
 
 #include "stdafx.h"
@@ -160,6 +161,7 @@ struct Litt {
 	bool showNumberOfRows = false;
 	DisplayMode displayMode = DisplayMode::column;
 	std::string listSep = "|";
+	std::string colSep = "  ";
 
 	std::string dbPath; // Path to LITT db file
 
@@ -346,7 +348,7 @@ struct Litt {
 		}
 		return wcond;
 	}
-		
+
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
 	{
 		if (!predicate.empty()) {
@@ -376,7 +378,7 @@ struct Litt {
 
 	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far...
 	// 32K seems to work at home with Win10 though, but not at work with Win7.
-	static const int BufSize = 1000*20; 
+	static const int BufSize = 1000*20;
 	mutable char buffer[BufSize];
 	mutable int  bufPos = 0;
 
@@ -396,6 +398,14 @@ struct Litt {
 		}
 	}
 
+	void writeOutPut(char c) const
+	{
+		if (BufSize == bufPos) {
+			flushOutput();
+		}
+		buffer[bufPos++] = c;
+	}
+
 	void writeOutPut(std::string const & str) const 
 	{
 		writeOutPut(str.c_str(), str.length());
@@ -406,9 +416,51 @@ struct Litt {
 		writeOutPut(str, strlen(str));
 	}
 
-	void writeOutPut(char c) const 
+	void writeUtf8Width(const char* str, unsigned width) const
 	{
-		writeOutPut(&c, 1);
+		int const len = strlen(str);
+		unsigned writtenChars = 0;
+		int i = 0;
+
+		while (i < len && writtenChars < width) {
+			const char c = str[i];
+			if ((c & 0x80) == 0) { // 0xxx xxxx - Single UTF-8 byte
+				writeOutPut(c);
+				i += 1;
+			}
+			else if ((c & 0xE0) == 0xC0) { // 110x xxxx - 2 UTF-8 bytes
+				if (len < i + 2) throw std::runtime_error("Missing (2) UTF-8 data!");
+				writeOutPut(&str[i], 2);
+				i += 2;
+			}
+			else if ((c & 0xF0) == 0xE0) { // 1110 xxxx 3 UTF-8 bytes
+				if (len < i + 3) throw std::runtime_error("Missing (3) UTF-8 data!");
+				writeOutPut(&str[i], 3);
+				i += 3;
+			}
+			else if ((c & 0xF8) == 0xF0) { // 1111 0xxx - 4 UTF-8 bytes
+				if (len < i + 4) throw std::runtime_error("Missing (4) UTF-8 data!");
+				writeOutPut(&str[i], 4);
+				i += 4;
+			}
+			else {
+				// Must have gotten a continuation character out of sync.
+				throw std::runtime_error("Invalid UTF-8 data!");
+			}
+			// The above is little more complex that would be needed, as we must make sure
+			// to write complete utf-8 code points. Would not do if the buffer were flushed while
+			// we wrote a middle or starting utf-8 byte! Well, will work when writing to file,
+			// but not when writing to the console.
+
+			// Note: We assume every Unicode code point corresponds to an actual visible character.
+			// Does not take combining characters and such into account.
+			++writtenChars;
+		}
+
+		while (writtenChars < width) {
+			writeOutPut(' ');
+			++writtenChars;
+		}
 	}
 
 	void doWriteOutPut(const char* str, int len) const
@@ -664,7 +716,7 @@ class SelectQuery {
 	Columns m_orderBy;
 public:
 	Litt const & litt;
-	std::vector<int> columnWidths; // Only set for column mode.
+	std::vector<unsigned> columnWidths; // Only set for column mode.
 
 	SelectQuery(Litt const & litt) 
 		: litt(litt) 
@@ -783,6 +835,64 @@ public:
 	}
 };
 
+namespace QueryOutput
+{
+	void outputRow(SelectQuery& query, int argc, char **argv)
+	{
+		auto& litt = query.litt;
+		auto mode = litt.displayMode;
+
+		for (int i = 0; i < argc; i++) {
+			auto val = argv[i] ? argv[i] : "";
+			switch (mode) {
+			case DisplayMode::column:
+				if (i != 0) litt.writeOutPut(litt.colSep);
+				litt.writeUtf8Width(val, query.columnWidths[i]);
+				break;
+			case DisplayMode::list:
+				if (i != 0) litt.writeOutPut(litt.listSep);
+				litt.writeOutPut(val);
+				break;
+			}
+		}
+
+		litt.writeOutPut('\n');
+	}
+
+	int callBack(void *pArg, int argc, char **argv, char **azColName) 
+	{
+		try {
+			auto& query = *static_cast<SelectQuery*>(pArg);
+			auto& litt = query.litt;
+
+			if (litt.rowCount++ == 0) {
+				if (!litt.stdOutIsConsole && litt.displayMode == DisplayMode::column) {
+					// Write the UTF-8 BOM, seems V/VIEW needs it to properly 
+					// detect the utf-8 encoding depending on the actual output.
+					// Seems to interfere with V:S CSV mode though!
+					const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+					litt.writeOutPut((const char*)&bom[0], sizeof(bom));
+				}
+				outputRow(query, argc, azColName);
+				if (litt.displayMode == DisplayMode::column) {
+					for (int i = 0; i < argc; ++i) {
+						if (i != 0) litt.writeOutPut(litt.colSep);
+						std::string underLine(query.columnWidths[i], '-');
+						litt.writeOutPut(underLine);
+					}
+					litt.writeOutPut('\n');
+				}
+			}
+			outputRow(query, argc, argv);
+			return 0;
+		}
+		catch (std::exception& ex) {
+			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
+			return 1;
+		}
+	}
+}
+
 void runSelectQuery(SelectQuery& query)
 {
 	std::string sql = query.getSql();
@@ -795,30 +905,6 @@ void runSelectQuery(SelectQuery& query)
 		return;
 	}
 
-	auto callback = [](void *pArg, int argc, char **argv, char **azColName) {
-		try {
-			auto query = static_cast<SelectQuery*>(pArg);
-			auto litt = &query->litt;
-			if (litt->rowCount++ == 0) {
-				for (int i = 0; i < argc; i++) {
-					litt->writeOutPut(azColName[i]);
-					if (i + 1 != argc) litt->writeOutPut(litt->listSep);
-				}
-				litt->writeOutPut('\n');
-			}
-			for (int i = 0; i < argc; i++) {
-				litt->writeOutPut(argv[i] ? argv[i] : "");
-				if (i + 1 != argc) litt->writeOutPut(litt->listSep);
-			}
-			litt->writeOutPut('\n');
-			return 0;
-		}
-		catch (std::exception& ex) {
-			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
-			return 1;
-		}
-	};
-
 	std::string errMsg;
 
 	sqlite3 *db = nullptr;
@@ -830,7 +916,7 @@ void runSelectQuery(SelectQuery& query)
 
 	litt.rowCount = 0;
 	char *zErrMsg = nullptr;
-	res = sqlite3_exec(db, sql.c_str(), callback, &query, &zErrMsg);
+	res = sqlite3_exec(db, sql.c_str(), QueryOutput::callBack, &query, &zErrMsg);
 	try { litt.flushOutput(); } catch (std::exception& ex) { fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); }
 	if (res != SQLITE_OK) {
 		errMsg = std::string("SQL error: ") + zErrMsg;
