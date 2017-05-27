@@ -11,6 +11,7 @@ Changelog:
 
 **********************************************************************************************************************/
 
+// does not match! bccmd `litt bb -cbt.ng -q` `litt.exe bb -cbt.ng -q`
 // rest of selects!
 // rest of display modes, html and csv
 // error handling of all API calls!
@@ -417,35 +418,26 @@ struct Litt {
 	}
 
 	void writeUtf8Width(const char* str, unsigned width) const
-	{
-		int const len = strlen(str);
+	{ // PRE: str contains only complete utf-8 code points.
 		unsigned writtenChars = 0;
-		int i = 0;
 
-		while (i < len && writtenChars < width) {
-			const char c = str[i];
-			if ((c & 0x80) == 0) { // 0xxx xxxx - Single UTF-8 byte
-				writeOutPut(c);
+		for (int i = 0; str[i] != '\0' && writtenChars < width; /*inc in body*/) {
+			if ((str[i] & 0x80) == 0) { // 0xxx xxxx - Single utf8 byte
+				writeOutPut(str[i]);
 				i += 1;
 			}
-			else if ((c & 0xE0) == 0xC0) { // 110x xxxx - 2 UTF-8 bytes
-				if (len < i + 2) throw std::runtime_error("Missing (2) UTF-8 data!");
-				writeOutPut(&str[i], 2);
-				i += 2;
-			}
-			else if ((c & 0xF0) == 0xE0) { // 1110 xxxx 3 UTF-8 bytes
-				if (len < i + 3) throw std::runtime_error("Missing (3) UTF-8 data!");
-				writeOutPut(&str[i], 3);
-				i += 3;
-			}
-			else if ((c & 0xF8) == 0xF0) { // 1111 0xxx - 4 UTF-8 bytes
-				if (len < i + 4) throw std::runtime_error("Missing (4) UTF-8 data!");
-				writeOutPut(&str[i], 4);
-				i += 4;
+			else if ((str[i] & 0xC0) == 0xC0) { // 11xx xxxx - utf8 start byte
+				int n = 1;
+				while ((str[i + n] & 0xC0) == 0x80) { // 10xx xxxx - continuation byte
+					++n;
+				}
+				if (n == 1) throw std::invalid_argument("No utf-8 continuation byte(s)!");
+				if (4 < n) throw std::invalid_argument("Too many utf-8 continuation bytes!");
+				writeOutPut(&str[i], n);
+				i += n;
 			}
 			else {
-				// Must have gotten a continuation character out of sync.
-				throw std::runtime_error("Invalid UTF-8 data!");
+				throw std::invalid_argument("Invalid utf-8 byte!");
 			}
 			// The above is little more complex that would be needed, as we must make sure
 			// to write complete utf-8 code points. Would not do if the buffer were flushed while
@@ -483,6 +475,16 @@ struct Litt {
 	{
 		doWriteOutPut(buffer, bufPos);
 		bufPos = 0;
+	}
+
+	void flushOutputNoThrow() const
+	{
+		try { 
+			flushOutput(); 
+		}
+		catch (std::exception& ex) { 
+			fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); 
+		}
 	}
 };
 
@@ -861,10 +863,9 @@ namespace QueryOutput
 
 	int callBack(void *pArg, int argc, char **argv, char **azColName) 
 	{
+		auto& query = *static_cast<SelectQuery*>(pArg);
+		auto& litt = query.litt;
 		try {
-			auto& query = *static_cast<SelectQuery*>(pArg);
-			auto& litt = query.litt;
-
 			if (litt.rowCount++ == 0) {
 				if (!litt.stdOutIsConsole && litt.displayMode == DisplayMode::column) {
 					// Write the UTF-8 BOM, seems V/VIEW needs it to properly 
@@ -887,6 +888,7 @@ namespace QueryOutput
 			return 0;
 		}
 		catch (std::exception& ex) {
+			litt.flushOutputNoThrow();
 			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
 			return 1;
 		}
@@ -917,7 +919,7 @@ void runSelectQuery(SelectQuery& query)
 	litt.rowCount = 0;
 	char *zErrMsg = nullptr;
 	res = sqlite3_exec(db, sql.c_str(), QueryOutput::callBack, &query, &zErrMsg);
-	try { litt.flushOutput(); } catch (std::exception& ex) { fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); }
+	litt.flushOutputNoThrow();
 	if (res != SQLITE_OK) {
 		errMsg = std::string("SQL error: ") + zErrMsg;
 		sqlite3_free(zErrMsg);
