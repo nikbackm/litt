@@ -11,6 +11,9 @@ Changelog:
 
 **********************************************************************************************************************/
 
+// no bom for brys, bryg and similar? it's in the middle of the output then!
+// litt brym -wln.Sandemo -q - make this work, should only show for margit! (should be in inner select?)
+//		now works! see if having clause can be provided separately somehow though! in a way that works with brys and bryg* aliases so no extra arg, must be an option!
 // add parameters to list functions, at least re-usable ones!
 // rest of selects!
 // rest of display modes, html and csv
@@ -89,6 +92,10 @@ namespace Utils
 	{
 		std::replace(str.begin(), str.end(), '*', '%');
 	}
+
+	std::string likeArg(std::string str) { makeLikeArg(str); return str; }
+
+
 } // Utils
 using namespace Utils;
 
@@ -96,6 +103,8 @@ namespace LittConstants
 {
 	const char* DefDbName = "litt.sqlite";
 	const char  OptDelim = '.';
+	const char  WildCard = '*';
+	const char* WildCardStr = "*";
 	const char* LogOp_OR = " OR ";
 	const char* LogOp_AND = " AND ";
 }
@@ -137,6 +146,7 @@ struct ColumnInfo {
 		makeLikeArg(val);
 		int ival;
 		if (type != ColumnType::numeric || !toInt(val, ival)) {
+			// !!! std::replace(val.begin(), val.end(), '\'', "''");
 			val = "'" + val + "'";
 		}
 		return val;
@@ -247,15 +257,20 @@ struct Litt {
 			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
 
 			// Some special-purpose virtual columns, these are not generally usable:
+			//
 
-			// Intended for use in -w for booksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
+			// Intended for use in -w !!! for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 			{"drc", {"Count(BookID)", 0, ColumnType::numeric, nullptr, true }},
-			// Intended for use in (list)sametitle
+
+			// Intended for use in listSametitle
 			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"" }},
-			// Intended for use in (list)rereads
+
+			// Intended for use in listRereads
 			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"" }},
+
 			// This is for the "number of books" column in listAuthorBookCounts
 			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
+
 			// This is for the "number of books" column in listGenreBookCounts
 			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
 	})
@@ -415,8 +430,8 @@ struct Litt {
 		}
 	}
 
-	std::string actionArg(unsigned index) const {
-		return index < actionArgs.size() ? actionArgs[index] : "";
+	std::string arg(unsigned index, const char* def = "") const {
+		return index < actionArgs.size() ? actionArgs[index] : def;
 	}
 
 	DWORD        consoleMode = 0;
@@ -611,12 +626,12 @@ void parseCommandLine(int argc, char **argv, Litt& litt)
 		else {
 			if (litt.action.empty()) {
 				litt.action = argv[i]; 
-				if (litt.action.length() >= 2 && litt.action[0] == '*') {
-					litt.actionLeftWildCard = "*"; 
+				if (litt.action.length() >= 2 && litt.action[0] == WildCard) {
+					litt.actionLeftWildCard = WildCardStr;
 					litt.action.erase(0, 1);
 				}
-				if (litt.action.length() >= 2 && litt.action.back() == '*') {
-					litt.actionRightWildCard = "*"; 
+				if (litt.action.length() >= 2 && litt.action.back() == WildCard) {
+					litt.actionRightWildCard = WildCardStr; 
 					litt.action.pop_back();
 				}
 			}
@@ -784,7 +799,7 @@ public:
 	{
 	}
 
-	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+	void initSelectBare(SelectOption selectOption = SelectOption::normal)
 	{
 		m_sstr.clear();
 		if (litt.explainQuery) {
@@ -794,6 +809,11 @@ public:
 		if (litt.selectDistinct || selectOption == SelectOption::distinct) {
 			m_sstr << "DISTINCT ";
 		}
+	}
+
+	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+	{
+		initSelectBare(selectOption);
 
 		auto selCols = litt.selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.selectedColumns;
 		selCols.insert(selCols.end(), litt.additionalColumns.begin(), litt.additionalColumns.end());
@@ -838,6 +858,16 @@ public:
 		if (!whereCond.empty()) {
 			m_sstr << "\nWHERE " << whereCond;
 		}
+	}
+
+	void a(const char* str)
+	{
+		m_sstr << str;
+	}
+
+	void a(std::string const & str)
+	{
+		m_sstr << str;
 	}
 
 	void add(const char* line)
@@ -1165,6 +1195,7 @@ void listBooksReadPerDate(Litt const & litt, std::string countCond)
 {
 	if (countCond.empty()) countCond = "2";
 
+	// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
 	#define calcDRTimeWindow R"(case when (time("Date Read") > '00:00:00' and time("Date Read") < '06:00:00') then date("Date Read", '-6 hours') else date("Date Read") end)"
 
 	SelectQuery query(litt);
@@ -1181,6 +1212,96 @@ void listBooksReadPerDate(Litt const & litt, std::string countCond)
 	runSelectQuery(query);
 
 	#undef calcDRTimeWindow
+}
+
+std::string quote(std::string const & str)
+{
+	return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
+}
+
+unsigned colWidth(std::string const & str) 
+{
+	auto const w = str.length();
+	return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
+}
+
+struct PeriodColumn {
+	std::string const definition;
+	std::string const name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
+
+	PeriodColumn(std::string d, std::string const & n) : 
+		definition(std::move(d)), name(quote(n))
+	{
+	}
+
+	unsigned colWidth() const { return ::colWidth(name); }
+};
+
+std::vector<PeriodColumn> getPeriodColumns(Litt const & litt, int fromActionArgIndex)
+{
+	std::vector<PeriodColumn> res;
+	auto width = 0u;
+	for (int i = fromActionArgIndex; ; ) {
+		auto def = litt.arg(i++);
+		if (def.empty()) {
+			break;
+		}
+		auto name = litt.arg(i++);
+		if (name.empty()) {
+			throw std::invalid_argument(std::string("No name for def: ") + def);
+		}
+		width = std::max(width, name.length());
+		res.push_back({ def, name });
+	}
+	for (auto const & pc : res) {
+		printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
+	}
+	return res;
+}
+
+void listBooksReadPerPeriod(
+	Litt const & litt,
+	std::string const& periodDef,
+	std::string        period,
+	std::string const& cond,
+	std::vector<PeriodColumn> const& columns)
+{
+	period = quote(period);
+	SelectQuery q(litt);
+	q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
+	for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
+	litt.appendToWhereCondition(LogOp_AND, litt.getWherePredicate("dr.gt.2002"));
+	auto whereCondStart = litt.whereCondition;
+
+	q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
+	q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
+	q.add("   (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+	q.add("    FROM Books");
+	q.addAuxTables(); // !!! indent?
+	q.add("    WHERE " + litt.whereCondition + ")");
+	q.add("  GROUP BY " + period);
+	//if (!litt.whereCondition.empty()) { // Would be useful to provide this too!! Should be included in all the columns too though! more useful that way.
+	//q.add("  HAVING " + litt.whereCondition);
+	//}
+	q.add(" ) Main");
+
+	for (auto& c : columns) {
+	litt.whereCondition = whereCondStart;
+	litt.appendToWhereCondition(LogOp_AND, litt.getWherePredicate(c.definition));
+	q.add(" LEFT OUTER JOIN");
+	q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
+	q.add("    (SELECT Books.BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+	q.add("     FROM Books");
+	q.addAuxTables(); // !!! indent?
+	q.add("     WHERE " + litt.whereCondition + ")");
+	q.add("  GROUP BY " + period + ")");
+	q.add(" USING(" + period + ")");
+	}
+	if (!cond.empty() && cond != WildCardStr) {
+	q.add(" WHERE Main. " + period + " LIKE " + likeArg(cond + WildCardStr));
+	}
+	q.add(" ORDER BY " + period);
+	runSelectQuery(q);
 }
 
 int main(int argc, char **argv)
@@ -1225,13 +1346,43 @@ int main(int argc, char **argv)
 			listSametitle(litt);
 		}
 		else if (action == "abc") {
-			listAuthorBookCounts(litt, litt.actionArg(0), litt.actionArg(1) == "1");
+			listAuthorBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
 		}
 		else if (action == "gbc") {
-			listGenreBookCounts(litt, litt.actionArg(0), litt.actionArg(1) == "1");
+			listGenreBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
 		}
 		else if (action == "brd") {
-			listBooksReadPerDate(litt, litt.actionArg(0));
+			listBooksReadPerDate(litt, litt.arg(0));
+		}
+		else if (action == "brwd") {
+			listBooksReadPerPeriod(litt, "%w", "Weekday", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+		}
+		else if (action == "brm") {
+			listBooksReadPerPeriod(litt, "%Y-%m", "Year-Month", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+		}
+		else if (action == "bry") {
+			listBooksReadPerPeriod(litt, "%Y", "Year", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+		}
+		else if (action == "brp") {
+			listBooksReadPerPeriod(litt, litt.arg(0), litt.arg(1), litt.arg(2, WildCardStr), getPeriodColumns(litt, 3));
+		}
+		else if (action == "brym") {
+			const char* months[] = { "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec" };
+			std::vector<PeriodColumn> monthColumns;
+			for (int m = 1; m <= 12; ++m) {
+				char def[10]; sprintf_s(def, "dr.*-%02d-*", m);
+				monthColumns.push_back({ std::string(def), std::string(months[m-1]) });
+			}
+			listBooksReadPerPeriod(litt, "%Y", "Year", litt.arg(0, WildCardStr), monthColumns);
+		}
+		else if (action == "brmy") {
+			SYSTEMTIME st{}; GetSystemTime(&st);
+			std::vector<PeriodColumn> yearColumns;
+			for (int y = 2002; y <= st.wYear; ++y) {
+				char def[10]; sprintf_s(def, "dr.%04d-*", y);
+				yearColumns.push_back({ def, std::to_string(y) });
+			}
+			listBooksReadPerPeriod(litt, "%m", "Month", litt.arg(0, WildCardStr), yearColumns);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);

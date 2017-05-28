@@ -7,6 +7,7 @@
 
 #include "targetver.h"
 
+#define NOMINMAX
 #include <windows.h>
 
 #include <stdio.h>
@@ -17,6 +18,7 @@
 #include <vector>
 #include <array>
 #include <map>
+#include <algorithm>
 
 #include "sqlite3.h"
 
