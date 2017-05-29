@@ -1,8 +1,6 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2017-05-29: Added listSourceBookcounts (sbc)
- * 2017-05-29: abc and gbc now supports generic where conditions!
  * 2017-05-29: Added HTML and tabs display output modes. Decided to skip csv and line modes.
  * 2017-05-29: Added the "range" operator to -w options as well. 
  * 2017-05-29: Can now search for things containing "'"!
@@ -265,19 +263,22 @@ struct Litt {
 			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
 
 			// Some special-purpose virtual columns, these are not generally usable:
+			//
 
 			// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 			{"prc", {"Count(BookID)", 0, ColumnType::numeric, nullptr, true }},
 
 			// Intended for use in listSametitle
-			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"", false }},
-			// Intended for use in listRereads
-			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"", false }},
+			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"" }},
 
-			// This is for the "number of books" column in list*BookCounts
-			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
+			// Intended for use in listRereads
+			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"" }},
+
+			// This is for the "number of books" column in listAuthorBookCounts
+			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
+
+			// This is for the "number of books" column in listGenreBookCounts
 			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
-			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
 	{}
 
@@ -391,11 +392,11 @@ struct Litt {
 			appendSnCondTo(col->isGroupAggregate ? hcond : wcond);
 		}
 
-		appendToHavingCondition(LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
+		appendToCondition(havingCondition, LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
 		return wcond;
 	}
 
-	static std::string parseCountCondition(std::string const & name, std::string const & value)
+	std::string parseCountCondition(std::string const & name, std::string const & value) const
 	{
 		OptionParser opts(value, "count condition");
 		auto val = opts.getNext(); 
@@ -417,16 +418,6 @@ struct Litt {
 		if (!predicate.empty()) {
 			cond = cond.empty() ? predicate : "(" + cond + ")" + logicalOp + "(" + predicate + ")";
 		}
-	}
-
-	void appendToHavingCondition(const char* logicalOp, std::string const & predicate) const
-	{
-		appendToCondition(havingCondition, logicalOp, predicate);
-	}
-
-	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
-	{
-		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->labelOrName(), countCond));
 	}
 
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
@@ -723,9 +714,8 @@ Supported actions:
    add-g                           (Adds a new genre)
 
    abc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each author, second param = 1 => re-reads included.
-                                    Supports virtual column abc - book count - for column selection, sorting and where)
+                                    Supports virtual column abc - book count - for selection and ordering, but not for WHERE.)
    gbc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each genre, similar to abc)
-   sbc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each book source, similar to abc)
    brd [<booksReadCond>]           (Lists the dates and books where [cond] books where read.)
    brm/bry/brmy/brym/brwd [...]    (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
 	);
@@ -888,10 +878,15 @@ public:
 			: litt.orderBy;
 	}
 
-	void addWhere()
+	void addWhere(const char* additionalCond = nullptr)
 	{
-		if (!litt.whereCondition.empty()) {
-			m_sstr << "\nWHERE " << litt.whereCondition;
+		std::string whereCond = litt.whereCondition;
+		if (additionalCond != nullptr) {
+			whereCond = "(" + whereCond + ")" + LogOp_AND + "(" + additionalCond + ")";
+		}
+
+		if (!whereCond.empty()) {
+			m_sstr << "\nWHERE " << whereCond;
 		}
 	}
 
@@ -1243,36 +1238,35 @@ void listSametitle(Litt const & litt)
 	runSelectQuery(query);
 }
 
-void listBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads, 
-	const char* snCount, const char* columns, const char* snGroupBy)
+void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
 {
-	if (!countCond.empty()) { litt.addCountCondToHavingCondition(snCount, countCond); }
-	if (includeReReads) { litt.getColumn("dr")->usedInQuery = true; }
-	litt.getColumns(columns, ColumnsDataKind::width, true);  // In case -c option is used!
-
 	SelectQuery query(litt);
-	query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
-	query.addAuxTables();
+	const char* from = "Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)";
+	query.initSelect("nn.abc", from, "abc.desc");
+	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
 	query.addWhere();
-	query.add("GROUP BY " + std::string(litt.getColumn(snGroupBy)->name));
-	query.addHaving();
+	query.add("GROUP BY AuthorID");
+	if (!countCond.empty()) {
+		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("abc")->name, countCond));
+	}
 	query.addOrderBy();
 	runSelectQuery(query);
 }
 
-void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
-{
-	listBookCounts(litt, countCond, includeReReads, "abc", "nn.35.abc", "ai");
-}
-
 void listGenreBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
 {
-	listBookCounts(litt, countCond, includeReReads, "gbc", "ge.35.gbc", "gi");
-}
-
-void listSourceBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
-{
-	listBookCounts(litt, countCond, includeReReads, "sbc", "so.35.sbc", "soid");
+	SelectQuery query(litt);
+	const char* from = "Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID)";
+	query.initSelect("ge.35.gbc", from, "gbc.desc");
+	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
+	query.addWhere();
+	query.add("GROUP BY GenreID");
+	if (!countCond.empty()) {
+		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("gbc")->labelOrName(), countCond));
+	}
+	query.addHaving();
+	query.addOrderBy();
+	runSelectQuery(query);
 }
 
 void listBooksReadPerDate(Litt const & litt, std::string countCond)
@@ -1437,9 +1431,6 @@ int main(int argc, char **argv)
 		}
 		else if (action == "gbc") {
 			listGenreBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
-		}
-		else if (action == "sbc") {
-			listSourceBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
 		}
 		else if (action == "brd") {
 			listBooksReadPerDate(litt, litt.arg(0));
