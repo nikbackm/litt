@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-05-29: Added listSourceBookcounts (sbc)
+ * 2017-05-29: abc and gbc now supports generic where conditions!
  * 2017-05-29: Added HTML and tabs display output modes. Decided to skip csv and line modes.
  * 2017-05-29: Added the "range" operator to -w options as well. 
  * 2017-05-29: Can now search for things containing "'"!
@@ -16,12 +18,17 @@ Changelog:
 
 **********************************************************************************************************************/
 
-// input actions! maybe make SQLITE c++ wrapper for that.
+// add del and other modify commands as well later on after inserts and sets are done! in case an invalid genre is added for example. use foreign keys then....
 // error handling of all API calls!
 // decide whether to add the actions that run defined VIEWs. If not remove from help. (Can be done in columns mode by setting col size by col name + 2 and also size of first row)
 // would be nice with litt state that does not change from query to query when reusing list methods for input actions!
 
 #include "stdafx.h"
+
+using IdValue = unsigned long long;
+
+const IdValue EmptyId = 0;
+
 
 namespace Utils 
 {
@@ -29,6 +36,17 @@ namespace Utils
 	{
 		char* endPtr;
 		int v = strtol(str.c_str(), &endPtr, 10);
+		if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
+			return false;
+		}
+		value = v;
+		return true;
+	}
+
+	bool toIdValue(std::string const & str, IdValue & value)
+	{
+		char* endPtr;
+		auto v = strtoull(str.c_str(), &endPtr, 10);
 		if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
 			return false;
 		}
@@ -93,8 +111,106 @@ namespace Utils
 		auto wstr = toWide(codePage, str);
 		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
 	}
+
+	#pragma warning(push)
+	#pragma warning(disable:4996)
+
+	std::string fmt(_Printf_format_string_ const char* fmtStr, ... )
+	{
+		va_list ap;
+		va_start(ap, fmtStr);
+		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; // Extra space for '\0'
+		va_end(ap);
+		std::string res(size, '\0');
+		va_start(ap, fmtStr);
+		vsnprintf(&res[0], size, fmtStr, ap);
+		res.pop_back(); // Remove the trailing '\0'
+		va_end(ap);
+		return res;
+	}
+
+	#pragma warning(pop)
+
+	std::string readLine() {
+		std::string str; 
+		std::getline(std::cin, str);
+		return str;
+	}
 } // Utils
 using namespace Utils;
+
+namespace Input
+{
+	enum InputOptions : unsigned {
+		none     = 0x00,
+		optional = 0x00,
+		required = 0x01,
+	};
+
+	std::string input(const char* prompt)
+	{
+		printf("%s: ", prompt);
+		return readLine();
+	}
+
+	void input(std::string& value, const char* prompt, InputOptions options = none)
+	{
+	retry:
+		if (value.empty()) {
+			printf("%s: ", prompt);
+		}
+		else {
+			printf("%s [%s]: ", prompt, value.c_str());
+		}
+		auto str = readLine();
+		if (!str.empty()) { 
+			value = str; 
+		}
+		if (value.empty() && (required & (unsigned)options)) {
+			goto retry;
+		}
+	}
+
+	void input(IdValue& value, const char* prompt, InputOptions options = none, std::function<void(std::string const &)> onInvalidInput = nullptr)
+	{
+	retry:
+		if (value == EmptyId) {
+			printf("%s: ", prompt);
+		}
+		else {
+			printf("%s [%llu]: ", prompt, value);
+		}
+		auto str = readLine();
+		if (!str.empty() && toIdValue(str, value)) {}
+
+		if (!str.empty() && value == EmptyId && onInvalidInput) {
+			onInvalidInput(str);
+		}
+
+		if (value == EmptyId && (required & (unsigned)options)) {
+			goto retry;
+		}
+	}
+
+	int ask(const char* validAnswers, std::string const & question)
+	{
+		int const len = strlen(validAnswers);
+		printf("%s? (", question.c_str());
+		for (int i = 0; i < len; ++i) {
+			if (i != 0) putc('/', stdout);
+			putc(validAnswers[i], stdout);
+		}
+		printf(") ");
+
+		for (;;) {
+			int answer = tolower(_getch());
+			if (strchr(validAnswers, answer) != NULL) {
+				printf("\n");
+				return answer;
+			}
+		} 
+	}
+}
 
 namespace LittConstants 
 {
@@ -181,7 +297,7 @@ struct OptionParser {
 	
 	__declspec(noreturn) void throwError() 
 	{
-		throw std::invalid_argument(std::string("Faulty ") + type + " value: " + ss.str());
+		throw std::invalid_argument(fmt("Faulty %s value: %s", type, ss.str().c_str()));
 	}
 
 	std::string getNext()
@@ -263,22 +379,19 @@ struct Litt {
 			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
 
 			// Some special-purpose virtual columns, these are not generally usable:
-			//
 
 			// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 			{"prc", {"Count(BookID)", 0, ColumnType::numeric, nullptr, true }},
 
 			// Intended for use in listSametitle
-			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"" }},
-
+			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"", false }},
 			// Intended for use in listRereads
-			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"" }},
+			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"", false }},
 
-			// This is for the "number of books" column in listAuthorBookCounts
-			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books" }},
-
-			// This is for the "number of books" column in listGenreBookCounts
+			// This is for the "number of books" column in list*BookCounts
+			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
+			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
 	{}
 
@@ -392,11 +505,11 @@ struct Litt {
 			appendSnCondTo(col->isGroupAggregate ? hcond : wcond);
 		}
 
-		appendToCondition(havingCondition, LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
+		appendToHavingCondition(LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
 		return wcond;
 	}
 
-	std::string parseCountCondition(std::string const & name, std::string const & value) const
+	static std::string parseCountCondition(std::string const & name, std::string const & value)
 	{
 		OptionParser opts(value, "count condition");
 		auto val = opts.getNext(); 
@@ -420,24 +533,71 @@ struct Litt {
 		}
 	}
 
+	void appendToHavingCondition(const char* logicalOp, std::string const & predicate) const
+	{
+		appendToCondition(havingCondition, logicalOp, predicate);
+	}
+
+	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
+	{
+		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->labelOrName(), countCond));
+	}
+
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
 	{
 		appendToCondition(whereCondition, logicalOp, predicate);
 	}
 
-	void addActionWhereCondition(const char* sn, unsigned actionArgIndex) const
+	void resetWhere() const
 	{
-		if (actionArgIndex < actionArgs.size()) {
-			auto val = actionLeftWildCard + actionArgs[actionArgIndex] + actionRightWildCard;
+		whereCondition.clear();
+	}
+
+	void addActionWhereCondition(const char* sn, std::string const & cond) const
+	{
+		if (!cond.empty()) {
+			auto val = actionLeftWildCard + cond + actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
 			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
+	void addActionWhereCondition(const char* sn, unsigned actionArgIndex) const
+	{
+		addActionWhereCondition(sn, arg(actionArgIndex)); 
+	}
+
 	std::string arg(unsigned index, const char* def = "") const 
 	{
 		return index < actionArgs.size() ? actionArgs[index] : def;
+	}
+
+	IdValue idarg(unsigned index, const char* name) const 
+	{
+		IdValue val;
+		return index < actionArgs.size() 
+			? (toIdValue(actionArgs[index], val)
+				? val
+				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
+			: throw std::invalid_argument(fmt("%s argument missing!", name));
+	}
+
+	int intarg(unsigned index, const char* name) const 
+	{
+		int val;
+		return index < actionArgs.size() 
+			? (toInt(actionArgs[index], val)
+				? val
+				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
+			: throw std::invalid_argument(fmt("%s argument missing!", name));
+	}
+
+	std::string argm(unsigned index, const char* name) const 
+	{
+		return index < actionArgs.size() 
+			? actionArgs[index] 
+			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
 	DWORD        consoleMode = 0;
@@ -697,27 +857,28 @@ int showHelp(bool showExtended = false)
 R"(Usage: LITT [<options>] action <action arguments>
 
 Supported actions:
-   a  [<last name>] [<first name>] (Lists authors with given last name (and first name)).
-   aa [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
-   b  [<title>]                    (Lists all books matching the given title).
-   bb [<title>]                    (Same as above, but includes more details)
-   ot [<origTitle>]                (Only lists books with original titles)
-   st [<story>]                    (Only lists books with separate stories)
-   s  [<series>]                   (Lists series)
-   g  [<genre>]                    (Lists genre)
-   so [<source>]                   (Lists book sources - where a certain book "read" was gotten)
-   soo [<source>]                  (Lists book sources WITH read books for the sources)
+   a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
+   aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
+   b   [<title>]                    (Lists all books matching the given title).
+   bb  [<title>]                    (Same as above, but includes more details)
+   ot  [<origTitle>]                (Only lists books with original titles)
+   st  [<story>]                    (Only lists books with separate stories)
+   s   [<series>]                   (Lists series)
+   g   [<genre>]                    (Lists genre)
+   so  [<source>]                   (Lists book sources - where a certain book "read" was gotten)
+   soo [<source>]                   (Lists book sources WITH read books for the sources)
 
-   add-a                           (Adds a new author)
-   add-b                           (Adds a new book)
-   add-s                           (Adds a new series)
-   add-g                           (Adds a new genre)
+   add-a                            (Adds a new author)
+   add-b                            (Adds a new book)
+   add-s                            (Adds a new series)
+   add-g                            (Adds a new genre)
 
-   abc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each author, second param = 1 => re-reads included.
-                                    Supports virtual column abc - book count - for selection and ordering, but not for WHERE.)
-   gbc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each genre, similar to abc)
-   brd [<booksReadCond>]           (Lists the dates and books where [cond] books where read.)
-   brm/bry/brmy/brym/brwd [...]    (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
+   abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
+                                     Supports virtual column abc - book count - for column selection, sorting and where)
+   gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
+   sbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each book source, similar to abc)
+   brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
+   brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
 	);
 	if (showExtended) {
 		printf(
@@ -732,19 +893,16 @@ R"(
 	}
 	printf(
 R"(
-   two "brd lite"                  (Lists dates with two or more books read)
-   rereads                         (Lists re-read books. Can use extra virtual column "brc" - Read Count)
-   sametitle                       (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
+   two "brd lite"                   (Lists dates with two or more books read)
+   rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
+   sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
    
-   b2s <BookID> <SeriesID> <part>  (Adds a book to a series)
+   b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
    
-   set-dr <BookID>                 (Add/Change or Delete DateRead for a book)
-   set-bs <BookID> <DateRead>      (Set/Change the book source for a read date of a book)
-   set-bs-clean                    (Same as above - also params - but re-creates the temp file with book sources)
-   set-g <BookID> [C|D CurGenreID] (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
-   
-   all                             (Lists "everything")
-   h                               (Show more extensive help)
+   set-dr <BookID>                  (Add, Change or Delete DateRead for a book)
+   set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
+
+   h                                (Show more extensive help)
    
 NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
       listing actions also supported for similar effect, e.g. *b* will list all books containing the given title string, while
@@ -878,15 +1036,10 @@ public:
 			: litt.orderBy;
 	}
 
-	void addWhere(const char* additionalCond = nullptr)
+	void addWhere()
 	{
-		std::string whereCond = litt.whereCondition;
-		if (additionalCond != nullptr) {
-			whereCond = "(" + whereCond + ")" + LogOp_AND + "(" + additionalCond + ")";
-		}
-
-		if (!whereCond.empty()) {
-			m_sstr << "\nWHERE " << whereCond;
+		if (!litt.whereCondition.empty()) {
+			m_sstr << "\nWHERE " << litt.whereCondition;
 		}
 	}
 
@@ -1146,11 +1299,11 @@ void runListData(Litt const & litt, const char* defColumns, const char* defOrder
 	runSelectQuery(query);
 }
 
-void listAuthors(Litt const & litt)
+void listAuthors(Litt const & litt, std::string const & action, std::string const & ln, std::string const & fn)
 {
-	litt.addActionWhereCondition("ln", 0);
-	litt.addActionWhereCondition("fn", 1);
-	if (litt.action == "a") {
+	litt.addActionWhereCondition("ln", ln);
+	litt.addActionWhereCondition("fn", fn);
+	if (action == "a") {
 		runSingleTableOutputCmd(litt, "ai.ln.fn", "Authors", "ai");
 	}
 	else {
@@ -1169,10 +1322,10 @@ void listBooks(Litt const & litt)
 	}
 }
 
-void listSeries(Litt const & litt)
+void listSeries(Litt const & litt, std::string const & action, std::string const & series)
 {
-	litt.addActionWhereCondition("se", 0);
-	if (litt.action == "s") {
+	litt.addActionWhereCondition("se", series);
+	if (action == "s") {
 		runSingleTableOutputCmd(litt, "si.se", "Series", "si");
 	}
 	else {
@@ -1180,10 +1333,10 @@ void listSeries(Litt const & litt)
 	}
 }
 
-void listGenres(Litt const & litt)
+void listGenres(Litt const & litt, std::string const & action, std::string const & genre)
 {
-	litt.addActionWhereCondition("ge", 0);
-	if (litt.action == "g") {
+	litt.addActionWhereCondition("ge", genre);
+	if (action == "g") {
 		runSingleTableOutputCmd(litt, "gi.ge", "Genres", "ge");
 	}
 	else {
@@ -1203,10 +1356,10 @@ void listStories(Litt const & litt)
 	runListData(litt, "bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
 }
 
-void listSources(Litt const & litt)
+void listSources(Litt const & litt, std::string const & action, std::string const & sourceName)
 {
-	litt.addActionWhereCondition("so", 0);
-	if (litt.action == "so") {
+	litt.addActionWhereCondition("so", sourceName);
+	if (action == "so") {
 		runSingleTableOutputCmd(litt, "soid.so", "Sources", "so");
 	}
 	else {
@@ -1238,35 +1391,36 @@ void listSametitle(Litt const & litt)
 	runSelectQuery(query);
 }
 
-void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
+void listBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads, 
+	const char* snCount, const char* columns, const char* snGroupBy)
 {
+	if (!countCond.empty()) { litt.addCountCondToHavingCondition(snCount, countCond); }
+	if (includeReReads) { litt.getColumn("dr")->usedInQuery = true; }
+	litt.getColumns(columns, ColumnsDataKind::width, true);  // In case -c option is used!
+
 	SelectQuery query(litt);
-	const char* from = "Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)";
-	query.initSelect("nn.abc", from, "abc.desc");
-	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
+	query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
+	query.addAuxTables();
 	query.addWhere();
-	query.add("GROUP BY AuthorID");
-	if (!countCond.empty()) {
-		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("abc")->name, countCond));
-	}
+	query.add("GROUP BY " + std::string(litt.getColumn(snGroupBy)->name));
+	query.addHaving();
 	query.addOrderBy();
 	runSelectQuery(query);
 }
 
+void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
+{
+	listBookCounts(litt, countCond, includeReReads, "abc", "nn.35.abc", "ai");
+}
+
 void listGenreBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
 {
-	SelectQuery query(litt);
-	const char* from = "Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID)";
-	query.initSelect("ge.35.gbc", from, "gbc.desc");
-	query.addIf(includeReReads, "INNER JOIN DatesRead USING(BookID)");
-	query.addWhere();
-	query.add("GROUP BY GenreID");
-	if (!countCond.empty()) {
-		query.add("HAVING " + litt.parseCountCondition(litt.getColumn("gbc")->labelOrName(), countCond));
-	}
-	query.addHaving();
-	query.addOrderBy();
-	runSelectQuery(query);
+	listBookCounts(litt, countCond, includeReReads, "gbc", "ge.35.gbc", "gi");
+}
+
+void listSourceBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
+{
+	listBookCounts(litt, countCond, includeReReads, "sbc", "so.35.sbc", "soid");
 }
 
 void listBooksReadPerDate(Litt const & litt, std::string countCond)
@@ -1385,13 +1539,121 @@ void listBooksReadPerPeriod(
 	runSelectQuery(q);
 }
 
-int main(int argc, char **argv)
+using namespace Input;
+
+void addAuthor(Litt const & litt)
 {
-	if (argc <= 1) {
-		return showHelp();
+	auto ln = input("Enter the last name"); if (ln.empty()) return;
+	auto fn = input("Enter the first name"); if (fn.empty()) return;
+	if ('y' == ask("yn", fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
+		printf("Adding!\n");
+	}
+}
+
+void addGenre(Litt const & litt)
+{
+	auto name = input("Enter genre name"); if (name.empty()) return;
+	if ('y' == ask("yn", fmt("Add genre '%s'", name.c_str()))) {
+		printf("Adding!\n");
+	}
+}
+
+void addSeries(Litt const & litt)
+{
+	auto name = input("Enter series name"); if (name.empty()) return;
+	if ('y' == ask("yn", fmt("Add series '%s'", name.c_str()))) {
+		printf("Adding!\n");
+	}
+}
+
+void addBook(Litt const & litt)
+{
+	auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
+	auto title       = std::string();
+	auto dateRead    = std::string(); // !!! current NNNN-NN-NN !!!
+	auto sourceId    = EmptyId;
+	auto genreId     = EmptyId;
+	auto origtitle   = std::string(); 
+	auto lang        = char(0);
+	auto owns        = false;
+	auto boughtEbook = false;
+	auto seriesId    = EmptyId;
+	auto seriesPart  = std::string(); // !!!! should be int!
+enterBook:
+	for (size_t aindex = 0; ; ++aindex) {
+		IdValue aid = EmptyId;
+		input(aid, "Enter AuthorId", optional, [&](std::string const & str) { 
+			litt.resetWhere(); listAuthors(litt, "a", str + WildCardStr, ""); 
+		});
+		if (aid == EmptyId) {
+			break;
+		}
+		auto story = input("Story name (optional)");
+		if (aindex <= authors.size()) { 
+			authors.reserve((aindex + 1) * 2); authors.resize(aindex + 1); 
+		}
+		authors[aindex] = std::make_tuple(aid, story);
+	}
+	if (authors.empty()) {
+		return;
 	}
 
+	input(title, "Book title", required);
+	input(dateRead, "Date read", required);
+	input(sourceId, "Book SourceId", required, [&](std::string const & str) { 
+		litt.resetWhere(); listSources(litt, "so", WildCardStr+str+WildCardStr); 
+	});
+	input(genreId, "Book GenreId", required, [&](std::string const & str) { 
+		litt.resetWhere(); listGenres(litt, "g", WildCardStr+str+WildCardStr); 
+	});
+	input(origtitle, "Original title (optional)", optional);
+	lang = ask("es", "Language"); auto langVal = (lang == 'e' ? "en" : "sv");
+	owns = ('y' == ask("yn", "Own book"));
+	boughtEbook = ('y' == ask("yn", "Bought ebook"));
+	input(seriesId, "SeriesID", optional, [&](std::string const & str) { 
+		litt.resetWhere(); listSeries(litt, "s", WildCardStr+str+WildCardStr); 
+	});
+	if (seriesId != EmptyId) {
+		input(seriesPart, "Part in series", required);
+	}
+
+
+
+	for (auto& a : authors) printf("%llu - %s\n", std::get<0>(a), std::get<1>(a).c_str());
+
+}
+
+void addBookToSeries(Litt const & litt, IdValue bookId, IdValue seriesId, int part)
+{
+	//auto bt = litt.getValue("SELECT Title FROM Books WHERE BookId = " + bookId);
+	//auto s  = litt.getValue("Series" FROM Series WHERE SeriesId = " + seriesId);
+	std::string bt="The Fires of Heaven", s="Wheel of Time";
+		
+	if ('y' == ask("yn", fmt("Add '%s'(%llu) to '%s'(%llu) as part %i", bt.c_str(), bookId, s.c_str(), seriesId, part))) {
+		auto sql = fmt(
+			"PRAGMA foreign_keys = ON;"  
+			" INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\")"
+			" VALUES(%llu,%llu,%i)", bookId, seriesId, part);
+
+		printf("Adding! %s\n", sql.c_str());
+	}
+}
+
+void setBookGenre(Litt const & litt)
+{
+}
+
+void setBookDateRead(Litt const & litt)
+{
+}
+
+int main(int argc, char **argv)
+{
 	try {
+		if (argc <= 1) {
+			return showHelp();
+		}
+
 		Litt litt;
 		parseCommandLine(argc, argv, litt);
 
@@ -1400,16 +1662,16 @@ int main(int argc, char **argv)
 			showHelp(true);
 		}
 		else if (action == "a" || action == "aa") {
-			listAuthors(litt);
+			listAuthors(litt, action, litt.arg(0), litt.arg(1));
 		}
 		else if (action == "b" || action == "bb") {
 			listBooks(litt);
 		}
 		else if (action == "s" || action == "ss") {
-			listSeries(litt);
+			listSeries(litt, action, litt.arg(0));
 		}
 		else if (action == "g" || action == "gg") {
-			listGenres(litt);
+			listGenres(litt, action, litt.arg(0));
 		}
 		else if (action == "ot") {
 			listOriginalTitles(litt);
@@ -1418,7 +1680,7 @@ int main(int argc, char **argv)
 			listStories(litt);
 		}
 		else if (action == "so" || action == "soo") {
-			listSources(litt);
+			listSources(litt, action, litt.arg(0));
 		}
 		else if (action == "rereads") {
 			listRereads(litt);
@@ -1431,6 +1693,9 @@ int main(int argc, char **argv)
 		}
 		else if (action == "gbc") {
 			listGenreBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
+		}
+		else if (action == "sbc") {
+			listSourceBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
 		}
 		else if (action == "brd") {
 			listBooksReadPerDate(litt, litt.arg(0));
@@ -1464,6 +1729,30 @@ int main(int argc, char **argv)
 				yearColumns.push_back({ def, std::to_string(y) });
 			}
 			listBooksReadPerPeriod(litt, "%m", "Month", litt.arg(0, WildCardStr), yearColumns);
+		}
+		else if (action == "add-a" || action == "adda") {
+			addAuthor(litt);
+		}
+		else if (action == "add-g" || action == "addg") {
+			addGenre(litt);
+		}
+		else if (action == "add-s" || action == "adds") {
+			addSeries(litt);
+		}
+		else if (action == "add-b" || action == "addb") {
+			addBook(litt);
+		}
+		else if (action == "b2s") {
+			auto bid  = litt.idarg(0, "bookId");
+			auto sid  = litt.idarg(1, "seriesId");
+			auto part = litt.intarg(2, "part");
+			addBookToSeries(litt, bid, sid, part);
+		}
+		else if (action == "set-g" || action == "setg") {
+			setBookGenre(litt);
+		}
+		else if (action == "set-dr" || action == "setdr") {
+			setBookDateRead(litt);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
