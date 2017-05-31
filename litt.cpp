@@ -17,7 +17,7 @@ Changelog:
  * Previous:   Refer to the litt.btm changelog.
 
 **********************************************************************************************************************/
-
+// on conflict rollback!
 // add del and other modify commands as well later on after inserts and sets are done! in case an invalid genre is added for example. use foreign keys then....
 // error handling of all API calls!
 // decide whether to add the actions that run defined VIEWs. If not remove from help. (Can be done in columns mode by setting col size by col name + 2 and also size of first row)
@@ -25,9 +25,136 @@ Changelog:
 
 #include "stdafx.h"
 
+void showHelp(bool showExtended = false)
+{
+	printf(
+R"(Usage: LITT [<options>] action <action arguments>
+
+Supported actions:
+   a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
+   aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
+   b   [<title>]                    (Lists all books matching the given title).
+   bb  [<title>]                    (Same as above, but includes more details)
+   ot  [<origTitle>]                (Only lists books with original titles)
+   st  [<story>]                    (Only lists books with separate stories)
+   s   [<series>]                   (Lists series)
+   g   [<genre>]                    (Lists genre)
+   so  [<source>]                   (Lists book sources - where a certain book "read" was gotten)
+   soo [<source>]                   (Lists book sources WITH read books for the sources)
+
+   add-a                            (Adds a new author)
+   add-b                            (Adds a new book)
+   add-s                            (Adds a new series)
+   add-g                            (Adds a new genre)
+
+   abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
+                                     Supports virtual column abc - book count - for column selection, sorting and where)
+   gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
+   sbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each book source, similar to abc)
+   brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
+   brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
+	);
+	if (showExtended) {
+		printf(
+R"(
+
+       [<dateCondition>] {<column def(where condition)> <column name>}
+       
+       Can also use brp which is more generic, it takes [<period col def(strftime string)>] [<period col name]>
+       BEFORE the parameters the previos ones do.
+)"
+		);
+	}
+	printf(
+R"(
+   two "brd lite"                   (Lists dates with two or more books read)
+   rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
+   sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
+   
+   b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
+   
+   set-dr <BookID>                  (Add, Change or Delete DateRead for a book)
+   set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
+
+   h                                (Show more extensive help)
+   
+NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
+      listing actions also supported for similar effect, e.g. *b* will list all books containing the given title string, while
+      b* will list books starting with it instead.
+      
+Options:
+    -d[DisplayMode] (Determines how the results are displayed)
+    -h[on|off]      (Determines if a header row is shown or not)
+    -c[selColumns]  (Determines the included colums, overrides default columns for the action)
+    -a[addColumns]  (Include these columns in addition to the default ones for the action)
+    -o[colOrder]    (Determines sort order for results, by default sorts by included columns starting from left)
+    -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
+                     If several -w options are included their values will be OR:ed)
+    -s[colSizes]    (Override the default column sizes)
+    -q              (Debug - dumps the SQLITE commands instead of producing results)
+    -u              (Makes sure the results only contain UNIQUE/DISTICT values)
+    -l[dbPath]      (Can specify an alternate litt database file)
+    
+    Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
+)"
+	);
+	if (showExtended) {
+		printf(
+R"(
+selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
+colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
+whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
+          cmpOper: lt,gt,eq,nq,isnull,isempty,range ("LIKE" if none is given, isnull & isempty take no cmpArg, range takes two)
+colSizes format: Same as selColumns format
+
+bookCountCond and booksReadCond formats:
+    <number>        Only includes authors with book count >= <number>
+    lt.<number>     Only includes authors with book count < <number>
+    gt.<number>     Only includes authors with book count > <number>
+    eq.<number>     Only includes authors with book count = <number>
+    range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
+
+DisplayMode values:
+    col/column  Left-aligned columns (Specified or default widths are used)
+    html        HTML table code
+	htmldoc     Full HTML document
+    list[:sep]  Values delimited by separator string, default is "|"
+    tabs        Tab-separated values
+
+Column short name values:
+    bt,bi,btl       - Book title, BookID, length of book title
+    ln,fn,lnl,fnl   - Last/First Name & length thereof
+    nn/ng           - Full name/Aggregated full name(s) per book.
+    gi,ge           - GenreID and Genre
+    dr/dg,dw,dwl,ti - Date read/Aggregated dates, DOW for Date read, DOW string, Time
+    own,la,beb      - Owned, Language, Bought Ebook
+    st,stid         - Story,StoryID
+    se,si,sp        - Series, SeriesID, Part in Series
+    so,soid         - Source, SourceID
+
+)"
+		);
+	}
+}
+
+namespace std
+{
+	template<> struct default_delete<sqlite3> { void operator()(sqlite3* ptr) { sqlite3_close(ptr); } };
+}
+
 using IdValue = unsigned long long;
 
-const IdValue EmptyId = 0;
+namespace LittConstants 
+{
+	const char*   DefDbName   = "litt.sqlite";
+	const char    OptDelim    = '.';
+	const char    WildCard    = '*';
+	const char*   WildCardStr = "*";
+	const char*   LogOp_OR    = " OR ";
+	const char*   LogOp_AND   = " AND ";
+	const IdValue EmptyId     = 0;
+}
+using namespace LittConstants;
 
 
 namespace Utils 
@@ -112,6 +239,12 @@ namespace Utils
 		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
 	}
 
+	std::string fromUtf8(int codePage, std::string const & str)
+	{
+		auto wstr = toWide(CP_UTF8, str);
+		return toNarrow(codePage, wstr.c_str(), wstr.length());
+	}
+
 	#pragma warning(push)
 	#pragma warning(disable:4996)
 
@@ -136,6 +269,36 @@ namespace Utils
 		std::getline(std::cin, str);
 		return str;
 	}
+
+	std::string quote(std::string const & str)
+	{
+		return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
+	}
+
+	unsigned colWidth(std::string const & str) 
+	{
+		auto const w = str.length();
+		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
+	}
+
+	// Escape the SQL value and add the SQL quotes (if needed).
+	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
+	{
+		int intVal;
+		if (!(tryToTreatAsNumeric && toInt(str, intVal))) {
+			replaceAll(str, "'", "''");
+			str = "'" + str + "'";
+		}
+		return str;
+	}
+
+	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
+	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
+	{
+		std::replace(str.begin(), str.end(), WildCard, '%');
+		return escSqlVal(str, tryToTreatAsNumeric);
+	}
+
 } // Utils
 using namespace Utils;
 
@@ -185,6 +348,7 @@ namespace Input
 
 		if (!str.empty() && value == EmptyId && onInvalidInput) {
 			onInvalidInput(str);
+			goto retry;
 		}
 
 		if (value == EmptyId && (required & (unsigned)options)) {
@@ -210,30 +374,13 @@ namespace Input
 			}
 		} 
 	}
-}
 
-namespace LittConstants 
-{
-	const char* DefDbName = "litt.sqlite";
-	const char  OptDelim = '.';
-	const char  WildCard = '*';
-	const char* WildCardStr = "*";
-	const char* LogOp_OR = " OR ";
-	const char* LogOp_AND = " AND ";
-}
-using namespace LittConstants;
-
-// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
-std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
-{
-	std::replace(str.begin(), str.end(), WildCard, '%');
-	int intVal;
-	if (!(tryToTreatAsNumeric && toInt(str, intVal))) {
-		replaceAll(str, "'", "''");
-		str = "'" + str + "'";
+	bool confirm(std::string const & question)
+	{
+		return 'y' == ask("yn", question);
 	}
-	return str;
 }
+using namespace Input;
 
 enum class DisplayMode {
 	column,
@@ -317,10 +464,157 @@ struct OptionParser {
 	std::string nextIntAsStr() { return std::to_string(nextInt()); }
 };
 
-struct Litt {
-	// Maps short name to column info.
-	std::map<std::string, ColumnInfo> columnInfos;
+class Output {
+	DWORD        m_consoleMode = 0;
+	int    const m_consoleCodePage = GetConsoleCP();
+	HANDLE const m_stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
+	bool   const m_stdOutIsConsole = m_stdOutHandle != NULL && GetConsoleMode(m_stdOutHandle, &m_consoleMode);
+	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far... but uses 10K to avoid analyse warning.... !!! test at home if diff to 20k
+	// 32K seems to work at home with Win10 though, but not at work with Win7.
+	static const int BufSize = 1000*10;
+	mutable char m_buffer[BufSize];
+	mutable int  m_bufPos = 0;
+public:
+	bool stdOutIsConsole() const { return m_stdOutIsConsole; }
 
+	void write(const char* str, int len) const
+	{
+		if (BufSize < len) {
+			flush();
+			doWrite(str, len);
+		}
+		else {
+			if ((BufSize - m_bufPos) < len) {
+				flush();
+			}
+			_ASSERT(len <= (BufSize - m_bufPos));
+			memcpy(&m_buffer[m_bufPos], str, len);
+			m_bufPos += len;
+		}
+	}
+
+	void write(char c) const
+	{
+		if (BufSize == m_bufPos) {
+			flush();
+		}
+		m_buffer[m_bufPos++] = c;
+	}
+
+	void write(std::string const & str) const 
+	{
+		write(str.c_str(), str.length());
+	}
+
+	void write(const char* str) const 
+	{
+		write(str, strlen(str));
+	}
+
+	void writeUtf8Width(const char* str, unsigned width) const
+	{ // PRE: str contains only complete utf-8 code points.
+		unsigned writtenChars = 0;
+
+		for (int i = 0; str[i] != '\0' && writtenChars < width; /*inc in body*/) {
+			if ((str[i] & 0x80) == 0) { // 0xxx xxxx - Single utf8 byte
+				write(str[i]);
+				i += 1;
+			}
+			else if ((str[i] & 0xC0) == 0xC0) { // 11xx xxxx - utf8 start byte
+				int n = 1;
+				while ((str[i + n] & 0xC0) == 0x80) { // 10xx xxxx - continuation byte
+					++n;
+				}
+				if (n == 1) throw std::invalid_argument("No utf-8 continuation byte(s)!");
+				if (4 < n) throw std::invalid_argument("Too many utf-8 continuation bytes!");
+				write(&str[i], n);
+				i += n;
+			}
+			else {
+				throw std::invalid_argument("Invalid utf-8 byte!");
+			}
+			// The above is little more complex that would be needed, as we must make sure
+			// to write complete utf-8 code points. Would not do if the buffer were flushed while
+			// we wrote a middle or starting utf-8 byte! Well, will work when writing to file,
+			// but not when writing to the console.
+
+			// Note: We assume every Unicode code point corresponds to an actual visible character.
+			// Does not take combining characters and such into account.
+			++writtenChars;
+		}
+
+		while (writtenChars < width) {
+			write(' ');
+			++writtenChars;
+		}
+	}
+
+	void writeHtml (const char* z) const 
+	{
+		int i;
+		while( *z ) {
+			for (i = 0; z[i] !='\0'
+					 && z[i] !='<'
+					 && z[i] !='&'
+					 && z[i] !='>'
+					 && z[i] !='\"'
+					 && z[i] !='\'';
+				i++) {}
+
+			if (i > 0) {
+				write(z, i);
+			}
+
+			if      (z[i]=='<')  { write("&lt;");   } 
+			else if (z[i]=='&')  { write("&amp;");  }
+			else if (z[i]=='>')  { write("&gt;");   } 
+			else if (z[i]=='\"') { write("&quot;"); } 
+			else if (z[i]=='\'') { write("&#39;");  } 
+			else                 { break;                 }
+
+			z += i + 1;
+		}
+	}
+
+	void doWrite(const char* str, int len) const
+	{
+		if (len == 0) return;
+		if (m_stdOutIsConsole) {
+			auto ws = utf8ToWide(str, len);
+			DWORD written;
+			if (!WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &written, 0)) {
+				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
+			}
+		}
+		else {
+			fwrite(str, len, 1, stdout);
+		}
+	}
+
+	void flush() const 
+	{
+		doWrite(m_buffer, m_bufPos);
+		m_bufPos = 0;
+	}
+
+	void flushNoThrow() const
+	{
+		try { 
+			flush(); 
+		}
+		catch (std::exception& ex) { 
+			fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); 
+		}
+	}
+};
+
+class Litt {
+	// Maps short name to column info.
+	std::map<std::string, ColumnInfo> m_columnInfos;
+	std::unique_ptr<sqlite3> m_conn;
+	Output m_output;
+public:
+	int const consoleCodePage = GetConsoleCP();
 	bool headerOn = true;
 	bool selectDistinct = false;
 	bool showQuery = false;
@@ -329,12 +623,12 @@ struct Litt {
 	DisplayMode displayMode = DisplayMode::column;
 	std::string listSep = "|";
 	std::string colSep = "  ";
-
 	std::string dbPath; // Path to LITT db file
 
 	Columns orderBy; // Overrides the default action order.
 	Columns selectedColumns; // Overrides the default action columns.
 	Columns additionalColumns; // Added to the action or overridden columns.
+
 	mutable std::string whereCondition;
 	mutable std::string havingCondition;
 
@@ -345,8 +639,8 @@ struct Litt {
 
 	mutable int rowCount = 0; // The number of rows printed so far.
 
-	Litt() :
-		columnInfos({ // OBS! Don't use "desc" and "asc" and short names! :)
+	Litt(int argc, char** argv) :
+		m_columnInfos({ // OBS! Don't use "desc" and "asc" and short names! :)
 			{"ai",   {"Authors.AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
@@ -393,12 +687,123 @@ struct Litt {
 			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
-	{}
+	{
+		for (int i = 1; i < argc; ++i) {
+			if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
+				auto const opt = argv[i][1];
+				auto const val = std::string(argv[i][2] != '\0' ? &argv[i][2] : "");
+				switch (opt) {
+				case 'd':
+					if (val == "col" || val == "column") displayMode = DisplayMode::column;
+					else if (val == "html")    displayMode = DisplayMode::html;
+					else if (val == "htmldoc") displayMode = DisplayMode::htmldoc;
+					else if (val == "tabs")    displayMode = DisplayMode::tabs;
+					else if (val.substr(0, 4) == "list") {
+						displayMode = DisplayMode::list;
+						if (4 < val.length()) {
+							if (val[4] == ':' && 5 < val.length()) {
+								listSep = toUtf8(val.substr(5).c_str());
+							}
+							else {
+								goto invalidDisplayMode;
+							}
+						}
+					}
+					else {
+						invalidDisplayMode:
+						throw std::invalid_argument("Invalid display mode: " + val);
+					}
+					break;
+				case 'h':
+					if (val == "on") headerOn = true;
+					else if (val == "off") headerOn = false;
+					else throw std::invalid_argument("Invalid header value: " + val);
+					break;
+				case 'o':
+					orderBy = getColumns(val, ColumnsDataKind::sortOrder, true);
+					break;
+				case 'c': 
+					selectedColumns = getColumns(val, ColumnsDataKind::width, true);
+					break;
+				case 'l': 
+					dbPath = val;
+					break;
+				case 'a': {
+					auto a = getColumns(val, ColumnsDataKind::width, true);
+					additionalColumns.insert(additionalColumns.end(), a.begin(), a.end());
+					}
+					break;
+				case 'w': 
+					appendToWhereCondition(LogOp_OR, getWherePredicate(val));
+					break;
+				case 's':
+					// Not necessarily included in the query, hence "false".
+					for (auto& c : getColumns(val, ColumnsDataKind::width, false)) { 
+						c.first->overriddenWidth = c.second;
+					}
+					break;
+				case 'q':
+					showQuery = true;
+					break;
+				case 'u':
+					selectDistinct = true;
+					break;
+				case 'x': 
+					explainQuery = true;
+					break;
+				case 'n': 
+					showNumberOfRows = true;
+					break;
+				default:
+					throw std::invalid_argument(std::string("Invalid option: ") + argv[i]);
+				}
+			}
+			else {
+				if (action.empty()) {
+					action = argv[i]; 
+					if (action.length() >= 2 && action[0] == WildCard) {
+						actionLeftWildCard = WildCardStr;
+						action.erase(0, 1);
+					}
+					if (action.length() >= 2 && action.back() == WildCard) {
+						actionRightWildCard = WildCardStr; 
+						action.pop_back();
+					}
+				}
+				else {
+					actionArgs.push_back(argv[i]);
+				}
+			}
+		}
+
+		if (action.empty()) {
+			throw std::invalid_argument("Action argument(s) missing");
+		}
+
+		if (dbPath.empty()) {
+			char mydocs[MAX_PATH];
+			if (GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)) {
+				dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
+			}
+			else {
+				dbPath = DefDbName;
+			}
+		}
+		if (GetFileAttributesA(dbPath.c_str()) == -1) {
+			throw std::invalid_argument("Cannot find: " + dbPath);
+		}
+			
+		sqlite3* conn = nullptr;
+		int res = sqlite3_open(dbPath.c_str(), &conn); m_conn.reset(conn);
+		if (res != SQLITE_OK) {
+			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
+		}
+	}
 
 	ColumnInfo const* getColumn(std::string const & sn) const
 	{
-		auto it = columnInfos.find(sn);
-		if (it == columnInfos.end()) {
+		auto it = m_columnInfos.find(sn);
+		if (it == m_columnInfos.end()) {
 			throw std::invalid_argument("Invalid short column name: " + sn);
 		}
 		return &it->second;
@@ -600,1117 +1005,808 @@ struct Litt {
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
-	DWORD        consoleMode = 0;
-	int    const consoleCodePage = GetConsoleCP();
-	HANDLE const stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
-	bool   const stdOutIsConsole = stdOutHandle != NULL && GetConsoleMode(stdOutHandle, &consoleMode);
+	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
+	std::string fromUtf8(std::string const & str) const { return Utils::fromUtf8(consoleCodePage, str); }
 
-	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far...
-	// 32K seems to work at home with Win10 though, but not at work with Win7.
-	static const int BufSize = 1000*20;
-	mutable char buffer[BufSize];
-	mutable int  bufPos = 0;
+	std::string encodeSqlFromInput(std::string const& sql) const { return toUtf8(sql); }
 
-	void writeOutPut(const char* str, int len) const
-	{
-		if (BufSize < len) {
-			flushOutput();
-			doWriteOutPut(str, len);
-		}
-		else {
-			if ((BufSize - bufPos) < len) {
-				flushOutput();
+	enum InnerJoinFor : unsigned {
+		IJF_DefaultsOnly = 0x00,
+		IJF_Stories = 0x01,
+		IJF_Series = 0x02,
+		IJF_OrigTitle = 0x04,
+	};
+
+	enum class SelectOption {
+		normal,
+		distinct,
+	};
+
+	class OutputQuery {
+		std::stringstream m_sstr;
+		Columns m_orderBy;
+	public:
+		Litt const & litt;
+		std::vector<unsigned> columnWidths; // Only set for column mode.
+
+		OutputQuery(Litt const & litt) 
+			: litt(litt) 
+		{}
+
+		void initSelectBare(SelectOption selectOption = SelectOption::normal)
+		{
+			m_sstr.clear();
+			if (litt.explainQuery) {
+				m_sstr << "EXPLAIN QUERY PLAN ";
 			}
-			_ASSERT(len <= (BufSize - bufPos));
-			memcpy(&buffer[bufPos], str, len);
-			bufPos += len;
-		}
-	}
-
-	void writeOutPut(char c) const
-	{
-		if (BufSize == bufPos) {
-			flushOutput();
-		}
-		buffer[bufPos++] = c;
-	}
-
-	void writeOutPut(std::string const & str) const 
-	{
-		writeOutPut(str.c_str(), str.length());
-	}
-
-	void writeOutPut(const char* str) const 
-	{
-		writeOutPut(str, strlen(str));
-	}
-
-	void writeUtf8Width(const char* str, unsigned width) const
-	{ // PRE: str contains only complete utf-8 code points.
-		unsigned writtenChars = 0;
-
-		for (int i = 0; str[i] != '\0' && writtenChars < width; /*inc in body*/) {
-			if ((str[i] & 0x80) == 0) { // 0xxx xxxx - Single utf8 byte
-				writeOutPut(str[i]);
-				i += 1;
-			}
-			else if ((str[i] & 0xC0) == 0xC0) { // 11xx xxxx - utf8 start byte
-				int n = 1;
-				while ((str[i + n] & 0xC0) == 0x80) { // 10xx xxxx - continuation byte
-					++n;
-				}
-				if (n == 1) throw std::invalid_argument("No utf-8 continuation byte(s)!");
-				if (4 < n) throw std::invalid_argument("Too many utf-8 continuation bytes!");
-				writeOutPut(&str[i], n);
-				i += n;
-			}
-			else {
-				throw std::invalid_argument("Invalid utf-8 byte!");
-			}
-			// The above is little more complex that would be needed, as we must make sure
-			// to write complete utf-8 code points. Would not do if the buffer were flushed while
-			// we wrote a middle or starting utf-8 byte! Well, will work when writing to file,
-			// but not when writing to the console.
-
-			// Note: We assume every Unicode code point corresponds to an actual visible character.
-			// Does not take combining characters and such into account.
-			++writtenChars;
-		}
-
-		while (writtenChars < width) {
-			writeOutPut(' ');
-			++writtenChars;
-		}
-	}
-
-	void writeHtml (const char* z) const 
-	{
-		int i;
-		while( *z ) {
-			for (i = 0; z[i] !='\0'
-					 && z[i] !='<'
-					 && z[i] !='&'
-					 && z[i] !='>'
-					 && z[i] !='\"'
-					 && z[i] !='\'';
-				i++) {}
-
-			if (i > 0) {
-				writeOutPut(z, i);
-			}
-
-			if      (z[i]=='<')  { writeOutPut("&lt;");   } 
-			else if (z[i]=='&')  { writeOutPut("&amp;");  }
-			else if (z[i]=='>')  { writeOutPut("&gt;");   } 
-			else if (z[i]=='\"') { writeOutPut("&quot;"); } 
-			else if (z[i]=='\'') { writeOutPut("&#39;");  } 
-			else                 { break;                 }
-
-			z += i + 1;
-		}
-	}
-
-
-	void doWriteOutPut(const char* str, int len) const
-	{
-		if (len == 0) return;
-		if (stdOutIsConsole) {
-			auto ws = utf8ToWide(str, len);
-			DWORD written;
-			if (!WriteConsole(stdOutHandle, ws.c_str(), ws.length(), &written, 0)) {
-				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
-			}
-		}
-		else {
-			fwrite(str, len, 1, stdout);
-		}
-	}
-
-	void flushOutput() const 
-	{
-		doWriteOutPut(buffer, bufPos);
-		bufPos = 0;
-	}
-
-	void flushOutputNoThrow() const
-	{
-		try { 
-			flushOutput(); 
-		}
-		catch (std::exception& ex) { 
-			fprintf(stderr, "\nflushOutput failed: %s\n", ex.what()); 
-		}
-	}
-};
-
-void parseCommandLine(int argc, char **argv, Litt& litt)
-{
-	for (int i = 1; i < argc; ++i) {
-		if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
-			auto const opt = argv[i][1];
-			auto const val = std::string(argv[i][2] != '\0' ? &argv[i][2] : "");
-			switch (opt) {
-			case 'd':
-				if (val == "col" || val == "column") litt.displayMode = DisplayMode::column;
-				else if (val == "html")    litt.displayMode = DisplayMode::html;
-				else if (val == "htmldoc") litt.displayMode = DisplayMode::htmldoc;
-				else if (val == "tabs")    litt.displayMode = DisplayMode::tabs;
-				else if (val.substr(0, 4) == "list") {
-					litt.displayMode = DisplayMode::list;
-					if (4 < val.length()) {
-						if (val[4] == ':' && 5 < val.length()) {
-							litt.listSep = toUtf8(litt.consoleCodePage, val.substr(5).c_str());
-						}
-						else {
-							goto invalidDisplayMode;
-						}
-					}
-				}
-				else {
-					invalidDisplayMode:
-					throw std::invalid_argument("Invalid display mode: " + val);
-				}
-				break;
-			case 'h':
-				if (val == "on") litt.headerOn = true;
-				else if (val == "off") litt.headerOn = false;
-				else throw std::invalid_argument("Invalid header value: " + val);
-				break;
-			case 'o':
-				litt.orderBy = litt.getColumns(val, ColumnsDataKind::sortOrder, true);
-				break;
-			case 'c': 
-				litt.selectedColumns = litt.getColumns(val, ColumnsDataKind::width, true);
-				break;
-			case 'l': 
-				litt.dbPath = val;
-				break;
-			case 'a': {
-				auto a = litt.getColumns(val, ColumnsDataKind::width, true);
-				litt.additionalColumns.insert(litt.additionalColumns.end(), a.begin(), a.end());
-				}
-				break;
-			case 'w': 
-				litt.appendToWhereCondition(LogOp_OR, litt.getWherePredicate(val));
-				break;
-			case 's':
-				// Not necessarily included in the query, hence "false".
-				for (auto& c : litt.getColumns(val, ColumnsDataKind::width, false)) { 
-					c.first->overriddenWidth = c.second;
-				}
-				break;
-			case 'q':
-				litt.showQuery = true;
-				break;
-			case 'u':
-				litt.selectDistinct = true;
-				break;
-			case 'x': 
-				litt.explainQuery = true;
-				break;
-			case 'n': 
-				litt.showNumberOfRows = true;
-				break;
-			default:
-				throw std::invalid_argument(std::string("Invalid option: ") + argv[i]);
-			}
-		}
-		else {
-			if (litt.action.empty()) {
-				litt.action = argv[i]; 
-				if (litt.action.length() >= 2 && litt.action[0] == WildCard) {
-					litt.actionLeftWildCard = WildCardStr;
-					litt.action.erase(0, 1);
-				}
-				if (litt.action.length() >= 2 && litt.action.back() == WildCard) {
-					litt.actionRightWildCard = WildCardStr; 
-					litt.action.pop_back();
-				}
-			}
-			else {
-				litt.actionArgs.push_back(argv[i]);
-			}
-		}
-	}
-
-	if (litt.action.empty()) {
-		throw std::invalid_argument("Action argument(s) missing");
-	}
-
-	if (litt.dbPath.empty()) {
-		char mydocs[MAX_PATH];
-		if (GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)) {
-			litt.dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
-		}
-		else {
-			litt.dbPath = DefDbName;
-		}
-	}
-	if (GetFileAttributesA(litt.dbPath.c_str()) == -1) {
-		throw std::invalid_argument("Cannot find: " + litt.dbPath);
-	}
-}
-
-int showHelp(bool showExtended = false)
-{
-	printf(
-R"(Usage: LITT [<options>] action <action arguments>
-
-Supported actions:
-   a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
-   aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
-   b   [<title>]                    (Lists all books matching the given title).
-   bb  [<title>]                    (Same as above, but includes more details)
-   ot  [<origTitle>]                (Only lists books with original titles)
-   st  [<story>]                    (Only lists books with separate stories)
-   s   [<series>]                   (Lists series)
-   g   [<genre>]                    (Lists genre)
-   so  [<source>]                   (Lists book sources - where a certain book "read" was gotten)
-   soo [<source>]                   (Lists book sources WITH read books for the sources)
-
-   add-a                            (Adds a new author)
-   add-b                            (Adds a new book)
-   add-s                            (Adds a new series)
-   add-g                            (Adds a new genre)
-
-   abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
-                                     Supports virtual column abc - book count - for column selection, sorting and where)
-   gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
-   sbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each book source, similar to abc)
-   brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
-   brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
-	);
-	if (showExtended) {
-		printf(
-R"(
-
-       [<dateCondition>] {<column def(where condition)> <column name>}
-       
-       Can also use brp which is more generic, it takes [<period col def(strftime string)>] [<period col name]>
-       BEFORE the parameters the previos ones do.
-)"
-		);
-	}
-	printf(
-R"(
-   two "brd lite"                   (Lists dates with two or more books read)
-   rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
-   sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
-   
-   b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
-   
-   set-dr <BookID>                  (Add, Change or Delete DateRead for a book)
-   set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
-
-   h                                (Show more extensive help)
-   
-NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
-      listing actions also supported for similar effect, e.g. *b* will list all books containing the given title string, while
-      b* will list books starting with it instead.
-      
-Options:
-    -d[DisplayMode] (Determines how the results are displayed)
-    -h[on|off]      (Determines if a header row is shown or not)
-    -c[selColumns]  (Determines the included colums, overrides default columns for the action)
-    -a[addColumns]  (Include these columns in addition to the default ones for the action)
-    -o[colOrder]    (Determines sort order for results, by default sorts by included columns starting from left)
-    -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
-                     If several -w options are included their values will be OR:ed)
-    -s[colSizes]    (Override the default column sizes)
-    -q              (Debug - dumps the SQLITE commands instead of producing results)
-    -u              (Makes sure the results only contain UNIQUE/DISTICT values)
-    -l[dbPath]      (Can specify an alternate litt database file)
-    
-    Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
-)"
-	);
-	if (showExtended) {
-		printf(
-R"(
-selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
-colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
-whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
-          cmpOper: lt,gt,eq,nq,isnull,isempty,range ("LIKE" if none is given, isnull & isempty take no cmpArg, range takes two)
-colSizes format: Same as selColumns format
-
-bookCountCond and booksReadCond formats:
-    <number>        Only includes authors with book count >= <number>
-    lt.<number>     Only includes authors with book count < <number>
-    gt.<number>     Only includes authors with book count > <number>
-    eq.<number>     Only includes authors with book count = <number>
-    range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
-
-DisplayMode values:
-    col/column  Left-aligned columns (Specified or default widths are used)
-    html        HTML table code
-	htmldoc     Full HTML document
-    list[:sep]  Values delimited by separator string, default is "|"
-    tabs        Tab-separated values
-
-Column short name values:
-    bt,bi,btl       - Book title, BookID, length of book title
-    ln,fn,lnl,fnl   - Last/First Name & length thereof
-    nn/ng           - Full name/Aggregated full name(s) per book.
-    gi,ge           - GenreID and Genre
-    dr/dg,dw,dwl,ti - Date read/Aggregated dates, DOW for Date read, DOW string, Time
-    own,la,beb      - Owned, Language, Bought Ebook
-    st,stid         - Story,StoryID
-    se,si,sp        - Series, SeriesID, Part in Series
-    so,soid         - Source, SourceID
-
-)"
-		);
-	}
-	return 0;
-}
-
-enum InnerJoinFor : unsigned {
-	IJF_DefaultsOnly = 0x00,
-	IJF_Stories = 0x01,
-	IJF_Series = 0x02,
-	IJF_OrigTitle = 0x04,
-};
-
-enum class SelectOption {
-	normal,
-	distinct,
-};
-
-class SelectQuery {
-	std::stringstream m_sstr;
-	Columns m_orderBy;
-public:
-	Litt const & litt;
-	std::vector<unsigned> columnWidths; // Only set for column mode.
-
-	SelectQuery(Litt const & litt) 
-		: litt(litt) 
-	{}
-
-	void initSelectBare(SelectOption selectOption = SelectOption::normal)
-	{
-		m_sstr.clear();
-		if (litt.explainQuery) {
-			m_sstr << "EXPLAIN QUERY PLAN ";
-		}
-		m_sstr << "SELECT ";
-		if (litt.selectDistinct || selectOption == SelectOption::distinct) {
-			m_sstr << "DISTINCT ";
-		}
-	}
-
-	void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
-	{
-		initSelectBare(selectOption);
-
-		auto selCols = litt.selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.selectedColumns;
-		selCols.insert(selCols.end(), litt.additionalColumns.begin(), litt.additionalColumns.end());
-		for (unsigned i = 0; i < selCols.size(); ++i) {
-			if (i != 0) {
-				m_sstr << ",";
-			}
-			auto ci = selCols[i].first;
-			m_sstr << ci->name;
-			if (ci->label != nullptr) {
-				m_sstr << " AS " << ci->label;
-			}
-			if (litt.displayMode == DisplayMode::column) {
-				auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : selCols[i].second;
-				_ASSERT(width > 0);
-				columnWidths.push_back(width);
+			m_sstr << "SELECT ";
+			if (litt.selectDistinct || selectOption == SelectOption::distinct) {
+				m_sstr << "DISTINCT ";
 			}
 		}
 
-		m_sstr << "\nFROM " << from;
-
-		if (litt.explainQuery && litt.displayMode == DisplayMode::column) {
-			columnWidths = { 10, 10, 10, 100 }; 
+		void initColumnWidths()
+		{
+			if (litt.explainQuery && litt.displayMode == DisplayMode::column) {
+				columnWidths = { 10, 10, 10, 100 }; 
+			} // else assumes columnWidths are properly set!
 		}
 
-		// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
-		auto asc = [](Columns cols) { for (auto& c : cols) { c.second = (int)ColumnSortOrder::Asc; } return cols; };
-		m_orderBy = litt.orderBy.empty()
-			? (litt.selectedColumns.empty()
-				? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true)
-				: asc(litt.selectedColumns))
-			: litt.orderBy;
-	}
+		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+		{
+			initSelectBare(selectOption);
 
-	void addWhere()
-	{
-		if (!litt.whereCondition.empty()) {
-			m_sstr << "\nWHERE " << litt.whereCondition;
-		}
-	}
-
-	void addHaving()
-	{
-		if (!litt.havingCondition.empty()) {
-			m_sstr << "\nHAVING " << litt.havingCondition;
-		}
-	}
-
-	void a(const char* str)
-	{
-		m_sstr << str;
-	}
-
-	void a(std::string const & str)
-	{
-		m_sstr << str;
-	}
-
-	void add(const char* line)
-	{
-		m_sstr << "\n" << line;
-	}
-
-	void add(std::string const & line)
-	{
-		add(line.c_str());
-	}
-
-	void addIf(bool cond, const char* line)
-	{
-		if (cond) add(line);
-	}
-
-	void addIfColumns(const char* columns, const char* line) 
-	{
-		for (auto& col : litt.getColumns(columns, ColumnsDataKind::none, false)) {
-			if (col.first->usedInQuery) {
-				add(line);
-				return;
-			}
-		}
-	}
-
-	void addIfColumns(const char* columns, std::string const & line)
-	{
-		addIfColumns(columns, line.c_str());
-	}
-
-	void addAuxTables(InnerJoinFor ijf = IJF_DefaultsOnly, unsigned indentSize = 0)
-	{
-		std::string indent(indentSize, ' ');
-
-		std::string serJoin = (ijf & IJF_Series)    ? "INNER" : "LEFT OUTER";
-		std::string stoJoin = (ijf & IJF_Stories)   ? "INNER" : "LEFT OUTER";
-		std::string ortJoin = (ijf & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
-		
-		#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
-		#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
-	
-
-		addIfColumns("dr.so",       indent + "INNER JOIN DatesRead USING(BookID)");
-		addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
-		addIfColumns("dg",          indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
-		addIfColumns("fn.ln.nn.st", indent + "INNER JOIN AuthorBooks USING(BookID)");
-		addIfColumns("fn.ln.nn",    indent + "INNER JOIN Authors USING(AuthorID)");
-		addIfColumns("ot",          indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
-		addIfColumns("st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
-		addIfColumns("sp.se",       indent +  serJoin + " JOIN BookSeries USING(BookID)");
-		addIfColumns("se",          indent +  serJoin + " JOIN Series USING(SeriesID)");
-		addIfColumns("so",          indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
-		addIfColumns("ge.gi",       indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
-		addIfColumns("ge",          indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
-
-		#undef ngSqlSelect
-		#undef dgSqlSelect
-	}
-
-	void addOrderBy()
-	{
-		if (!m_orderBy.empty()) { 
-			m_sstr << "\nORDER BY ";
-			for (unsigned i = 0; i < m_orderBy.size(); ++i) {
+			auto selCols = litt.selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.selectedColumns;
+			selCols.insert(selCols.end(), litt.additionalColumns.begin(), litt.additionalColumns.end());
+			for (unsigned i = 0; i < selCols.size(); ++i) {
 				if (i != 0) {
 					m_sstr << ",";
 				}
-				auto ci = m_orderBy[i].first;
-				auto order = (ColumnSortOrder)m_orderBy[i].second;
-				m_sstr << (ci->labelOrName());
-				if (order == ColumnSortOrder::Desc) {
-					m_sstr << " DESC"; // ASC is default.
+				auto ci = selCols[i].first;
+				m_sstr << ci->name;
+				if (ci->label != nullptr) {
+					m_sstr << " AS " << ci->label;
+				}
+				if (litt.displayMode == DisplayMode::column) {
+					auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : selCols[i].second;
+					_ASSERT(width > 0);
+					columnWidths.push_back(width);
+				}
+			}
+			initColumnWidths();
+
+			m_sstr << "\nFROM " << from;
+
+			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
+			auto asc = [](Columns cols) { for (auto& c : cols) { c.second = (int)ColumnSortOrder::Asc; } return cols; };
+			m_orderBy = litt.orderBy.empty()
+				? (litt.selectedColumns.empty()
+					? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true)
+					: asc(litt.selectedColumns))
+				: litt.orderBy;
+		}
+
+		void addWhere()
+		{
+			if (!litt.whereCondition.empty()) {
+				m_sstr << "\nWHERE " << litt.whereCondition;
+			}
+		}
+
+		void addHaving()
+		{
+			if (!litt.havingCondition.empty()) {
+				m_sstr << "\nHAVING " << litt.havingCondition;
+			}
+		}
+
+		void a(const char* str)
+		{
+			m_sstr << str;
+		}
+
+		void a(std::string const & str)
+		{
+			m_sstr << str;
+		}
+
+		void add(const char* line)
+		{
+			m_sstr << "\n" << line;
+		}
+
+		void add(std::string const & line)
+		{
+			add(line.c_str());
+		}
+
+		void addIf(bool cond, const char* line)
+		{
+			if (cond) add(line);
+		}
+
+		void addIfColumns(const char* columns, const char* line) 
+		{
+			for (auto& col : litt.getColumns(columns, ColumnsDataKind::none, false)) {
+				if (col.first->usedInQuery) {
+					add(line);
+					return;
 				}
 			}
 		}
-	}
 
-	std::string getSql() const
-	{
-		return toUtf8(litt.consoleCodePage, m_sstr.str() + ";");
-	}
-};
+		void addIfColumns(const char* columns, std::string const & line)
+		{
+			addIfColumns(columns, line.c_str());
+		}
 
-namespace QueryOutput
-{
-	void outputRow(SelectQuery& query, bool isHeader, int argc, char **argv)
-	{
-		auto& litt = query.litt;
-		auto const mode = litt.displayMode;
+		void addAuxTables(InnerJoinFor ijf = IJF_DefaultsOnly, unsigned indentSize = 0)
+		{
+			std::string indent(indentSize, ' ');
 
-		switch (mode) {
-		case DisplayMode::htmldoc:
-			if (isHeader) {
-				auto docStart = 
-					"<!DOCTYPE html>\n" 
-					"<html>\n"
-					"<head>\n"
-					"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
-					"<title>" + litt.action + "</title>\n"
-					"</head>\n"
-					"<body>\n"
-					"<table>\n";
-				litt.writeOutPut(docStart);
+			std::string serJoin = (ijf & IJF_Series)    ? "INNER" : "LEFT OUTER";
+			std::string stoJoin = (ijf & IJF_Stories)   ? "INNER" : "LEFT OUTER";
+			std::string ortJoin = (ijf & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
+			
+			#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
+			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
+		
+
+			addIfColumns("dr.so",       indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
+			addIfColumns("dg",          indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
+			addIfColumns("fn.ln.nn.st", indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("fn.ln.nn",    indent + "INNER JOIN Authors USING(AuthorID)");
+			addIfColumns("ot",          indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
+			addIfColumns("st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+			addIfColumns("sp.se",       indent +  serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns("se",          indent +  serJoin + " JOIN Series USING(SeriesID)");
+			addIfColumns("so",          indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
+			addIfColumns("ge.gi",       indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
+			addIfColumns("ge",          indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
+
+			#undef ngSqlSelect
+			#undef dgSqlSelect
+		}
+
+		void addOrderBy()
+		{
+			if (!m_orderBy.empty()) { 
+				m_sstr << "\nORDER BY ";
+				for (unsigned i = 0; i < m_orderBy.size(); ++i) {
+					if (i != 0) {
+						m_sstr << ",";
+					}
+					auto ci = m_orderBy[i].first;
+					auto order = (ColumnSortOrder)m_orderBy[i].second;
+					m_sstr << (ci->labelOrName());
+					if (order == ColumnSortOrder::Desc) {
+						m_sstr << " DESC"; // ASC is default.
+					}
+				}
 			}
-			// fall-through to html
+		}
+
+		std::string getSql() const
+		{
+			return litt.encodeSqlFromInput(m_sstr.str());
+		}
+	}; // OutputQuery
+
+	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
+	{
+		switch (displayMode) {
+		case DisplayMode::htmldoc:
 		case DisplayMode::html:
-			litt.writeOutPut("<tr>");
+			m_output.write("<tr>");
 			break;
 		}
 
 		for (int i = 0; i < argc; i++) {
 			auto val = argv[i] ? argv[i] : "";
-			switch (mode) {
+			switch (displayMode) {
 			case DisplayMode::column:
-				if (i != 0) litt.writeOutPut(litt.colSep);
-				litt.writeUtf8Width(val, query.columnWidths[i]);
+				if (i != 0) m_output.write(colSep);
+				m_output.writeUtf8Width(val, query.columnWidths[i]);
 				break;
 			case DisplayMode::list:
-				if (i != 0) litt.writeOutPut(litt.listSep);
-				litt.writeOutPut(val);
+				if (i != 0) m_output.write(listSep);
+				m_output.write(val);
 				break;
 			case DisplayMode::tabs:
-				if (i != 0) litt.writeOutPut('\t');
-				litt.writeOutPut(val);
+				if (i != 0) m_output.write('\t');
+				m_output.write(val);
 				break;
 			case DisplayMode::html:
 			case DisplayMode::htmldoc:
-				litt.writeOutPut(isHeader ? "<th>" : "<td>");
-				litt.writeHtml(val);
-				litt.writeOutPut(isHeader ? "</th>\n" : "</td>\n");
+				m_output.write(isHeader ? "<th>" : "<td>");
+				m_output.writeHtml(val);
+				m_output.write(isHeader ? "</th>" : "</td>");
+				m_output.write('\n');
 				break;
 			}
 		}
 
-		if (mode == DisplayMode::html) {
-			litt.writeOutPut("</tr>");
+		switch (displayMode) {
+		case DisplayMode::htmldoc:
+		case DisplayMode::html:
+			m_output.write("</tr>");
+			break;
 		}
-
-		litt.writeOutPut('\n');
+		m_output.write('\n');
 	}
 
-	int callBack(void *pArg, int argc, char **argv, char **azColName) 
+	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName) 
 	{
-		auto& query = *static_cast<SelectQuery*>(pArg);
+		auto& query = *static_cast<OutputQuery*>(pArg);
 		auto& litt = query.litt;
+		auto& output = litt.m_output;
 		try {
 			if (litt.rowCount == 0) {
-				if (!litt.stdOutIsConsole && litt.displayMode == DisplayMode::column) {
+				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
 					// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
 					// detect the utf-8 encoding depending on the actual output.
 					// Seems to interfere with V:S CSV mode though!
 					const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
-					litt.writeOutPut((const char*)&bom[0], sizeof(bom));
+					output.write((const char*)&bom[0], sizeof(bom));
 				}
-				outputRow(query, true, argc, azColName);
-				if (litt.displayMode == DisplayMode::column) {
-					for (int i = 0; i < argc; ++i) {
-						if (i != 0) litt.writeOutPut(litt.colSep);
-						std::string underLine(query.columnWidths[i], '-');
-						litt.writeOutPut(underLine);
+				if (litt.displayMode == DisplayMode::htmldoc) {
+					auto docStart = 
+						"<!DOCTYPE html>\n" 
+						"<html>\n"
+						"<head>\n"
+						"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
+						"<title>" + litt.action + "</title>\n"
+						"</head>\n"
+						"<body>\n"
+						"<table>\n";
+					output.write(docStart);
+				}
+				if (litt.headerOn) {
+					litt.outputRow(query, true, argc, azColName);
+					if (litt.displayMode == DisplayMode::column) {
+						for (int i = 0; i < argc; ++i) {
+							if (i != 0) output.write(litt.colSep);
+							std::string underLine(query.columnWidths[i], '-');
+							output.write(underLine);
+						}
+						output.write('\n');
 					}
-					litt.writeOutPut('\n');
 				}
 			}
-			outputRow(query, false, argc, argv);
+			litt.outputRow(query, false, argc, argv);
 			++litt.rowCount;
 			return 0;
 		}
 		catch (std::exception& ex) {
-			litt.flushOutputNoThrow();
+			output.flushNoThrow();
 			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
 			return 1;
 		}
 	}
-}
 
-void runSelectQuery(SelectQuery& query)
-{
-	std::string sql = query.getSql();
-	auto& litt = query.litt;
-
-	if (litt.showQuery) {
-		litt.writeOutPut(sql); litt.writeOutPut('\n');
-		litt.flushOutput();
-		return;
-	}
-
-	std::string errMsg;
-
-	sqlite3 *db = nullptr;
-	int res = sqlite3_open(litt.dbPath.c_str(), &db);
-	if (res != SQLITE_OK) {
-		errMsg = std::string("Cannot open database: ") + sqlite3_errmsg(db);
-		goto out;
-	}
-
-	litt.rowCount = 0;
-	char *zErrMsg = nullptr;
-	res = sqlite3_exec(db, sql.c_str(), QueryOutput::callBack, &query, &zErrMsg);
-	if (res == SQLITE_OK && litt.displayMode == DisplayMode::htmldoc) {
-		litt.writeOutPut("</table>\n</body>\n</html>\n");
-	}
-	litt.flushOutputNoThrow();
-	if (res != SQLITE_OK) {
-		errMsg = std::string("SQL error: ") + zErrMsg;
-		sqlite3_free(zErrMsg);
-		goto out;
-	}
-
-	if (litt.showNumberOfRows) {
-		printf("\n# = %i\n", litt.rowCount);
-	}
-
-out:
-	sqlite3_close(db);
-	if (!errMsg.empty()) {
-		throw std::runtime_error(errMsg);
-	}
-}
-
-void runSingleTableOutputCmd(Litt const & litt, const char* defColumns, const char* table, const char* defOrderBy)
-{
-	SelectQuery query(litt);
-	query.initSelect(defColumns, table, defOrderBy);
-	query.addWhere();
-	query.addOrderBy();
-	runSelectQuery(query);
-}
-
-void runListData(Litt const & litt, const char* defColumns, const char* defOrderBy, InnerJoinFor ijf = IJF_DefaultsOnly)
-{
-	SelectQuery query(litt);
-	query.initSelect(defColumns, "Books", defOrderBy);
-	query.addAuxTables(ijf);
-	query.addWhere();
-	query.addOrderBy();
-	runSelectQuery(query);
-}
-
-void listAuthors(Litt const & litt, std::string const & action, std::string const & ln, std::string const & fn)
-{
-	litt.addActionWhereCondition("ln", ln);
-	litt.addActionWhereCondition("fn", fn);
-	if (action == "a") {
-		runSingleTableOutputCmd(litt, "ai.ln.fn", "Authors", "ai");
-	}
-	else {
-		runListData(litt, "bi.ln.fn.bt.dr.so.ge", "ln.fn.dr.bi");
-	}
-}
-
-void listBooks(Litt const & litt)
-{
-	litt.addActionWhereCondition("bt", 0);
-	if (litt.action == "b") {
-		runSingleTableOutputCmd(litt, "bi.bt.100", "Books", "bi");
-	}
-	else {
-		runListData(litt, "bi.nn.bt.dr.so.ge", "dr.bi.ln.fn.bt");
-	}
-}
-
-void listSeries(Litt const & litt, std::string const & action, std::string const & series)
-{
-	litt.addActionWhereCondition("se", series);
-	if (action == "s") {
-		runSingleTableOutputCmd(litt, "si.se", "Series", "si");
-	}
-	else {
-		runListData(litt, "se.sp.bt.dr.bi.ln.fn", "dr.bi.bt", IJF_Series);
-	}
-}
-
-void listGenres(Litt const & litt, std::string const & action, std::string const & genre)
-{
-	litt.addActionWhereCondition("ge", genre);
-	if (action == "g") {
-		runSingleTableOutputCmd(litt, "gi.ge", "Genres", "ge");
-	}
-	else {
-		runListData(litt, "bi.bt.ge.dr.nn", "dr.bi.bt");
-	}
-}
-
-void listOriginalTitles(Litt const & litt)
-{
-	litt.addActionWhereCondition("ot", 0);
-	runListData(litt, "bi.nn.ot.bt.dr.so.20.ge", "ot.dr.bi.ln.fn.bt", IJF_OrigTitle);
-}
-
-void listStories(Litt const & litt)
-{
-	litt.addActionWhereCondition("st", 0);
-	runListData(litt, "bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
-}
-
-void listSources(Litt const & litt, std::string const & action, std::string const & sourceName)
-{
-	litt.addActionWhereCondition("so", sourceName);
-	if (action == "so") {
-		runSingleTableOutputCmd(litt, "soid.so", "Sources", "so");
-	}
-	else {
-		runListData(litt, "dr.so.50.bt.30.ln.fn", "so");
-	}
-}
-
-void listRereads(Litt const & litt)
-{
-	SelectQuery query(litt);
-	const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-	query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", SelectOption::distinct);
-	query.add("INNER JOIN Books USING(BookID)");
-	query.addAuxTables();
-	query.addWhere();
-	query.addOrderBy();
-	runSelectQuery(query);
-}
-
-void listSametitle(Litt const & litt)
-{
-	SelectQuery query(litt);
-	const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
-	query.initSelect("bi.bt.ng.btc", from, "bt.bi", SelectOption::distinct);
-	query.add("INNER JOIN Books USING(Title)");
-	query.addAuxTables();
-	query.addWhere();
-	query.addOrderBy();
-	runSelectQuery(query);
-}
-
-void listBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads, 
-	const char* snCount, const char* columns, const char* snGroupBy)
-{
-	if (!countCond.empty()) { litt.addCountCondToHavingCondition(snCount, countCond); }
-	if (includeReReads) { litt.getColumn("dr")->usedInQuery = true; }
-	litt.getColumns(columns, ColumnsDataKind::width, true);  // In case -c option is used!
-
-	SelectQuery query(litt);
-	query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
-	query.addAuxTables();
-	query.addWhere();
-	query.add("GROUP BY " + std::string(litt.getColumn(snGroupBy)->name));
-	query.addHaving();
-	query.addOrderBy();
-	runSelectQuery(query);
-}
-
-void listAuthorBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads) 
-{
-	listBookCounts(litt, countCond, includeReReads, "abc", "nn.35.abc", "ai");
-}
-
-void listGenreBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
-{
-	listBookCounts(litt, countCond, includeReReads, "gbc", "ge.35.gbc", "gi");
-}
-
-void listSourceBookCounts(Litt const & litt, std::string const & countCond, bool includeReReads)
-{
-	listBookCounts(litt, countCond, includeReReads, "sbc", "so.35.sbc", "soid");
-}
-
-void listBooksReadPerDate(Litt const & litt, std::string countCond)
-{
-	if (countCond.empty()) countCond = "2";
-
-	// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
-	#define calcDRTimeWindow "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end"
-
-	SelectQuery query(litt);
-	const char* from = "Books INNER JOIN DatesRead USING(BookID) INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)";
-	query.initSelect("dr.bt.ln.fn", from, "dr.bt");
-	query.add("WHERE " calcDRTimeWindow " IN");
-	query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead WHERE \"Date Read\" > \"2001-10\")");
-	query.add("  GROUP BY CalcDR");
-	query.add("  HAVING " + litt.parseCountCondition("Count(CalcDR)", countCond) + ")");
-	if (!litt.whereCondition.empty()) {
-		query.add(" AND " + litt.whereCondition);
-	}
-	query.addOrderBy();
-	runSelectQuery(query);
-
-	#undef calcDRTimeWindow
-}
-
-std::string quote(std::string const & str)
-{
-	return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
-}
-
-unsigned colWidth(std::string const & str) 
-{
-	auto const w = str.length();
-	return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
-}
-
-struct PeriodColumn {
-	std::string const definition;
-	std::string const name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
-
-	PeriodColumn(std::string d, std::string const & n) : 
-		definition(std::move(d)), name(quote(n))
+	void runOutputQuery(OutputQuery& query)
 	{
-	}
+		std::string sql = query.getSql();
+		auto& litt = query.litt;
+		auto& output = litt.m_output;
 
-	unsigned colWidth() const { return ::colWidth(name); }
-};
-
-std::vector<PeriodColumn> getPeriodColumns(Litt const & litt, int fromActionArgIndex)
-{
-	std::vector<PeriodColumn> res;
-	auto width = 0u;
-	for (int i = fromActionArgIndex; ; ) {
-		auto def = litt.arg(i++);
-		if (def.empty()) {
-			break;
+		if (litt.showQuery) {
+			output.write(sql); output.write('\n');
+			output.flush();
+			return;
 		}
-		auto name = litt.arg(i++);
-		if (name.empty()) {
-			throw std::invalid_argument(std::string("No name for def: ") + def);
+
+		litt.rowCount = 0;
+		int res = sqlite3_exec(litt.m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
+		if (res == SQLITE_OK && litt.displayMode == DisplayMode::htmldoc) {
+			output.write("</table>\n</body>\n</html>\n");
 		}
-		width = std::max(width, name.length());
-		res.push_back({ def, name });
-	}
-	for (auto const & pc : res) {
-		printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
-	}
-	return res;
-}
+		output.flushNoThrow();
+		if (res != SQLITE_OK) {
+			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(litt.m_conn.get())));
+		}
 
-void listBooksReadPerPeriod(
-	Litt const & litt,
-	std::string const& periodDef,
-	std::string        period,
-	std::string const& cond,
-	std::vector<PeriodColumn> const& columns)
-{
-	period = quote(period);
-	SelectQuery q(litt);
-	q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
-	for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
-	litt.appendToWhereCondition(LogOp_AND, litt.getWherePredicate("dr.gt.2002"));
-	auto whereCondStart = litt.whereCondition;
-
-	q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
-	q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
-	q.add("   (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
-	q.add("    FROM Books");
-	q.addAuxTables(IJF_DefaultsOnly, 4);
-	q.add("    WHERE " + litt.whereCondition + ")");
-	q.add("  GROUP BY " + period);
-	q.add(" ) Main");
-
-	for (auto& c : columns) {
-	// We don't update the having condition, it should be same for all columns and not included in col defs.
-	litt.whereCondition = whereCondStart;
-	litt.appendToWhereCondition(LogOp_AND, litt.getWherePredicate(c.definition));
-	q.add(" LEFT OUTER JOIN");
-	q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
-	q.add("    (SELECT Books.BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
-	q.add("     FROM Books");
-	q.addAuxTables(IJF_DefaultsOnly, 5);
-	q.add("     WHERE " + litt.whereCondition + ")");
-	q.add("  GROUP BY " + period);
-	if (!litt.havingCondition.empty()) { 
-	q.add("  HAVING " + litt.havingCondition);
-	}
-	q.add(" )");
-	q.add(" USING(" + period + ")");
+		if (litt.showNumberOfRows) {
+			printf("\n# = %i\n", litt.rowCount);
+		}
 	}
 
-	if (!cond.empty() && cond != WildCardStr) {
-	q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WildCardStr));
+	void runSingleTableOutputCmd(const char* defColumns, const char* table, const char* defOrderBy)
+	{
+		OutputQuery query(*this);
+		query.initSelect(defColumns, table, defOrderBy);
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
 	}
-	q.add(" ORDER BY " + period);
-	runSelectQuery(q);
-}
 
-using namespace Input;
-
-void addAuthor(Litt const & litt)
-{
-	auto ln = input("Enter the last name"); if (ln.empty()) return;
-	auto fn = input("Enter the first name"); if (fn.empty()) return;
-	if ('y' == ask("yn", fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
-		printf("Adding!\n");
+	void runListData(const char* defColumns, const char* defOrderBy, InnerJoinFor ijf = IJF_DefaultsOnly)
+	{
+		OutputQuery query(*this);
+		query.initSelect(defColumns, "Books", defOrderBy);
+		query.addAuxTables(ijf);
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
 	}
-}
 
-void addGenre(Litt const & litt)
-{
-	auto name = input("Enter genre name"); if (name.empty()) return;
-	if ('y' == ask("yn", fmt("Add genre '%s'", name.c_str()))) {
-		printf("Adding!\n");
+	void listAuthors(std::string const & action, std::string const & ln, std::string const & fn)
+	{
+		addActionWhereCondition("ln", ln);
+		addActionWhereCondition("fn", fn);
+		if (action == "a") {
+			runSingleTableOutputCmd("ai.ln.fn", "Authors", "ai");
+		}
+		else {
+			runListData("bi.ln.fn.bt.dr.so.ge", "ln.fn.dr.bi");
+		}
 	}
-}
 
-void addSeries(Litt const & litt)
-{
-	auto name = input("Enter series name"); if (name.empty()) return;
-	if ('y' == ask("yn", fmt("Add series '%s'", name.c_str()))) {
-		printf("Adding!\n");
+	void listBooks()
+	{
+		addActionWhereCondition("bt", 0);
+		if (action == "b") {
+			runSingleTableOutputCmd("bi.bt.100", "Books", "bi");
+		}
+		else {
+			runListData("bi.nn.bt.dr.so.ge", "dr.bi.ln.fn.bt");
+		}
 	}
-}
 
-void addBook(Litt const & litt)
-{
-	auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
-	auto title       = std::string();
-	auto dateRead    = std::string(); // !!! current NNNN-NN-NN !!!
-	auto sourceId    = EmptyId;
-	auto genreId     = EmptyId;
-	auto origtitle   = std::string(); 
-	auto lang        = char(0);
-	auto owns        = false;
-	auto boughtEbook = false;
-	auto seriesId    = EmptyId;
-	auto seriesPart  = std::string(); // !!!! should be int!
-enterBook:
-	for (size_t aindex = 0; ; ++aindex) {
-		IdValue aid = EmptyId;
-		input(aid, "Enter AuthorId", optional, [&](std::string const & str) { 
-			litt.resetWhere(); listAuthors(litt, "a", str + WildCardStr, ""); 
+	void listSeries(std::string const & action, std::string const & series)
+	{
+		addActionWhereCondition("se", series);
+		if (action == "s") {
+			runSingleTableOutputCmd("si.se", "Series", "si");
+		}
+		else {
+			runListData("se.sp.bt.dr.bi.ln.fn", "se.sp.dr.bi", IJF_Series);
+		}
+	}
+
+	void listGenres(std::string const & action, std::string const & genre)
+	{
+		addActionWhereCondition("ge", genre);
+		if (action == "g") {
+			runSingleTableOutputCmd("gi.ge", "Genres", "ge");
+		}
+		else {
+			runListData("bi.bt.ge.dr.nn", "dr.bi.bt");
+		}
+	}
+
+	void listOriginalTitles()
+	{
+		addActionWhereCondition("ot", 0);
+		runListData("bi.nn.ot.bt.dr.so.20.ge", "ot.dr.bi.ln.fn.bt", IJF_OrigTitle);
+	}
+
+	void listStories()
+	{
+		addActionWhereCondition("st", 0);
+		runListData("bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
+	}
+
+	void listSources(std::string const & action, std::string const & sourceName)
+	{
+		addActionWhereCondition("so", sourceName);
+		if (action == "so") {
+			runSingleTableOutputCmd("soid.so", "Sources", "so");
+		}
+		else {
+			runListData("dr.so.50.bt.30.ln.fn", "so");
+		}
+	}
+
+	void listRereads()
+	{
+		OutputQuery query(*this);
+		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
+		query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", SelectOption::distinct);
+		query.add("INNER JOIN Books USING(BookID)");
+		query.addAuxTables();
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
+	void listSametitle()
+	{
+		OutputQuery query(*this);
+		const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
+		query.initSelect("bi.bt.ng.btc", from, "bt.bi", SelectOption::distinct);
+		query.add("INNER JOIN Books USING(Title)");
+		query.addAuxTables();
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
+	void listBookCounts(std::string const & countCond, bool includeReReads, 
+		const char* snCount, const char* columns, const char* snGroupBy)
+	{
+		if (!countCond.empty()) { addCountCondToHavingCondition(snCount, countCond); }
+		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
+		getColumns(columns, ColumnsDataKind::width, true);  // In case -c option is used!
+
+		OutputQuery query(*this);
+		query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
+		query.addAuxTables();
+		query.addWhere();
+		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->name));
+		query.addHaving();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
+	void listAuthorBookCounts(std::string const & countCond, bool includeReReads) 
+	{
+		listBookCounts(countCond, includeReReads, "abc", "nn.35.abc", "ai");
+	}
+
+	void listGenreBookCounts(std::string const & countCond, bool includeReReads)
+	{
+		listBookCounts(countCond, includeReReads, "gbc", "ge.35.gbc", "gi");
+	}
+
+	void listSourceBookCounts(std::string const & countCond, bool includeReReads)
+	{
+		listBookCounts(countCond, includeReReads, "sbc", "so.35.sbc", "soid");
+	}
+
+	void listBooksReadPerDate(std::string countCond)
+	{
+		if (countCond.empty()) countCond = "2";
+
+		// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
+		#define calcDRTimeWindow "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end"
+
+		OutputQuery query(*this);
+		query.initSelect("dr.bt.ln.fn", "Books", "dr.bt"); 
+		getColumn("dr")->usedInQuery = true; // in case of -c!
+		query.addAuxTables();
+		query.add("WHERE " calcDRTimeWindow " IN");
+		query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead WHERE \"Date Read\" > \"2001-10\")");
+		query.add("  GROUP BY CalcDR");
+		query.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
+		if (!whereCondition.empty()) {
+		query.add(" AND " + whereCondition);
+		}
+		query.addOrderBy();
+		runOutputQuery(query);
+
+		#undef calcDRTimeWindow
+	}
+
+	struct PeriodColumn {
+		std::string const definition;
+		std::string const name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
+
+		PeriodColumn(std::string d, std::string const & n) : 
+			definition(std::move(d)), name(quote(n))
+		{
+		}
+
+		unsigned colWidth() const { return Utils::colWidth(name); }
+	};
+
+	std::vector<PeriodColumn> getPeriodColumns(int fromActionArgIndex)
+	{
+		std::vector<PeriodColumn> res;
+		auto width = 0u;
+		for (int i = fromActionArgIndex; ; ) {
+			auto def = arg(i++);
+			if (def.empty()) {
+				break;
+			}
+			auto name = arg(i++);
+			if (name.empty()) {
+				throw std::invalid_argument(std::string("No name for def: ") + def);
+			}
+			width = std::max(width, name.length());
+			res.push_back({ def, name });
+		}
+		for (auto const & pc : res) {
+			printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
+		}
+		return res;
+	}
+
+	void listBooksReadPerPeriod(
+		std::string const& periodDef,
+		std::string        period,
+		std::string const& cond,
+		std::vector<PeriodColumn> const& columns)
+	{
+		period = quote(period);
+		OutputQuery q(*this);
+		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
+		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
+		q.initColumnWidths();
+		appendToWhereCondition(LogOp_AND, getWherePredicate("dr.gt.2002"));
+		auto whereCondStart = whereCondition;
+
+		q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
+		q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
+		q.add("   (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+		q.add("    FROM Books");
+		q.addAuxTables(IJF_DefaultsOnly, 4);
+		q.add("    WHERE " + whereCondition + ")");
+		q.add("  GROUP BY " + period);
+		q.add(" ) Main");
+
+		for (auto& c : columns) {
+		// We don't update the having condition, it should be same for all columns and not included in col defs.
+		whereCondition = whereCondStart;
+		appendToWhereCondition(LogOp_AND, getWherePredicate(c.definition));
+		q.add(" LEFT OUTER JOIN");
+		q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
+		q.add("    (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+		q.add("     FROM Books");
+		q.addAuxTables(IJF_DefaultsOnly, 5);
+		q.add("     WHERE " + whereCondition + ")");
+		q.add("  GROUP BY " + period);
+		if (!havingCondition.empty()) { 
+		q.add("  HAVING " + havingCondition);
+		}
+		q.add(" )");
+		q.add(" USING(" + period + ")");
+		}
+
+		if (!cond.empty() && cond != WildCardStr) {
+		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WildCardStr));
+		}
+		q.add(" ORDER BY " + period);
+		runOutputQuery(q);
+	}
+
+	int executeSql(std::string const& userSql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr)
+	{
+		auto encSql = encodeSqlFromInput(userSql);
+		if (showQuery) {
+			m_output.write(encSql); m_output.write('\n'); m_output.flush();
+			return 0;
+		}
+
+		int res = sqlite3_exec(m_conn.get(), encSql.c_str(), callback, callBackData, nullptr);
+		if (res != SQLITE_OK) {
+			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
+		}
+
+		return sqlite3_changes(m_conn.get());
+	}
+
+	IdValue executeInsert(std::string const& userSql)
+	{
+		executeSql(userSql);
+		return sqlite3_last_insert_rowid(m_conn.get());
+	}
+
+	void executeInsert(std::string const& userSql, const char* idName)
+	{
+		auto id = executeInsert(userSql);
+		printf("Added with %s %llu\n", idName, id);
+	}
+
+	std::vector<std::string> selectRowValue(std::string const& userSql)
+	{
+		std::vector<std::string> res;
+		auto callback = [](void *pArg, int argc, char **argv, char **azColName) -> int {
+			auto res = static_cast<std::vector<std::string>*>(pArg);
+			res->assign(argv, argv + argc);
+			return 0;
+		};
+		executeSql(userSql, callback, &res);
+		return res;
+	}
+
+	std::string selectSingleValue(std::string const& userSql, const char* valueName)
+	{
+		auto res = selectRowValue(userSql);
+		if (res.empty()) {
+			throw std::runtime_error(fmt("Could not find %s", valueName));
+		}
+		return res[0];
+	}
+
+	void addAuthor()
+	{
+		auto ln = input("Enter the last name"); if (ln.empty()) return;
+		auto fn = input("Enter the first name");
+		if (confirm(fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
+			executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)",
+				escSqlVal(ln).c_str(), escSqlVal(fn).c_str()), "AuthorID");
+		}
+	}
+
+	void addGenre()
+	{
+		auto name = input("Enter genre name"); if (name.empty()) return;
+		if (confirm(fmt("Add genre '%s'", name.c_str()))) {
+			executeInsert(fmt("INSERT INTO Genres (Genre) VALUES(%s)", 
+				escSqlVal(name).c_str()), "GenreID");
+		}
+	}
+
+	void addSeries()
+	{
+		auto name = input("Enter series name"); if (name.empty()) return;
+		if (confirm(fmt("Add series '%s'", name.c_str()))) {
+			executeInsert(fmt("INSERT INTO Series (Series) VALUES(%s)", 
+				escSqlVal(name).c_str()), "SeriesID");
+		}
+	}
+
+	void addBook()
+	{
+		SYSTEMTIME st{}; GetSystemTime(&st);
+		auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
+		auto title       = std::string();
+		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+		auto sourceId    = EmptyId;
+		auto genreId     = EmptyId;
+		auto origtitle   = std::string(); 
+		auto lang        = 0;
+		auto owns        = false;
+		auto boughtEbook = false;
+		auto seriesId    = EmptyId;
+		auto seriesPart  = std::string();
+	enterBook:
+		for (size_t aindex = 0; ; ++aindex) {
+			IdValue aid = EmptyId;
+			input(aid, "Enter AuthorID", optional, [&](std::string const & str) { 
+				resetWhere(); listAuthors("a", str + WildCardStr, ""); 
+			});
+			if (aid == EmptyId) {
+				break;
+			}
+			auto story = input("Story name (optional)");
+			if (aindex <= authors.size()) { 
+				authors.reserve((aindex + 1) * 2); authors.resize(aindex + 1); 
+			}
+			authors[aindex] = std::make_tuple(aid, story);
+		}
+		if (authors.empty()) {
+			return;
+		}
+		input(title, "Book title", required);
+		input(dateRead, "Date read", required);
+		input(sourceId, "Book SourceID", required, [&](std::string const & str) { 
+			resetWhere(); listSources("so", WildCardStr+str+WildCardStr); 
 		});
-		if (aid == EmptyId) {
-			break;
+		input(genreId, "Book GenreID", required, [&](std::string const & str) { 
+			resetWhere(); listGenres("g", WildCardStr+str+WildCardStr); 
+		});
+		input(origtitle, "Original title (optional)", optional);
+		lang = ask("es", "Language"); auto langVal = (lang == 'e' ? "en" : "sv");
+		owns = (confirm("Own book"));
+		boughtEbook = (confirm("Bought ebook"));
+		input(seriesId, "SeriesID", optional, [&](std::string const & str) { 
+			resetWhere(); listSeries("s", WildCardStr+str+WildCardStr); 
+		});
+		if (seriesId != EmptyId) {
+			input(seriesPart, "Part in series", required);
 		}
-		auto story = input("Story name (optional)");
-		if (aindex <= authors.size()) { 
-			authors.reserve((aindex + 1) * 2); authors.resize(aindex + 1); 
+	
+
+		for (auto& a : authors) printf("%llu - %s\n", std::get<0>(a), std::get<1>(a).c_str());
+	}
+
+	void addBookToSeries(IdValue bookId, IdValue seriesId, int part)
+	{
+		auto bt = fromUtf8(selectSingleValue(fmt("SELECT Title FROM Books WHERE BookId = %llu", bookId), "BookID"));
+		auto s  = fromUtf8(selectSingleValue(fmt("SELECT Series FROM Series WHERE SeriesId = %llu", seriesId), "SeriesID"));
+		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %i", 
+			bt.c_str(), bookId, s.c_str(), seriesId, part))) {
+			executeInsert(fmt("PRAGMA foreign_keys = ON;"
+				" INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\")"
+				" VALUES(%llu,%llu,%i)", bookId, seriesId, part), "BookSeries");
 		}
-		authors[aindex] = std::make_tuple(aid, story);
-	}
-	if (authors.empty()) {
-		return;
 	}
 
-	input(title, "Book title", required);
-	input(dateRead, "Date read", required);
-	input(sourceId, "Book SourceId", required, [&](std::string const & str) { 
-		litt.resetWhere(); listSources(litt, "so", WildCardStr+str+WildCardStr); 
-	});
-	input(genreId, "Book GenreId", required, [&](std::string const & str) { 
-		litt.resetWhere(); listGenres(litt, "g", WildCardStr+str+WildCardStr); 
-	});
-	input(origtitle, "Original title (optional)", optional);
-	lang = ask("es", "Language"); auto langVal = (lang == 'e' ? "en" : "sv");
-	owns = ('y' == ask("yn", "Own book"));
-	boughtEbook = ('y' == ask("yn", "Bought ebook"));
-	input(seriesId, "SeriesID", optional, [&](std::string const & str) { 
-		litt.resetWhere(); listSeries(litt, "s", WildCardStr+str+WildCardStr); 
-	});
-	if (seriesId != EmptyId) {
-		input(seriesPart, "Part in series", required);
-	}
+	void setBookGenre(IdValue bookId, std::string const& gcmd, IdValue genreId)
+	{
+		auto bt = selectSingleValue(fmt("SELECT Title FROM Books WHERE BookId=%llu", bookId), "BookID");
+		auto genre = (gcmd == "c" || gcmd == "d") 
+			? selectSingleValue(fmt("SELECT Genre FROM Genres WHERE GenreId=%llu", genreId), "GenreID")
+			: "";
+		int changes = 0;
 
-
-
-	for (auto& a : authors) printf("%llu - %s\n", std::get<0>(a), std::get<1>(a).c_str());
-
-}
-
-void addBookToSeries(Litt const & litt, IdValue bookId, IdValue seriesId, int part)
-{
-	//auto bt = litt.getValue("SELECT Title FROM Books WHERE BookId = " + bookId);
-	//auto s  = litt.getValue("Series" FROM Series WHERE SeriesId = " + seriesId);
-	std::string bt="The Fires of Heaven", s="Wheel of Time";
-		
-	if ('y' == ask("yn", fmt("Add '%s'(%llu) to '%s'(%llu) as part %i", bt.c_str(), bookId, s.c_str(), seriesId, part))) {
-		auto sql = fmt(
-			"PRAGMA foreign_keys = ON;"  
-			" INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\")"
-			" VALUES(%llu,%llu,%i)", bookId, seriesId, part);
-
-		printf("Adding! %s\n", sql.c_str());
-	}
-}
-
-void setBookGenre(Litt const & litt)
-{
-}
-
-void setBookDateRead(Litt const & litt)
-{
-}
-
-int main(int argc, char **argv)
-{
-	try {
-		if (argc <= 1) {
-			return showHelp();
+		if (gcmd == "a" || gcmd == "c") {
+			IdValue newGenreId = EmptyId;
+			input(newGenreId, "New GenreID for book", optional, [&](std::string const & str) {
+				resetWhere(); listGenres("g", WildCardStr + str + WildCardStr);
+			});
+			if (newGenreId == EmptyId) return;
+			auto newGenre = selectSingleValue(fmt("SELECT Genre FROM Genres WHERE GenreId=%llu", newGenreId), "GenreID");
+			if (gcmd == "c") {
+				if (confirm(fmt("Change genre '%s' to '%s' for '%s'",
+					fromUtf8(genre).c_str(), fromUtf8(newGenre).c_str(), fromUtf8(bt).c_str()))) {
+					changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
+						newGenreId, bookId, genreId));
+				}
+			}
+			else {
+				if (confirm(fmt("Add genre '%s' to '%s'", fromUtf8(newGenre).c_str(), fromUtf8(bt).c_str()))) {
+					changes = executeSql(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu)",
+						newGenreId, bookId));
+				}
+			}
+		}
+		else if (gcmd == "d") {
+			if (confirm(fmt("Remove genre '%s' from '%s'", fromUtf8(genre).c_str(), fromUtf8(bt).c_str()))) {
+					changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+						bookId, genreId));
+			}
+		}
+		else {
+			throw std::invalid_argument("Invalid genre-cmd: " + gcmd);
 		}
 
-		Litt litt;
-		parseCommandLine(argc, argv, litt);
+		printf("Updated %i rows\n", changes);
+	}
 
-		auto const & action = litt.action;
+	void setBookDateRead()
+	{
+		// !!!
+	}
+
+	void executeAction() 
+	{
 		if (action == "h") {
 			showHelp(true);
 		}
 		else if (action == "a" || action == "aa") {
-			listAuthors(litt, action, litt.arg(0), litt.arg(1));
+			listAuthors(action, arg(0), arg(1));
 		}
 		else if (action == "b" || action == "bb") {
-			listBooks(litt);
+			listBooks();
 		}
 		else if (action == "s" || action == "ss") {
-			listSeries(litt, action, litt.arg(0));
+			listSeries(action, arg(0));
 		}
 		else if (action == "g" || action == "gg") {
-			listGenres(litt, action, litt.arg(0));
+			listGenres(action, arg(0));
 		}
 		else if (action == "ot") {
-			listOriginalTitles(litt);
+			listOriginalTitles();
 		}
 		else if (action == "st") {
-			listStories(litt);
+			listStories();
 		}
 		else if (action == "so" || action == "soo") {
-			listSources(litt, action, litt.arg(0));
+			listSources(action, arg(0));
 		}
 		else if (action == "rereads") {
-			listRereads(litt);
+			listRereads();
 		}
 		else if (action == "sametitle") {
-			listSametitle(litt);
+			listSametitle();
 		}
 		else if (action == "abc") {
-			listAuthorBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
+			listAuthorBookCounts(arg(0), arg(1) == "1");
 		}
 		else if (action == "gbc") {
-			listGenreBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
+			listGenreBookCounts(arg(0), arg(1) == "1");
 		}
 		else if (action == "sbc") {
-			listSourceBookCounts(litt, litt.arg(0), litt.arg(1) == "1");
+			listSourceBookCounts(arg(0), arg(1) == "1");
 		}
 		else if (action == "brd") {
-			listBooksReadPerDate(litt, litt.arg(0));
+			listBooksReadPerDate(arg(0));
 		}
 		else if (action == "brwd") {
-			listBooksReadPerPeriod(litt, "%w", "Weekday", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+			listBooksReadPerPeriod("%w", "Weekday", arg(0, WildCardStr), getPeriodColumns(1));
 		}
 		else if (action == "brm") {
-			listBooksReadPerPeriod(litt, "%Y-%m", "Year-Month", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+			listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WildCardStr), getPeriodColumns(1));
 		}
 		else if (action == "bry") {
-			listBooksReadPerPeriod(litt, "%Y", "Year", litt.arg(0, WildCardStr), getPeriodColumns(litt, 1));
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WildCardStr), getPeriodColumns(1));
 		}
 		else if (action == "brp") {
-			listBooksReadPerPeriod(litt, litt.arg(0), litt.arg(1), litt.arg(2, WildCardStr), getPeriodColumns(litt, 3));
+			listBooksReadPerPeriod(arg(0), arg(1), arg(2, WildCardStr), getPeriodColumns(3));
 		}
 		else if (action == "brym") {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
@@ -1719,7 +1815,7 @@ int main(int argc, char **argv)
 				char def[10]; sprintf_s(def, "dr.*-%02d-*", m);
 				monthColumns.push_back({ std::string(def), std::string(months[m-1]) });
 			}
-			listBooksReadPerPeriod(litt, "%Y", "Year", litt.arg(0, WildCardStr), monthColumns);
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WildCardStr), monthColumns);
 		}
 		else if (action == "brmy") {
 			SYSTEMTIME st{}; GetSystemTime(&st);
@@ -1728,36 +1824,51 @@ int main(int argc, char **argv)
 				char def[10]; sprintf_s(def, "dr.%04d-*", y);
 				yearColumns.push_back({ def, std::to_string(y) });
 			}
-			listBooksReadPerPeriod(litt, "%m", "Month", litt.arg(0, WildCardStr), yearColumns);
+			listBooksReadPerPeriod("%m", "Month", arg(0, WildCardStr), yearColumns);
 		}
 		else if (action == "add-a" || action == "adda") {
-			addAuthor(litt);
+			addAuthor();
 		}
 		else if (action == "add-g" || action == "addg") {
-			addGenre(litt);
+			addGenre();
 		}
 		else if (action == "add-s" || action == "adds") {
-			addSeries(litt);
+			addSeries();
 		}
 		else if (action == "add-b" || action == "addb") {
-			addBook(litt);
+			addBook();
 		}
-		else if (action == "b2s") {
-			auto bid  = litt.idarg(0, "bookId");
-			auto sid  = litt.idarg(1, "seriesId");
-			auto part = litt.intarg(2, "part");
-			addBookToSeries(litt, bid, sid, part);
+		else if (action == "b2s" || action == "btos") {
+			auto bid  = idarg(0, "bookId");
+			auto sid  = idarg(1, "seriesId");
+			auto part = intarg(2, "part");
+			addBookToSeries(bid, sid, part);
 		}
 		else if (action == "set-g" || action == "setg") {
-			setBookGenre(litt);
+			auto bid = idarg(0, "bookId");
+			auto gcmd = arg(1, "a");
+			auto gid = (gcmd == "a" ? EmptyId : idarg(2, "genreId"));
+			setBookGenre(bid, gcmd, gid);
 		}
 		else if (action == "set-dr" || action == "setdr") {
-			setBookDateRead(litt);
+			setBookDateRead();
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
 		}
+	}
+}; // Litt
 
+int main(int argc, char **argv)
+{
+	try {
+		if (argc <= 1) {
+			showHelp();
+		}
+		else {
+			Litt litt(argc, argv);
+			litt.executeAction();
+		}
 		return 0;
 	}
 	catch (std::exception& ex) {
