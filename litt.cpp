@@ -1,6 +1,10 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
+               This also worked on oldlitt, but that was only because it ignored errors from individual rows (because
+               it was running by piping to sqlite shell), and it still showed error messages.
+ * 2017-06-01: Input methods now complete and somewhat tested too! Many improvements compared to oldlitt!
  * 2017-05-29: Added listSourceBookcounts (sbc)
  * 2017-05-29: abc and gbc now supports generic where conditions!
  * 2017-05-29: Added HTML and tabs display output modes. Decided to skip csv and line modes.
@@ -17,11 +21,6 @@ Changelog:
  * Previous:   Refer to the litt.btm changelog.
 
 **********************************************************************************************************************/
-// on conflict rollback!
-// add del and other modify commands as well later on after inserts and sets are done! in case an invalid genre is added for example. use foreign keys then....
-// error handling of all API calls!
-// decide whether to add the actions that run defined VIEWs. If not remove from help. (Can be done in columns mode by setting col size by col name + 2 and also size of first row)
-// would be nice with litt state that does not change from query to query when reusing list methods for input actions!
 
 #include "stdafx.h"
 
@@ -70,10 +69,13 @@ R"(
    two "brd lite"                   (Lists dates with two or more books read)
    rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
    sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
+   titlestory                       (Lists books with same title as a story)
+   samestory                        (Lists stories with same title - but different authors)
+   dupstory                         (Lists stories with same title and same author)
    
    b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
    
-   set-dr <BookID>                  (Add, Change or Delete DateRead for a book)
+   set-dr <BookID> [C|D CurGenreID] (Add, Change or Delete 'date read' for a book. Need to specify current dr for C and D)
    set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
 
    h                                (Show more extensive help)
@@ -148,8 +150,8 @@ namespace LittConstants
 {
 	const char*   DefDbName   = "litt.sqlite";
 	const char    OptDelim    = '.';
-	const char    WildCard    = '*';
-	const char*   WildCardStr = "*";
+	const char    Wc          = '*';
+	const char*   WcS         = "*";
 	const char*   LogOp_OR    = " OR ";
 	const char*   LogOp_AND   = " AND ";
 	const IdValue EmptyId     = 0;
@@ -245,10 +247,7 @@ namespace Utils
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 
-	#pragma warning(push)
-	#pragma warning(disable:4996)
-
-	std::string fmt(_Printf_format_string_ const char* fmtStr, ... )
+	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ... )
 	{
 		va_list ap;
 		va_start(ap, fmtStr);
@@ -261,8 +260,6 @@ namespace Utils
 		va_end(ap);
 		return res;
 	}
-
-	#pragma warning(pop)
 
 	std::string readLine() {
 		std::string str; 
@@ -295,7 +292,7 @@ namespace Utils
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
 	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
 	{
-		std::replace(str.begin(), str.end(), WildCard, '%');
+		std::replace(str.begin(), str.end(), Wc, '%');
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
@@ -310,74 +307,116 @@ namespace Input
 		required = 0x01,
 	};
 
+	void prefillInput(std::string const& str)
+	{
+		std::vector<INPUT_RECORD> recs(str.size());
+		for (size_t i = 0; i < str.size(); ++i) {
+			recs[i].EventType = KEY_EVENT;
+			recs[i].Event.KeyEvent.bKeyDown = true;
+			recs[i].Event.KeyEvent.wRepeatCount = 1;
+			recs[i].Event.KeyEvent.dwControlKeyState = 0;
+			recs[i].Event.KeyEvent.wVirtualKeyCode = 0;
+			recs[i].Event.KeyEvent.wVirtualScanCode = 0;
+			recs[i].Event.KeyEvent.uChar.AsciiChar = str[i];
+		}
+		DWORD out = 0;
+		if (!WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), recs.data(), recs.size(), &out)) {
+			fprintf(stderr, "Failed to prefill input! Error code = %i", GetLastError());
+		}
+	}
+
 	std::string input(const char* prompt)
 	{
 		printf("%s: ", prompt);
 		return readLine();
 	}
 
-	void input(std::string& value, const char* prompt, InputOptions options = none)
+	void input(std::string& value, const char* prompt, InputOptions options = none, const char* regex = nullptr)
 	{
+		if (!value.empty()) { prefillInput(value); }
 	retry:
-		if (value.empty()) {
-			printf("%s: ", prompt);
-		}
-		else {
-			printf("%s [%s]: ", prompt, value.c_str());
-		}
-		auto str = readLine();
-		if (!str.empty()) { 
-			value = str; 
-		}
+		value = input(prompt);
 		if (value.empty() && (required & (unsigned)options)) {
 			goto retry;
 		}
+		if (!value.empty() && regex != nullptr) {
+			if (!std::regex_match(value, std::regex(regex))) {
+				prefillInput(value);
+				goto retry;
+			}
+		}
 	}
 
-	void input(IdValue& value, const char* prompt, InputOptions options = none, std::function<void(std::string const &)> onInvalidInput = nullptr)
+	void input(
+		IdValue& value, 
+		const char* prompt,
+		std::function<std::string(IdValue)> checkId,
+		InputOptions options = none, 
+		std::function<void(std::string const &)> onInvalidInput = nullptr)
 	{
+		if (value != EmptyId) { prefillInput(std::to_string(value)); }
 	retry:
-		if (value == EmptyId) {
-			printf("%s: ", prompt);
+		auto str = input(prompt);
+		value = EmptyId;
+		if (!str.empty()) {
+			toIdValue(str, value);
+			if (value == EmptyId && onInvalidInput) {
+				onInvalidInput(str);
+				goto retry;
+			}
+			else try { checkId(value); } catch (std::exception&) {
+				printf("Invalid id for this column, please try again.\n");
+				goto retry;
+			}
 		}
-		else {
-			printf("%s [%llu]: ", prompt, value);
-		}
-		auto str = readLine();
-		if (!str.empty() && toIdValue(str, value)) {}
-
-		if (!str.empty() && value == EmptyId && onInvalidInput) {
-			onInvalidInput(str);
-			goto retry;
-		}
-
 		if (value == EmptyId && (required & (unsigned)options)) {
 			goto retry;
 		}
 	}
 
-	int ask(const char* validAnswers, std::string const & question)
+	int ask(const char* validAnswers, std::string const & question, int& defAndRes )
 	{
+		bool foundDefault = false;
 		int const len = strlen(validAnswers);
 		printf("%s? (", question.c_str());
 		for (int i = 0; i < len; ++i) {
 			if (i != 0) putc('/', stdout);
-			putc(validAnswers[i], stdout);
+			int c = tolower(validAnswers[i]);
+			if (defAndRes == c) {
+				foundDefault = true;
+				c = toupper(c);
+			}
+			putc(c, stdout);
 		}
 		printf(") ");
 
+		int answer;
 		for (;;) {
-			int answer = tolower(_getch());
-			if (strchr(validAnswers, answer) != NULL) {
-				printf("\n");
-				return answer;
+			answer = tolower(_getch());
+			if (answer == '\r' && foundDefault) {
+				answer = defAndRes;
+				goto done;
 			}
-		} 
+			for (int i = 0; i < len; ++i) {
+				if (answer == tolower(validAnswers[i])) {
+					defAndRes = answer;
+					goto done;
+				}
+			}
+		}
+	done:
+		printf("\n"); _ASSERT(answer == defAndRes);
+		return answer;
+	}
+
+	int ask(const char* validAnswers, std::string const & question)
+	{
+		int def = 0; return ask(validAnswers, question, def);
 	}
 
 	bool confirm(std::string const & question)
 	{
-		return 'y' == ask("yn", question);
+		int def = 0; return 'y' == ask("yn", question, def);
 	}
 }
 using namespace Input;
@@ -469,7 +508,7 @@ class Output {
 	int    const m_consoleCodePage = GetConsoleCP();
 	HANDLE const m_stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
 	bool   const m_stdOutIsConsole = m_stdOutHandle != NULL && GetConsoleMode(m_stdOutHandle, &m_consoleMode);
-	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far... but uses 10K to avoid analyse warning.... !!! test at home if diff to 20k
+	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far... but uses 10K to avoid analyse warning..
 	// 32K seems to work at home with Win10 though, but not at work with Win7.
 	static const int BufSize = 1000*10;
 	mutable char m_buffer[BufSize];
@@ -496,7 +535,7 @@ public:
 	void write(char c) const
 	{
 		if (BufSize == m_bufPos) {
-			flush();
+			flush(); Assert(m_bufPos == 0);
 		}
 		m_buffer[m_bufPos++] = c;
 	}
@@ -587,7 +626,9 @@ public:
 			}
 		}
 		else {
-			fwrite(str, len, 1, stdout);
+			if (fwrite(str, len, 1, stdout) != 1) {
+				throw std::runtime_error("fwrite failed to write all data, errno: " + std::to_string(errno));
+			}
 		}
 	}
 
@@ -632,10 +673,10 @@ public:
 	mutable std::string whereCondition;
 	mutable std::string havingCondition;
 
-	std::string action;
-	std::vector<std::string> actionArgs;
-	std::string actionRightWildCard;
-	std::string actionLeftWildCard;
+	std::string m_action;
+	std::vector<std::string> m_actionArgs;
+	std::string m_actionRightWildCard;
+	std::string m_actionLeftWildCard;
 
 	mutable int rowCount = 0; // The number of rows printed so far.
 
@@ -759,24 +800,24 @@ public:
 				}
 			}
 			else {
-				if (action.empty()) {
-					action = argv[i]; 
-					if (action.length() >= 2 && action[0] == WildCard) {
-						actionLeftWildCard = WildCardStr;
-						action.erase(0, 1);
+				if (m_action.empty()) {
+					m_action = argv[i];
+					if (m_action.length() >= 2 && m_action[0] == Wc) {
+						m_actionLeftWildCard = WcS;
+						m_action.erase(0, 1);
 					}
-					if (action.length() >= 2 && action.back() == WildCard) {
-						actionRightWildCard = WildCardStr; 
-						action.pop_back();
+					if (m_action.length() >= 2 && m_action.back() == Wc) {
+						m_actionRightWildCard = WcS;
+						m_action.pop_back();
 					}
 				}
 				else {
-					actionArgs.push_back(argv[i]);
+					m_actionArgs.push_back(argv[i]);
 				}
 			}
 		}
 
-		if (action.empty()) {
+		if (m_action.empty()) {
 			throw std::invalid_argument("Action argument(s) missing");
 		}
 
@@ -798,6 +839,7 @@ public:
 		if (res != SQLITE_OK) {
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 		}
+		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
 	}
 
 	ColumnInfo const* getColumn(std::string const & sn) const
@@ -961,7 +1003,7 @@ public:
 	void addActionWhereCondition(const char* sn, std::string const & cond) const
 	{
 		if (!cond.empty()) {
-			auto val = actionLeftWildCard + cond + actionRightWildCard;
+			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
 			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
@@ -975,14 +1017,14 @@ public:
 
 	std::string arg(unsigned index, const char* def = "") const 
 	{
-		return index < actionArgs.size() ? actionArgs[index] : def;
+		return index < m_actionArgs.size() ? m_actionArgs[index] : def;
 	}
 
 	IdValue idarg(unsigned index, const char* name) const 
 	{
 		IdValue val;
-		return index < actionArgs.size() 
-			? (toIdValue(actionArgs[index], val)
+		return index < m_actionArgs.size()
+			? (toIdValue(m_actionArgs[index], val)
 				? val
 				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
@@ -991,8 +1033,8 @@ public:
 	int intarg(unsigned index, const char* name) const 
 	{
 		int val;
-		return index < actionArgs.size() 
-			? (toInt(actionArgs[index], val)
+		return index < m_actionArgs.size()
+			? (toInt(m_actionArgs[index], val)
 				? val
 				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
@@ -1000,8 +1042,8 @@ public:
 
 	std::string argm(unsigned index, const char* name) const 
 	{
-		return index < actionArgs.size() 
-			? actionArgs[index] 
+		return index < m_actionArgs.size()
+			? m_actionArgs[index]
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
@@ -1243,6 +1285,13 @@ public:
 		auto& output = litt.m_output;
 		try {
 			if (litt.rowCount == 0) {
+				if (query.columnWidths.empty() && litt.displayMode == DisplayMode::column) {
+					for (int i = 0; i < argc; ++i) {
+						query.columnWidths.push_back(std::min(30u,
+							std::max(strlen(azColName[i]), strlen(argv[i]))));
+					}
+				}
+
 				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
 					// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
 					// detect the utf-8 encoding depending on the actual output.
@@ -1256,7 +1305,7 @@ public:
 						"<html>\n"
 						"<head>\n"
 						"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
-						"<title>" + litt.action + "</title>\n"
+						"<title>" + litt.m_action + "</title>\n"
 						"</head>\n"
 						"<body>\n"
 						"<table>\n";
@@ -1273,7 +1322,7 @@ public:
 						output.write('\n');
 					}
 				}
-			}
+			} // if (litt.rowCount == 0) {
 			litt.outputRow(query, false, argc, argv);
 			++litt.rowCount;
 			return 0;
@@ -1346,7 +1395,7 @@ public:
 	void listBooks()
 	{
 		addActionWhereCondition("bt", 0);
-		if (action == "b") {
+		if (m_action == "b") {
 			runSingleTableOutputCmd("bi.bt.100", "Books", "bi");
 		}
 		else {
@@ -1421,6 +1470,44 @@ public:
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
+	}
+
+	void listTitlestory()
+	{
+		OutputQuery query(*this);
+		query.initColumnWidths();
+		query.initSelectBare(SelectOption::distinct);
+		query.a(
+R"(B.BookID as BookID, case when B.AuthorID = S.AuthorID then 'YES' else '-' end as Dupe,B.Title as Title, 
+B."Date read" as 'Book read', B.Source as 'Book source', B."First Name" || ' ' || B."Last Name" as 'Book Author',
+S.BookID as 'Story BID', S."First Name" || ' ' || S."Last Name" as 'Story Author', S.Title as 'Story book title',  
+S."Date read" as 'Story read', S.Source as 'Story source'
+FROM (Books 
+INNER JOIN AuthorBooks USING(BookID)
+INNER JOIN Authors USING(AuthorID)
+INNER JOIN DatesRead USING(BookID)
+INNER JOIN Sources USING(SourceID)
+) AS B 
+JOIN (Stories 
+INNER JOIN AuthorBooks USING(AuthorID)
+INNER JOIN Authors USING(AuthorID)
+INNER JOIN Books USING(BookID)
+INNER JOIN DatesRead USING(BookID)
+INNER JOIN Sources USING(SourceID)
+) as S 
+WHERE B.Title = S.Story
+ORDER BY Dupe DESC, B."Date read"
+)");
+		runOutputQuery(query);
+
+		// !!! more columns output -- see LITT TODO
+		/*OutputQuery query(*this);
+		appendToWhereCondition(LogOp_AND, "Title IN (Select Story FROM Stories)");
+		query.initSelect("bi.bt.nn", "Books", "bt.bi");
+		query.addAuxTables();
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);*/
 	}
 
 	void listBookCounts(std::string const & countCond, bool includeReReads, 
@@ -1554,17 +1641,17 @@ public:
 		q.add(" USING(" + period + ")");
 		}
 
-		if (!cond.empty() && cond != WildCardStr) {
-		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WildCardStr));
+		if (!cond.empty() && cond != WcS) {
+		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WcS));
 		}
 		q.add(" ORDER BY " + period);
 		runOutputQuery(q);
 	}
 
-	int executeSql(std::string const& userSql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr)
+	int executeSql(std::string const& userSql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr, bool enableShowQuery = true) const
 	{
 		auto encSql = encodeSqlFromInput(userSql);
-		if (showQuery) {
+		if (enableShowQuery && showQuery) {
 			m_output.write(encSql); m_output.write('\n'); m_output.flush();
 			return 0;
 		}
@@ -1577,31 +1664,33 @@ public:
 		return sqlite3_changes(m_conn.get());
 	}
 
-	IdValue executeInsert(std::string const& userSql)
+	IdValue executeInsert(std::string const& userSql) const
 	{
 		executeSql(userSql);
 		return sqlite3_last_insert_rowid(m_conn.get());
 	}
 
-	void executeInsert(std::string const& userSql, const char* idName)
+	void executeInsert(std::string const& userSql, const char* idName) const
 	{
 		auto id = executeInsert(userSql);
-		printf("Added with %s %llu\n", idName, id);
+		if (id != EmptyId) {
+			printf("Added with %s %llu\n", idName, id);
+		}
 	}
 
-	std::vector<std::string> selectRowValue(std::string const& userSql)
+	std::vector<std::string> selectRowValue(std::string const& userSql) const
 	{
 		std::vector<std::string> res;
-		auto callback = [](void *pArg, int argc, char **argv, char **azColName) -> int {
-			auto res = static_cast<std::vector<std::string>*>(pArg);
-			res->assign(argv, argv + argc);
+		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
+		{
+			static_cast<std::vector<std::string>*>(pArg)->assign(argv, argv + argc);
 			return 0;
 		};
-		executeSql(userSql, callback, &res);
+		executeSql(userSql, callback, &res, false);
 		return res;
 	}
 
-	std::string selectSingleValue(std::string const& userSql, const char* valueName)
+	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
 	{
 		auto res = selectRowValue(userSql);
 		if (res.empty()) {
@@ -1610,13 +1699,27 @@ public:
 		return res[0];
 	}
 
+	std::string selDV(std::string const& sql, const char* idName) const
+	{
+		return fromUtf8(selectSingleValue(sql, idName)); // Convert to console code page, it will be displayed there.
+	}
+	std::string selTitle(IdValue id) { return selDV(fmt("SELECT Title FROM Books WHERE BookID=%llu", id), "BookID"); }
+	std::string selSeries(IdValue id) { return selDV(fmt("SELECT Series FROM Series WHERE SeriesID=%llu", id), "SeriesID"); }
+	std::string selSource(IdValue id) { return selDV(fmt("SELECT Source FROM Sources WHERE SourceID=%llu", id), "SourceID"); }
+	std::string selGenre(IdValue id) { return selDV(fmt("SELECT Genre FROM Genres WHERE GenreID=%llu", id), "GenreID"); }
+	std::string selAuthor(IdValue id) { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
+
+	#define SEL_F(selFunc) [&](IdValue id) { return selFunc(id); }
+	#define LIST_F(listCodeUsingStringArg) [&](std::string const & s) { resetWhere(); listCodeUsingStringArg; }
+	#define ESC_S(str) escSqlVal(str).c_str()
+
 	void addAuthor()
 	{
 		auto ln = input("Enter the last name"); if (ln.empty()) return;
 		auto fn = input("Enter the first name");
 		if (confirm(fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
 			executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)",
-				escSqlVal(ln).c_str(), escSqlVal(fn).c_str()), "AuthorID");
+				ESC_S(ln), ESC_S(fn)), "AuthorID");
 		}
 	}
 
@@ -1625,7 +1728,7 @@ public:
 		auto name = input("Enter genre name"); if (name.empty()) return;
 		if (confirm(fmt("Add genre '%s'", name.c_str()))) {
 			executeInsert(fmt("INSERT INTO Genres (Genre) VALUES(%s)", 
-				escSqlVal(name).c_str()), "GenreID");
+				ESC_S(name)), "GenreID");
 		}
 	}
 
@@ -1634,7 +1737,7 @@ public:
 		auto name = input("Enter series name"); if (name.empty()) return;
 		if (confirm(fmt("Add series '%s'", name.c_str()))) {
 			executeInsert(fmt("INSERT INTO Series (Series) VALUES(%s)", 
-				escSqlVal(name).c_str()), "SeriesID");
+				ESC_S(name)), "SeriesID");
 		}
 	}
 
@@ -1647,113 +1750,212 @@ public:
 		auto sourceId    = EmptyId;
 		auto genreId     = EmptyId;
 		auto origtitle   = std::string(); 
-		auto lang        = 0;
-		auto owns        = false;
-		auto boughtEbook = false;
+		auto lang        = int('e');
+		auto owns        = int('n');
+		auto boughtEbook = int('n');
 		auto seriesId    = EmptyId;
 		auto seriesPart  = std::string();
 	enterBook:
-		for (size_t aindex = 0; ; ++aindex) {
-			IdValue aid = EmptyId;
-			input(aid, "Enter AuthorID", optional, [&](std::string const & str) { 
-				resetWhere(); listAuthors("a", str + WildCardStr, ""); 
-			});
+		for (size_t i = 0;;) {
+			auto aid = (i < authors.size()) ? std::get<0>(authors[i]) : EmptyId;
+			input(aid, "AuthorID",  SEL_F(selAuthor), optional, LIST_F(listAuthors("a", s + WcS, "")));
 			if (aid == EmptyId) {
-				break;
+				if (i < authors.size()) { authors.erase(authors.begin() + i); }
+				if (i < authors.size() || (i == 0 && !title.empty())) continue; else break;
 			}
-			auto story = input("Story name (optional)");
-			if (aindex <= authors.size()) { 
-				authors.reserve((aindex + 1) * 2); authors.resize(aindex + 1); 
-			}
-			authors[aindex] = std::make_tuple(aid, story);
+			auto story = (i < authors.size()) ? std::get<1>(authors[i]) : std::string();
+			input(story, "Story name (optional)");
+			if (authors.size() <= i) { authors.reserve((i+1)*2); authors.resize(i + 1); }
+			authors[i++] = std::make_tuple(aid, story);
 		}
-		if (authors.empty()) {
+		if (authors.empty() && title.empty()) {
 			return;
 		}
 		input(title, "Book title", required);
-		input(dateRead, "Date read", required);
-		input(sourceId, "Book SourceID", required, [&](std::string const & str) { 
-			resetWhere(); listSources("so", WildCardStr+str+WildCardStr); 
-		});
-		input(genreId, "Book GenreID", required, [&](std::string const & str) { 
-			resetWhere(); listGenres("g", WildCardStr+str+WildCardStr); 
-		});
+		input(dateRead, "Date read", required, R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)");
+		input(sourceId, "Book SourceID", SEL_F(selSource), required, LIST_F(listSources("so", WcS + s + WcS))); 
+		input(genreId, "Book GenreID", SEL_F(selGenre), required, LIST_F(listGenres("g", WcS + s + WcS))); 
 		input(origtitle, "Original title (optional)", optional);
-		lang = ask("es", "Language"); auto langVal = (lang == 'e' ? "en" : "sv");
-		owns = (confirm("Own book"));
-		boughtEbook = (confirm("Bought ebook"));
-		input(seriesId, "SeriesID", optional, [&](std::string const & str) { 
-			resetWhere(); listSeries("s", WildCardStr+str+WildCardStr); 
-		});
+		ask("es", "Language", lang);
+		ask("yn", "Own book", owns);
+		ask("yn", "Bought ebook", boughtEbook);
+		input(seriesId, "SeriesID (optional)", SEL_F(selSeries), optional, LIST_F(listSeries("s", WcS + s + WcS))); 
 		if (seriesId != EmptyId) {
 			input(seriesPart, "Part in series", required);
 		}
-	
 
-		for (auto& a : authors) printf("%llu - %s\n", std::get<0>(a), std::get<1>(a).c_str());
+		auto langStr = [](int l) { return l == 'e' ? "en" : "sv"; };
+		auto ynStr = [](int yn) { return yn == 'y' ? "yes" : "no"; };
+		auto ynInt = [](int yn) { return yn == 'y' ? 1     : 0;    };
+
+		printf("\n");
+		bool hasWidth = false; unsigned width = 0; again:
+		for (auto const& a : authors) {
+			auto const& aid = std::get<0>(a);
+			auto const& story = std::get<1>(a);
+			auto name = selAuthor(aid);
+			width = std::max(width, name.length());
+			if (hasWidth) printf("%-4llu - %-*s%s%s\n", aid, width, name.c_str(), (story.empty() ?  "" : "  :  "), story.c_str());
+		}
+		if (!hasWidth) { hasWidth = true; goto again; }
+		printf("\n");
+		printf("Title          : %s\n", title.c_str());
+		printf("Date read      : %s\n", dateRead.c_str());
+		printf("Genre          : %s\n", selGenre(genreId).c_str());
+		printf("Source         : %s\n", selSource(sourceId).c_str());
+		printf("Language       : %s\n", langStr(lang));
+		printf("Owned          : %s\n", ynStr(owns));
+		printf("Bought e-book  : %s\n", ynStr(boughtEbook));
+		if (!origtitle.empty()) {
+		printf("Original title : %s\n", origtitle.c_str()); }
+		if (seriesId != EmptyId) {
+		printf("Series         : Part %s of %s\n", seriesPart.c_str(), selSeries(seriesId).c_str()); }
+		printf("\n");
+
+		switch (ask("yne", "Add book")) {
+			case 'y': break;
+			case 'n': return;
+			case 'e': default: goto enterBook;
+		}
+		// Add it!
+		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
+		auto addedAuthorBooks = std::map<std::string,bool>();
+
+		std::string sql = "BEGIN TRANSACTION;\n";
+		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\") VALUES(%s,%s,'%s',%i,%i);\n",
+			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook)));
+		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
+			bid, ESC_S(dateRead), sourceId));
+		sql.append(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, genreId));
+		for (auto const& a : authors) {
+			auto const aid = std::get<0>(a);
+			auto abKey = std::to_string(aid) + "_" + bookId;
+			if (addedAuthorBooks.find(abKey) == addedAuthorBooks.end()) {
+				addedAuthorBooks[abKey] = true;
+				sql.append(fmt("INSERT INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%s);\n", aid, bid));
+			}
+			auto const& story = std::get<1>(a);
+			if (!story.empty()) {
+				sql.append(fmt("INSERT INTO Stories (StoryID,AuthorID,BookID,Story) VALUES(NULL,%llu,%s,%s);\n",
+					aid, bid, ESC_S(story)));
+			}
+		}
+		if (!origtitle.empty()) {
+			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\") VALUES(%s,%s);\n",
+				bid, ESC_S(origtitle)));
+		}
+		if (seriesId != EmptyId) {
+			sql.append(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%s,%llu,%s);\n",
+				bid, seriesId, escSqlVal(seriesPart, true).c_str()));
+		}
+		sql.append("COMMIT TRANSACTION");
+		
+		try {
+			executeSql(sql);
+			printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+		}
+		catch (std::exception& ex) {
+			printf("Failed to add book: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), sql.c_str());
+			executeSql("ROLLBACK TRANSACTION");
+			if (confirm("Retry")) {
+				goto enterBook;
+			}
+		}
 	}
 
 	void addBookToSeries(IdValue bookId, IdValue seriesId, int part)
 	{
-		auto bt = fromUtf8(selectSingleValue(fmt("SELECT Title FROM Books WHERE BookId = %llu", bookId), "BookID"));
-		auto s  = fromUtf8(selectSingleValue(fmt("SELECT Series FROM Series WHERE SeriesId = %llu", seriesId), "SeriesID"));
 		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %i", 
-			bt.c_str(), bookId, s.c_str(), seriesId, part))) {
-			executeInsert(fmt("PRAGMA foreign_keys = ON;"
-				" INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\")"
-				" VALUES(%llu,%llu,%i)", bookId, seriesId, part), "BookSeries");
+				selTitle(bookId).c_str(), bookId, 
+				selSeries(seriesId).c_str(), seriesId, part))) {
+			executeInsert(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%i)", 
+				bookId, seriesId, part), "BookSeries");
 		}
 	}
 
-	void setBookGenre(IdValue bookId, std::string const& gcmd, IdValue genreId)
+	void setBookGenre(IdValue bookId, std::string const& cmd, IdValue genreId)
 	{
-		auto bt = selectSingleValue(fmt("SELECT Title FROM Books WHERE BookId=%llu", bookId), "BookID");
-		auto genre = (gcmd == "c" || gcmd == "d") 
-			? selectSingleValue(fmt("SELECT Genre FROM Genres WHERE GenreId=%llu", genreId), "GenreID")
-			: "";
-		int changes = 0;
+		auto const bt = selTitle(bookId);
+		auto const genre = (cmd == "c" || cmd == "d") ? selGenre(genreId) : "";
+		int changes = -1;
 
-		if (gcmd == "a" || gcmd == "c") {
+		if (cmd == "a" || cmd == "c") {
 			IdValue newGenreId = EmptyId;
-			input(newGenreId, "New GenreID for book", optional, [&](std::string const & str) {
-				resetWhere(); listGenres("g", WildCardStr + str + WildCardStr);
-			});
+			input(newGenreId, "New GenreID", SEL_F(selGenre), optional, LIST_F(listGenres("g", WcS + s + WcS)));
 			if (newGenreId == EmptyId) return;
-			auto newGenre = selectSingleValue(fmt("SELECT Genre FROM Genres WHERE GenreId=%llu", newGenreId), "GenreID");
-			if (gcmd == "c") {
-				if (confirm(fmt("Change genre '%s' to '%s' for '%s'",
-					fromUtf8(genre).c_str(), fromUtf8(newGenre).c_str(), fromUtf8(bt).c_str()))) {
+			auto const newG = selGenre(newGenreId);
+			if (cmd == "c") {
+				if (confirm(fmt("Change '%s' => '%s' for '%s'", genre.c_str(), newG.c_str(), bt.c_str()))) {
 					changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
 						newGenreId, bookId, genreId));
 				}
 			}
 			else {
-				if (confirm(fmt("Add genre '%s' to '%s'", fromUtf8(newGenre).c_str(), fromUtf8(bt).c_str()))) {
+				if (confirm(fmt("Add '%s' to '%s'", newG.c_str(), bt.c_str()))) {
 					changes = executeSql(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu)",
-						newGenreId, bookId));
+						bookId, newGenreId));
 				}
 			}
 		}
-		else if (gcmd == "d") {
-			if (confirm(fmt("Remove genre '%s' from '%s'", fromUtf8(genre).c_str(), fromUtf8(bt).c_str()))) {
-					changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
-						bookId, genreId));
+		else if (cmd == "d") {
+			if (confirm(fmt("Remove '%s' from '%s'", genre.c_str(), bt.c_str()))) {
+				changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+					bookId, genreId));
 			}
 		}
 		else {
-			throw std::invalid_argument("Invalid genre-cmd: " + gcmd);
+			throw std::invalid_argument("Invalid genre-cmd: " + cmd);
 		}
 
-		printf("Updated %i rows\n", changes);
+		if (changes != -1) { printf("Updated %i rows\n", changes); }
 	}
 
-	void setBookDateRead()
+	void setBookDateRead(IdValue bookId, std::string const& cmd, std::string const& dr)
 	{
-		// !!!
+		auto const bt = selTitle(bookId);
+		int changes = -1;
+
+		if (cmd == "c" || cmd == "d") { // Check that is exists.
+			selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", 
+				bookId, ESC_S(dr)), fmt("date read %s for bookId %llu", dr.c_str(), bookId).c_str());
+		}
+
+		if (cmd == "a" || cmd == "c") {
+			std::string newDr;
+			input(newDr, "New date read", optional); // Don't check regex here, might want to add old date.
+			if (newDr.empty()) return;
+			if (cmd == "c") {
+				if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), bt.c_str()))) {
+					changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
+						ESC_S(newDr), bookId, ESC_S(dr)));
+				}
+			}
+			else { // add
+				IdValue newSourceId = EmptyId;
+				input(newSourceId, "SourceID", SEL_F(selSource), required, LIST_F(listSources("so", WcS + s + WcS)));
+				auto source = selSource(newSourceId);
+				if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", newDr.c_str(), source.c_str(), bt.c_str()))) {
+					changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)",
+						bookId, ESC_S(newDr), newSourceId));
+				}
+			}
+		}
+		else if (cmd == "d") {
+			if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), bt.c_str()))) {
+				changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
+					bookId, ESC_S(dr)));
+			}
+		}
+		else {
+			throw std::invalid_argument("Invalid dateRead-cmd: " + cmd);
+		}
+
+		if (changes != -1) { printf("Updated %i rows\n", changes); }
 	}
 
 	void executeAction() 
 	{
+		auto const& action = m_action;
 		if (action == "h") {
 			showHelp(true);
 		}
@@ -1784,6 +1986,15 @@ public:
 		else if (action == "sametitle") {
 			listSametitle();
 		}
+		else if (action == "titlestory") {
+			listTitlestory();
+		}
+		else if (action == "samestory") {
+			// !!!
+		}
+		else if (action == "dupstory") {
+			// !!!
+		}
 		else if (action == "abc") {
 			listAuthorBookCounts(arg(0), arg(1) == "1");
 		}
@@ -1797,16 +2008,16 @@ public:
 			listBooksReadPerDate(arg(0));
 		}
 		else if (action == "brwd") {
-			listBooksReadPerPeriod("%w", "Weekday", arg(0, WildCardStr), getPeriodColumns(1));
+			listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1));
 		}
 		else if (action == "brm") {
-			listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WildCardStr), getPeriodColumns(1));
+			listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1));
 		}
 		else if (action == "bry") {
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WildCardStr), getPeriodColumns(1));
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1));
 		}
 		else if (action == "brp") {
-			listBooksReadPerPeriod(arg(0), arg(1), arg(2, WildCardStr), getPeriodColumns(3));
+			listBooksReadPerPeriod(arg(0), arg(1), arg(2, WcS), getPeriodColumns(3));
 		}
 		else if (action == "brym") {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
@@ -1815,7 +2026,7 @@ public:
 				char def[10]; sprintf_s(def, "dr.*-%02d-*", m);
 				monthColumns.push_back({ std::string(def), std::string(months[m-1]) });
 			}
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WildCardStr), monthColumns);
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
 		}
 		else if (action == "brmy") {
 			SYSTEMTIME st{}; GetSystemTime(&st);
@@ -1824,7 +2035,7 @@ public:
 				char def[10]; sprintf_s(def, "dr.%04d-*", y);
 				yearColumns.push_back({ def, std::to_string(y) });
 			}
-			listBooksReadPerPeriod("%m", "Month", arg(0, WildCardStr), yearColumns);
+			listBooksReadPerPeriod("%m", "Month", arg(0, WcS), yearColumns);
 		}
 		else if (action == "add-a" || action == "adda") {
 			addAuthor();
@@ -1846,12 +2057,15 @@ public:
 		}
 		else if (action == "set-g" || action == "setg") {
 			auto bid = idarg(0, "bookId");
-			auto gcmd = arg(1, "a");
-			auto gid = (gcmd == "a" ? EmptyId : idarg(2, "genreId"));
-			setBookGenre(bid, gcmd, gid);
+			auto cmd = arg(1, "a");
+			auto gid = (cmd == "a" ? EmptyId : idarg(2, "genreId"));
+			setBookGenre(bid, cmd, gid);
 		}
 		else if (action == "set-dr" || action == "setdr") {
-			setBookDateRead();
+			auto bid = idarg(0, "bookId");
+			auto cmd = arg(1, "a");
+			auto dr = (cmd == "a" ? "" : argm(2, "dateRead"));
+			setBookDateRead(bid, cmd, dr);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);

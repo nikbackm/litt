@@ -24,9 +24,12 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
+#include <regex>
 
 #include "sqlite3.h"
 
-
-
-// TODO: reference additional headers your program requires here
+#ifdef _PREFAST_
+	#define Assert(x) __analysis_assume(!!(x))
+#else
+	#define Assert(x) _ASSERT(x)
+#endif
