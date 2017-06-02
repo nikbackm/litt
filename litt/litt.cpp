@@ -67,7 +67,6 @@ R"(
 	}
 	printf(
 R"(
-   two "brd lite"                   (Lists dates with two or more books read)
    rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
    sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
    samestory                        (Lists stories with same title - Shows duplicates)
