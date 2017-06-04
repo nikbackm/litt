@@ -703,7 +703,7 @@ public:
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
 			{"bt",   {"Title", 40 }},
-			{"dr",   {"\"Date read\"", 10 }},
+			{"dr",   {"\"Date Read\"", 10 }},
 			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
 			{"fn",   {"\"First Name\"",15 }},
 			{"ge",   {"Genre", 25 }},
