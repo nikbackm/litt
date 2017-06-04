@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-04: Added time range (diff smaller/greater) to consecutive row matching.
+               Added new sec (virtual) column containing "Date Read" as TotalSeconds (since 1970).
+			   Bug fix: Need to check for "dw.dwl.ti.sec" too when adding DatesRead in addAuxTables.
  * 2017-06-03: Added consecutive row matching according to user-selected criteria.
  * 2017-06-02: Added samestory and titlestory. Calculates column widths automatically if missing.
  * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
@@ -97,10 +100,11 @@ Options:
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
 
-    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]}+
+    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                     (Allows to specify column conditions for consecutive row matching.
                      If no regex is specified then matching is done by comparing against the
-                     previous row value of the column.)
+                     previous row value of the column.
+                     dlt/dgt matching only supported on "sec" column.)
     
     Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
 )"
@@ -133,7 +137,8 @@ Column short name values:
     ln,fn,lnl,fnl   - Last/First Name & length thereof
     nn/ng           - Full name/Aggregated full name(s) per book.
     gi,ge           - GenreID and Genre
-    dr/dg,dw,dwl,ti - Date read/Aggregated dates, DOW for Date read, DOW string, Time
+    dr/dg,dw,dwl,ti,sec
+                    - Date read/Aggregated dates, DOW for Date read, DOW string, Time, TotalSeconds
     own,la,beb      - Owned, Language, Bought Ebook
     st,stid         - Story,StoryID
     se,si,sp        - Series, SeriesID, Part in Series
@@ -187,6 +192,14 @@ namespace Utils
 		}
 		value = v;
 		return true;
+	}
+
+	bool toSecondsValue(std::string const & str, unsigned long long & value)
+	{
+		if (str[0] == '-' || str[0] == '\0') {
+			return false;
+		}
+		return toIdValue(str, value); // re-use!
 	}
 
 	void replaceAll(std::string& str, const std::string& from, const std::string& to) 
@@ -728,7 +741,8 @@ public:
 			{"dwl",  {"case cast (strftime('%w',\"Date Read\") as integer)"
 					  " when 0 then 'Sun' when 1 then 'Mon' when 2 then 'Tue' when 3 then 'Wed' when 4 then 'Thu' when 5 then 'Fri' when 6 then 'Sat' else '' end",
 					  5, ColumnType::text, "DoW" }},
-			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
+			{"ti",   {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
+			{"sec",  {"strftime('%s',\"Date Read\")", 11, ColumnType::numeric, "Timestamp" }},
 
 			// Some special-purpose virtual columns, these are not generally usable:
 
@@ -832,6 +846,15 @@ public:
 									col.matchMethod = (mm == "re!")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
 									col.re = std::regex(extVal.getNext());
+									extVal.getNext(colName);
+								}
+								if (mm == "dlt" || mm == "dgt") {
+									if (col.name != getColumn("sec")->labelName()) {
+										throw std::invalid_argument("Diff match not valid for column " + col.name);
+									}
+									col.matchMethod = (mm == "dlt")
+										? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
+									col.diff = extVal.nextInt();
 									extVal.getNext(colName);
 								}
 								else {
@@ -1244,7 +1267,7 @@ public:
 			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
 		
 
-			addIfColumns("dr.so",       indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("dr.dw.dwl.ti.sec.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
 			addIfColumns("dg",          indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
 			addIfColumns("fn.ln.nn.st", indent + "INNER JOIN AuthorBooks USING(BookID)");
@@ -1332,12 +1355,15 @@ public:
 		columnValue,
 		regEx,
 		regExNot,
+		diffLt,
+		diffGt,
 	};
 
 	struct ConsRowColumnInfo {
 		std::string        name;
 		ConsRowMatchMethod matchMethod;
 		std::regex         re;
+		int                diff;
 		mutable int        index;
 	};
 
@@ -1400,24 +1426,41 @@ public:
 			case ConsRowMatchMethod::regExNot:
 				reMatch = reMatch && !std::regex_match(val, col.re);
 				break;
+			case ConsRowMatchMethod::diffLt:
+			case ConsRowMatchMethod::diffGt:
+				if (cvMatch) {
+					int prevIndex = std::min(std::max(0, m_consMatched - 1), std::max(0, m_consRowMinCount - 2));
+					auto& prevVal = m_consRowBuffer[prevIndex][col.index];
+					unsigned long long cur=0, prev=0;
+					if (toSecondsValue(val, cur) && toSecondsValue(prevVal, prev)) {
+						if (col.matchMethod == ConsRowMatchMethod::diffLt) {
+							cvMatch = ((cur - prev) < col.diff);
+						}
+						else {
+							cvMatch = ((cur - prev) > col.diff);
+						}
+					}
+					else {
+						cvMatch = false;
+					}
+				}
+				break;
 			}
 		}
 		bool const consMatch = cvMatch && reMatch;
 
 		if (consMatch) {
 			++m_consMatched;
-			if (m_consMatched < m_consRowMinCount) {
-				consSetBufferRow(m_consMatched - 1, argv);
-			}
-			else {
-				if (m_consMatched == m_consRowMinCount && !(m_consRowMinCount == 1)) {
-					std::vector<char*> rChar(m_consRowBuffer[0].size());
-					for (auto const& r : m_consRowBuffer) {
-						std::transform(r.begin(), r.end(), rChar.begin(),
-							[](auto const& str) { return const_cast<char*>(str.c_str()); });
-						outputRow(query, false, rChar.size(), rChar.data());
-					}
+			if (m_consMatched == m_consRowMinCount && !(m_consRowMinCount == 1)) {
+				std::vector<char*> rChar(m_consRowBuffer[0].size());
+				for (auto const& r : m_consRowBuffer) {
+					std::transform(r.begin(), r.end(), rChar.begin(),
+						[](auto const& str) { return const_cast<char*>(str.c_str()); });
+					outputRow(query, false, rChar.size(), rChar.data());
 				}
+			}
+			consSetBufferRow(std::min(m_consMatched - 1, std::max(0, m_consRowMinCount - 2)), argv);
+			if (m_consMatched >= m_consRowMinCount) {
 				outputRow(query, false, argc, argv);
 			}
 		}
