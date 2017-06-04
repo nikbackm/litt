@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-03: Added consecutive row matching according to user-selected criteria.
  * 2017-06-02: Added samestory and titlestory. Calculates column widths automatically if missing.
  * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
                This also worked on oldlitt, but that was only because it ignored errors from individual rows (because
@@ -95,6 +96,11 @@ Options:
     -q              (Debug - dumps the SQLITE commands instead of producing results)
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
+
+    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]}+
+                    (Allows to specify column conditions for consecutive row matching.
+                     If no regex is specified then matching is done by comparing against the
+                     previous row value of the column.)
     
     Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
 )"
@@ -149,6 +155,7 @@ namespace LittConstants
 {
 	const char*   DefDbName   = "litt.sqlite";
 	const char    OptDelim    = '.';
+	const char    OptExtDelim = ':';
 	const char    Wc          = '*';
 	const char*   WcS         = "*";
 	const char*   LogOp_OR    = " OR ";
@@ -269,6 +276,16 @@ namespace Utils
 	std::string quote(std::string const & str)
 	{
 		return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
+	}
+
+	std::string unquote(std::string const & str)
+	{
+		auto res = str;
+		if (res.length() >= 2 && res.front() == '"' && res.back() == '"') {
+			res.erase(0, 1);
+			res.pop_back();
+		}
+		return res;
 	}
 
 	unsigned colWidth(std::string const & str) 
@@ -441,7 +458,7 @@ enum class ColumnSortOrder {
 // Note: All member value types are chosen/designed so that zero-init will set the desired default.
 struct ColumnInfo {
 	// These values are pre-configured:
-	char const* name; // Name or definition for column
+	char const* nameDef; // Name or definition for column
 	int         defWidth;
 	ColumnType  type;
 	char const* label; // optional, used when name does not refer to a direct table column.
@@ -451,7 +468,7 @@ struct ColumnInfo {
 	mutable int  overriddenWidth;
 	mutable bool usedInQuery;
 
-	const char* labelOrName() const { return label != nullptr ? label : name; }
+	const char* labelName() const { return label != nullptr ? label : nameDef; }
 
 	std::string getLikeArg(std::string val) const 
 	{ 
@@ -469,20 +486,21 @@ enum class ColumnsDataKind {
 };
 
 struct OptionParser {
-	std::stringstream ss;
-	const char* type;
-	OptionParser(std::string const & value, const char* type = "option")
-		: ss(value), type(type)
+	std::stringstream m_ss;
+	const char* const m_type;
+	const char        m_delim;
+	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
+		: m_ss(value), m_type(type), m_delim(delim)
 	{}
 
 	bool getNext(std::string& next)
 	{
-		return !!std::getline(ss, next, OptDelim);
+		return !!std::getline(m_ss, next, m_delim);
 	}
 	
 	__declspec(noreturn) void throwError() 
 	{
-		throw std::invalid_argument(fmt("Faulty %s value: %s", type, ss.str().c_str()));
+		throw std::invalid_argument(fmt("Faulty %s value: %s", m_type, m_ss.str().c_str()));
 	}
 
 	std::string getNext()
@@ -686,12 +704,12 @@ public:
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
 			{"bt",   {"Title", 40 }},
 			{"dr",   {"\"Date read\"", 10 }},
-			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, true }},
+			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
 			{"fn",   {"\"First Name\"",15 }},
 			{"ge",   {"Genre", 25 }},
 			{"gi",   {"GenreID", 8, ColumnType::numeric }},
 			{"ln",   {"\"Last Name\"",15 }},
-			{"ng",   {"\"Author(s)\"", 35, ColumnType::text, nullptr, true }},
+			{"ng",   {"\"Author(s)\"", 35, ColumnType::text, nullptr, false }},
 			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 20, ColumnType::text, "Author" }},
 			{"la",   {"Language", 4 }},
 			{"own",  {"Owned", 3, ColumnType::numeric }},
@@ -794,8 +812,41 @@ public:
 				case 'n': 
 					showNumberOfRows = true;
 					break;
+				case '-': { // Extended option 
+					OptionParser extVal(val, "extended option", OptExtDelim);
+					auto const extName = extVal.getNext();
+					if (extName == "cons") {
+						m_consRowMinCount = extVal.nextInt();
+						for (std::string colName = extVal.getNext(); ; ) {
+							auto colInfo = m_columnInfos.find(colName);
+							if (colInfo != m_columnInfos.end()) {
+								colName = unquote(colInfo->second.labelName());
+							}
+							ConsRowColumnInfo col;
+							col.name = colName; colName.clear();
+							col.index = -1; // Will be set when we get the first callback
+							col.matchMethod = ConsRowMatchMethod::columnValue;
+							std::string mm;
+							if (extVal.getNext(mm)) {
+								if (mm == "regex" || mm == "re" || mm == "re!") {
+									col.matchMethod = (mm == "re!")
+										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
+									col.re = std::regex(extVal.getNext());
+									extVal.getNext(colName);
+								}
+								else {
+									colName = mm; // use as name next iteration
+								}
+							}
+							m_consRowColumns.push_back(col);
+							if (colName.empty()) break;
+						};
+					}
+					else throw std::invalid_argument("Unrecognized extended option: " + extName);
+					}
+					break;
 				default:
-					throw std::invalid_argument(std::string("Invalid option: ") + argv[i]);
+					throw std::invalid_argument(std::string("Unrecognized option: ") + argv[i]);
 				}
 			}
 			else {
@@ -939,7 +990,7 @@ public:
 			val = col->getLikeArg(val);
 
 			std::string snCond;
-			std::string colName(col->labelOrName()); 
+			std::string colName(col->nameDef); 
 
 			if      (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
@@ -986,7 +1037,7 @@ public:
 
 	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
 	{
-		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->labelOrName(), countCond));
+		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->nameDef, countCond));
 	}
 
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
@@ -1005,7 +1056,7 @@ public:
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
-			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
+			appendToWhereCondition(LogOp_AND, std::string(col->nameDef) + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
@@ -1104,7 +1155,7 @@ public:
 					m_sstr << ",";
 				}
 				auto ci = selCols[i].first;
-				m_sstr << ci->name;
+				m_sstr << ci->nameDef;
 				if (ci->label != nullptr) {
 					m_sstr << " AS " << ci->label;
 				}
@@ -1220,7 +1271,7 @@ public:
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
-					m_sstr << (ci->labelOrName());
+					m_sstr << (ci->labelName());
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
@@ -1277,6 +1328,109 @@ public:
 		m_output.write('\n');
 	}
 
+	enum class ConsRowMatchMethod {
+		columnValue,
+		regEx,
+		regExNot,
+	};
+
+	struct ConsRowColumnInfo {
+		std::string        name;
+		ConsRowMatchMethod matchMethod;
+		std::regex         re;
+		mutable int        index;
+	};
+
+	int m_consRowMinCount = 0;
+	std::vector<ConsRowColumnInfo> m_consRowColumns;
+	mutable std::vector<std::vector<std::string>> m_consRowBuffer;
+	mutable int m_consMatched = 0;
+
+	bool consEnabled() const { return m_consRowMinCount > 0; }
+
+	void consInit(int argc, char **argv, char **azColName) const
+	{ _ASSERT(consEnabled());
+		m_consRowBuffer.resize(std::max(1, m_consRowMinCount - 1));
+		for (auto& row : m_consRowBuffer) {
+			row.resize(argc);
+		}
+
+		for (auto& col : m_consRowColumns) {
+			int j = 0;
+			for (; j < argc; ++j) {
+				if (col.name == azColName[j]) {
+					col.index = j;
+					break;
+				}
+			}
+			if (j == argc) {
+				throw std::invalid_argument("Could not find cons column " 
+					+ col.name + " in the output columns");
+			}
+		}
+		consSetBufferRow(0, argv);
+		m_consMatched = 0;
+	}
+
+	void consSetBufferRow(int index, char **argv) const
+	{
+		std::transform(argv, argv + m_consRowBuffer[index].size(), m_consRowBuffer[index].begin(),
+			[](char* val) { return val ? val : ""; });
+	}
+
+	void consOutputMatchedCount() const // OBS! This is mainly intended for use with column display mode.
+	{ 
+		if (m_consMatched >= m_consRowMinCount) {
+			m_output.write(fmt("\n# = %i\n\n", m_consMatched));
+		}
+	}
+
+	void consProcessRow(OutputQuery& query, int argc, char **argv) const
+	{ _ASSERT(consEnabled());
+		bool cvMatch = true, reMatch = true;
+		for (auto const& col : m_consRowColumns) {
+			auto val = argv[col.index] ? argv[col.index] : "";
+			switch (col.matchMethod) {
+			case ConsRowMatchMethod::columnValue:
+				cvMatch = cvMatch && (m_consRowBuffer[0][col.index] == val);
+				break;
+			case ConsRowMatchMethod::regEx:
+				reMatch = reMatch && std::regex_match(val, col.re);
+				break;
+			case ConsRowMatchMethod::regExNot:
+				reMatch = reMatch && !std::regex_match(val, col.re);
+				break;
+			}
+		}
+		bool const consMatch = cvMatch && reMatch;
+
+		if (consMatch) {
+			++m_consMatched;
+			if (m_consMatched < m_consRowMinCount) {
+				consSetBufferRow(m_consMatched - 1, argv);
+			}
+			else {
+				if (m_consMatched == m_consRowMinCount && !(m_consRowMinCount == 1)) {
+					std::vector<char*> rChar(m_consRowBuffer[0].size());
+					for (auto const& r : m_consRowBuffer) {
+						std::transform(r.begin(), r.end(), rChar.begin(),
+							[](auto const& str) { return const_cast<char*>(str.c_str()); });
+						outputRow(query, false, rChar.size(), rChar.data());
+					}
+				}
+				outputRow(query, false, argc, argv);
+			}
+		}
+		else {
+			consOutputMatchedCount();
+			consSetBufferRow(0, argv);
+			m_consMatched = reMatch ? 1 : 0;
+			if (m_consRowMinCount == 1 && reMatch) {
+				outputRow(query, false, argc, argv);
+			}
+		}
+	}
+
 	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName) 
 	{
 		auto& query = *static_cast<OutputQuery*>(pArg);
@@ -1287,7 +1441,7 @@ public:
 				if (litt.displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(30u,
-							std::max(strlen(azColName[i]), strlen(argv[i]))));
+							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
 					}
 				}
 
@@ -1321,8 +1475,17 @@ public:
 						output.write('\n');
 					}
 				}
+				if (litt.consEnabled()) {
+					litt.consInit(argc, argv, azColName);
+				}
 			} // if (litt.rowCount == 0) {
-			litt.outputRow(query, false, argc, argv);
+
+			if (litt.consEnabled()) {
+				litt.consProcessRow(query, argc, argv);
+			}
+			else {
+				litt.outputRow(query, false, argc, argv);
+			}
 			++litt.rowCount;
 			return 0;
 		}
@@ -1347,8 +1510,13 @@ public:
 
 		litt.rowCount = 0;
 		int res = sqlite3_exec(litt.m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
-		if (res == SQLITE_OK && litt.displayMode == DisplayMode::htmldoc) {
-			output.write("</table>\n</body>\n</html>\n");
+		if (res == SQLITE_OK) {
+			if (litt.displayMode == DisplayMode::htmldoc) {
+				output.write("</table>\n</body>\n</html>\n");
+			}
+			if (consEnabled()) {
+				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
+			}
 		}
 		output.flushNoThrow();
 		if (res != SQLITE_OK) {
@@ -1547,7 +1715,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
 		query.addAuxTables();
 		query.addWhere();
-		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->name));
+		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->nameDef));
 		query.addHaving();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -1617,12 +1785,13 @@ ORDER BY Dupe DESC, B."Date read")");
 			if (name.empty()) {
 				throw std::invalid_argument(std::string("No name for def: ") + def);
 			}
-			width = std::max(width, name.length());
 			res.push_back({ def, name });
+			width = std::max(width, res.back().name.length());
 		}
 		for (auto const & pc : res) {
 			printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
 		}
+		printf("\n");
 		return res;
 	}
 
@@ -1709,7 +1878,9 @@ ORDER BY Dupe DESC, B."Date read")");
 		std::vector<std::string> res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
-			static_cast<std::vector<std::string>*>(pArg)->assign(argv, argv + argc);
+			auto& res = *static_cast<std::vector<std::string>*>(pArg);
+			res.resize(argc);
+			std::transform(argv, argv + argc, res.begin(), [](char* v) { return v ? v : ""; });
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
