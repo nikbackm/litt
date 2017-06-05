@@ -1,9 +1,17 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
+               Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
+ * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
+               even if the column definition itself works as ORDER BY. So label should really only be used as the "AS" value
+               in SELECT. Also when referring to cons columns since cons only see the returned column names as it's done now.
+ * 2017-06-05: Allow to specify column width zero also for -s, already worked for -a and -c. Zero width useful for e.g. sec!
+               Also avoids printing the column at all when width = 0 (don't want the column separator shown then either!)
+               (Will still get an unneeded column separator if the first column is zero-width though)
  * 2017-06-04: Added time range (diff smaller/greater) to consecutive row matching.
                Added new sec (virtual) column containing "Date Read" as TotalSeconds (since 1970).
-			   Bug fix: Need to check for "dw.dwl.ti.sec" too when adding DatesRead in addAuxTables.
+               Bug fix: Need to check for "dw.dwl.ti.sec" too when adding DatesRead in addAuxTables.
  * 2017-06-03: Added consecutive row matching according to user-selected criteria.
  * 2017-06-02: Added samestory and titlestory. Calculates column widths automatically if missing.
  * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
@@ -34,7 +42,7 @@ void showHelp(bool showExtended = false)
 	printf(
 R"(Usage: LITT [<options>] action <action arguments>
 
-Supported actions:
+Actions:
    a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
    aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
    b   [<title>]                    (Lists all books matching the given title).
@@ -100,13 +108,13 @@ Options:
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
 
-    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]|[:dlt|dgt:<diffValue>]}+
-                    (Allows to specify column conditions for consecutive row matching.
-                     If no regex is specified then matching is done by comparing against the
-                     previous row value of the column.
-                     dlt/dgt matching only supported on "sec" column.)
-    
-    Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
+    --cons:<minRowCount>:{<colSnOrName>[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
+                    Specifies column conditions for consecutive output row matching.
+                    If no explicit method is specified then matching is done by comparing against the
+                    same column value of the previous row.
+                    The dlt/dgt diff matching is only supported for the "sec" column.)
+
+    For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
 	);
 	if (showExtended) {
@@ -128,7 +136,7 @@ bookCountCond and booksReadCond formats:
 DisplayMode values:
     col/column  Left-aligned columns (Specified or default widths are used)
     html        HTML table code
-	htmldoc     Full HTML document
+    htmldoc     Full HTML document
     list[:sep]  Values delimited by separator string, default is "|"
     tabs        Tab-separated values
 
@@ -143,7 +151,6 @@ Column short name values:
     st,stid         - Story,StoryID
     se,si,sp        - Series, SeriesID, Part in Series
     so,soid         - Source, SourceID
-
 )"
 		);
 	}
@@ -508,7 +515,36 @@ struct OptionParser {
 
 	bool getNext(std::string& next)
 	{
-		return !!std::getline(m_ss, next, m_delim);
+		if (m_ss.eof()) { return false; }
+
+		const int EscapeChar = '!';
+		bool escOn = false;
+
+		std::string str; char c;
+		while (m_ss.get(c)) {
+			if (c == EscapeChar) {
+				if (escOn) { str.push_back(EscapeChar); }
+				escOn = !escOn;
+			}
+			else if (c == m_delim) {
+				if (escOn) {
+					str.push_back(m_delim);
+					escOn = false;
+				}
+				else {
+					break; // delim found
+				}
+			}
+			else {
+				if (escOn) { throw std::invalid_argument("Illegal escape sequence"); }
+				str.push_back(c);
+			}
+		}
+		if (escOn) { throw std::invalid_argument("Incomplete escape sequence"); }
+		if (str.empty()) { throw std::invalid_argument("Empty option values not allowed"); }
+
+		next = std::move(str);
+		return true;
 	}
 	
 	__declspec(noreturn) void throwError() 
@@ -760,6 +796,8 @@ public:
 			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
 	{
+		for (auto& ci : m_columnInfos) { ci.second.overriddenWidth = -1; }
+
 		for (int i = 1; i < argc; ++i) {
 			if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
 				auto const opt = argv[i][1];
@@ -842,13 +880,13 @@ public:
 							col.matchMethod = ConsRowMatchMethod::columnValue;
 							std::string mm;
 							if (extVal.getNext(mm)) {
-								if (mm == "regex" || mm == "re" || mm == "re!") {
-									col.matchMethod = (mm == "re!")
+								if (mm == "regex" || mm == "re" || mm == "ren") {
+									col.matchMethod = (mm == "ren")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
 									col.re = std::regex(extVal.getNext());
 									extVal.getNext(colName);
 								}
-								if (mm == "dlt" || mm == "dgt") {
+								else if (mm == "dlt" || mm == "dgt") {
 									if (col.name != getColumn("sec")->labelName()) {
 										throw std::invalid_argument("Diff match not valid for column " + col.name);
 									}
@@ -1183,8 +1221,8 @@ public:
 					m_sstr << " AS " << ci->label;
 				}
 				if (litt.displayMode == DisplayMode::column) {
-					auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : selCols[i].second;
-					_ASSERT(width > 0);
+					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
+					_ASSERT(width >= 0);
 					columnWidths.push_back(width);
 				}
 			}
@@ -1265,7 +1303,6 @@ public:
 			
 			#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
 			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
-		
 
 			addIfColumns("dr.dw.dwl.ti.sec.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
@@ -1294,7 +1331,7 @@ public:
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
-					m_sstr << (ci->labelName());
+					m_sstr << (ci->nameDef);
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
@@ -1321,8 +1358,10 @@ public:
 			auto val = argv[i] ? argv[i] : "";
 			switch (displayMode) {
 			case DisplayMode::column:
-				if (i != 0) m_output.write(colSep);
-				m_output.writeUtf8Width(val, query.columnWidths[i]);
+				if (query.columnWidths[i] > 0) {
+					if (i != 0) m_output.write(colSep);
+					m_output.writeUtf8Width(val, query.columnWidths[i]);
+				}
 				break;
 			case DisplayMode::list:
 				if (i != 0) m_output.write(listSep);
@@ -1455,7 +1494,7 @@ public:
 				std::vector<char*> rChar(m_consRowBuffer[0].size());
 				for (auto const& r : m_consRowBuffer) {
 					std::transform(r.begin(), r.end(), rChar.begin(),
-						[](auto const& str) { return const_cast<char*>(str.c_str()); });
+						[](std::string const& str) { return const_cast<char*>(str.c_str()); });
 					outputRow(query, false, rChar.size(), rChar.data());
 				}
 			}
@@ -1511,9 +1550,11 @@ public:
 					litt.outputRow(query, true, argc, azColName);
 					if (litt.displayMode == DisplayMode::column) {
 						for (int i = 0; i < argc; ++i) {
-							if (i != 0) output.write(litt.colSep);
-							std::string underLine(query.columnWidths[i], '-');
-							output.write(underLine);
+							if (query.columnWidths[i] > 0) {
+								if (i != 0) output.write(litt.colSep);
+								std::string underLine(query.columnWidths[i], '-');
+								output.write(underLine);
+							}
 						}
 						output.write('\n');
 					}

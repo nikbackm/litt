@@ -1,6 +1,19 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself.
+               Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
+ * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
+               even if the column definition itself works as ORDER BY. So label should really only be used as the "AS" value
+               in SELECT. Also when referring to cons columns since cons only see the returned column names as it's done now.
+ * 2017-06-05: Allow to specify column width zero also for -s, already worked for -a and -c. Zero width useful for e.g. sec!
+               Also avoids printing the column at all when width = 0 (don't want the column separator shown then either!)
+               (Will still get an unneeded column separator if the first column is zero-width though)
+ * 2017-06-04: Added time range (diff smaller/greater) to consecutive row matching.
+               Added new sec (virtual) column containing "Date Read" as TotalSeconds (since 1970).
+               Bug fix: Need to check for "dw.dwl.ti.sec" too when adding DatesRead in addAuxTables.
+ * 2017-06-03: Added consecutive row matching according to user-selected criteria.
+ * 2017-06-02: Added samestory and titlestory. Calculates column widths automatically if missing.
  * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
                This also worked on oldlitt, but that was only because it ignored errors from individual rows (because
                it was running by piping to sqlite shell), and it still showed error messages.
@@ -29,7 +42,7 @@ void showHelp(bool showExtended = false)
 	printf(
 R"(Usage: LITT [<options>] action <action arguments>
 
-Supported actions:
+Actions:
    a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
    aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
    b   [<title>]                    (Lists all books matching the given title).
@@ -66,12 +79,10 @@ R"(
 	}
 	printf(
 R"(
-   two "brd lite"                   (Lists dates with two or more books read)
    rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
    sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
-   titlestory                       (Lists books with same title as a story)
-   samestory                        (Lists stories with same title - but different authors)
-   dupstory                         (Lists stories with same title and same author)
+   samestory                        (Lists stories with same title - Shows duplicates)
+   titlestory                       (Lists books with same title as a story - Shows duplicates)
    
    b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
    
@@ -96,8 +107,14 @@ Options:
     -q              (Debug - dumps the SQLITE commands instead of producing results)
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
-    
-    Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
+
+    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]|[:dlt|dgt:<diffValue>]}+
+                    Specifies column conditions for consecutive output row matching.
+                    If no explicit method is specified then matching is done by comparing against the
+                    same column value of the previous row.
+                    The dlt/dgt diff matching is only supported for the "sec" column.)
+
+    For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
 	);
 	if (showExtended) {
@@ -119,7 +136,7 @@ bookCountCond and booksReadCond formats:
 DisplayMode values:
     col/column  Left-aligned columns (Specified or default widths are used)
     html        HTML table code
-	htmldoc     Full HTML document
+    htmldoc     Full HTML document
     list[:sep]  Values delimited by separator string, default is "|"
     tabs        Tab-separated values
 
@@ -128,12 +145,12 @@ Column short name values:
     ln,fn,lnl,fnl   - Last/First Name & length thereof
     nn/ng           - Full name/Aggregated full name(s) per book.
     gi,ge           - GenreID and Genre
-    dr/dg,dw,dwl,ti - Date read/Aggregated dates, DOW for Date read, DOW string, Time
+    dr/dg,dw,dwl,ti,sec
+                    - Date read/Aggregated dates, DOW for Date read, DOW string, Time, TotalSeconds
     own,la,beb      - Owned, Language, Bought Ebook
     st,stid         - Story,StoryID
     se,si,sp        - Series, SeriesID, Part in Series
     so,soid         - Source, SourceID
-
 )"
 		);
 	}
@@ -150,6 +167,7 @@ namespace LittConstants
 {
 	const char*   DefDbName   = "litt.sqlite";
 	const char    OptDelim    = '.';
+	const char    OptExtDelim = ':';
 	const char    Wc          = '*';
 	const char*   WcS         = "*";
 	const char*   LogOp_OR    = " OR ";
@@ -181,6 +199,14 @@ namespace Utils
 		}
 		value = v;
 		return true;
+	}
+
+	bool toSecondsValue(std::string const & str, unsigned long long & value)
+	{
+		if (str[0] == '-' || str[0] == '\0') {
+			return false;
+		}
+		return toIdValue(str, value); // re-use!
 	}
 
 	void replaceAll(std::string& str, const std::string& from, const std::string& to) 
@@ -270,6 +296,16 @@ namespace Utils
 	std::string quote(std::string const & str)
 	{
 		return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
+	}
+
+	std::string unquote(std::string const & str)
+	{
+		auto res = str;
+		if (res.length() >= 2 && res.front() == '"' && res.back() == '"') {
+			res.erase(0, 1);
+			res.pop_back();
+		}
+		return res;
 	}
 
 	unsigned colWidth(std::string const & str) 
@@ -442,7 +478,7 @@ enum class ColumnSortOrder {
 // Note: All member value types are chosen/designed so that zero-init will set the desired default.
 struct ColumnInfo {
 	// These values are pre-configured:
-	char const* name; // Name or definition for column
+	char const* nameDef; // Name or definition for column
 	int         defWidth;
 	ColumnType  type;
 	char const* label; // optional, used when name does not refer to a direct table column.
@@ -452,7 +488,7 @@ struct ColumnInfo {
 	mutable int  overriddenWidth;
 	mutable bool usedInQuery;
 
-	const char* labelOrName() const { return label != nullptr ? label : name; }
+	const char* labelName() const { return label != nullptr ? label : nameDef; }
 
 	std::string getLikeArg(std::string val) const 
 	{ 
@@ -470,20 +506,50 @@ enum class ColumnsDataKind {
 };
 
 struct OptionParser {
-	std::stringstream ss;
-	const char* type;
-	OptionParser(std::string const & value, const char* type = "option")
-		: ss(value), type(type)
+	std::stringstream m_ss;
+	const char* const m_type;
+	const char        m_delim;
+	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
+		: m_ss(value), m_type(type), m_delim(delim)
 	{}
 
 	bool getNext(std::string& next)
 	{
-		return !!std::getline(ss, next, OptDelim);
+		if (m_ss.eof()) { return false; }
+
+		const int EscapeChar = '!';
+		bool escOn = false;
+
+		std::string str; char c;
+		while (m_ss.get(c)) {
+			if (c == EscapeChar) {
+				if (escOn) { str.push_back(EscapeChar); }
+				escOn = !escOn;
+			}
+			else if (c == m_delim) {
+				if (escOn) {
+					str.push_back(m_delim);
+					escOn = false;
+				}
+				else {
+					break; // delim found
+				}
+			}
+			else {
+				if (escOn) { throw std::invalid_argument("Illegal escape sequence"); }
+				str.push_back(c);
+			}
+		}
+		if (escOn) { throw std::invalid_argument("Incomplete escape sequence"); }
+		if (str.empty()) { throw std::invalid_argument("Empty option values not allowed"); }
+
+		next = std::move(str);
+		return true;
 	}
 	
 	__declspec(noreturn) void throwError() 
 	{
-		throw std::invalid_argument(fmt("Faulty %s value: %s", type, ss.str().c_str()));
+		throw std::invalid_argument(fmt("Faulty %s value: %s", m_type, m_ss.str().c_str()));
 	}
 
 	std::string getNext()
@@ -686,13 +752,13 @@ public:
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
 			{"bt",   {"Title", 40 }},
-			{"dr",   {"\"Date read\"", 10 }},
-			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, true }},
+			{"dr",   {"\"Date Read\"", 10 }},
+			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
 			{"fn",   {"\"First Name\"",15 }},
 			{"ge",   {"Genre", 25 }},
 			{"gi",   {"GenreID", 8, ColumnType::numeric }},
 			{"ln",   {"\"Last Name\"",15 }},
-			{"ng",   {"\"Author(s)\"", 35, ColumnType::text, nullptr, true }},
+			{"ng",   {"\"Author(s)\"", 35, ColumnType::text, nullptr, false }},
 			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 20, ColumnType::text, "Author" }},
 			{"la",   {"Language", 4 }},
 			{"own",  {"Owned", 3, ColumnType::numeric }},
@@ -711,7 +777,8 @@ public:
 			{"dwl",  {"case cast (strftime('%w',\"Date Read\") as integer)"
 					  " when 0 then 'Sun' when 1 then 'Mon' when 2 then 'Tue' when 3 then 'Wed' when 4 then 'Thu' when 5 then 'Fri' when 6 then 'Sat' else '' end",
 					  5, ColumnType::text, "DoW" }},
-			{"ti",  {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
+			{"ti",   {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
+			{"sec",  {"strftime('%s',\"Date Read\")", 11, ColumnType::numeric, "Timestamp" }},
 
 			// Some special-purpose virtual columns, these are not generally usable:
 
@@ -729,6 +796,8 @@ public:
 			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
 	{
+		for (auto& ci : m_columnInfos) { ci.second.overriddenWidth = -1; }
+
 		for (int i = 1; i < argc; ++i) {
 			if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
 				auto const opt = argv[i][1];
@@ -795,8 +864,50 @@ public:
 				case 'n': 
 					showNumberOfRows = true;
 					break;
+				case '-': { // Extended option 
+					OptionParser extVal(val, "extended option", OptExtDelim);
+					auto const extName = extVal.getNext();
+					if (extName == "cons") {
+						m_consRowMinCount = extVal.nextInt();
+						for (std::string colName = extVal.getNext(); ; ) {
+							auto colInfo = m_columnInfos.find(colName);
+							if (colInfo != m_columnInfos.end()) {
+								colName = unquote(colInfo->second.labelName());
+							}
+							ConsRowColumnInfo col;
+							col.name = colName; colName.clear();
+							col.index = -1; // Will be set when we get the first callback
+							col.matchMethod = ConsRowMatchMethod::columnValue;
+							std::string mm;
+							if (extVal.getNext(mm)) {
+								if (mm == "regex" || mm == "re" || mm == "re!") {
+									col.matchMethod = (mm == "re!")
+										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
+									col.re = std::regex(extVal.getNext());
+									extVal.getNext(colName);
+								}
+								else if (mm == "dlt" || mm == "dgt") {
+									if (col.name != getColumn("sec")->labelName()) {
+										throw std::invalid_argument("Diff match not valid for column " + col.name);
+									}
+									col.matchMethod = (mm == "dlt")
+										? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
+									col.diff = extVal.nextInt();
+									extVal.getNext(colName);
+								}
+								else {
+									colName = mm; // use as name next iteration
+								}
+							}
+							m_consRowColumns.push_back(col);
+							if (colName.empty()) break;
+						};
+					}
+					else throw std::invalid_argument("Unrecognized extended option: " + extName);
+					}
+					break;
 				default:
-					throw std::invalid_argument(std::string("Invalid option: ") + argv[i]);
+					throw std::invalid_argument(std::string("Unrecognized option: ") + argv[i]);
 				}
 			}
 			else {
@@ -940,7 +1051,7 @@ public:
 			val = col->getLikeArg(val);
 
 			std::string snCond;
-			std::string colName(col->labelOrName()); 
+			std::string colName(col->nameDef); 
 
 			if      (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
@@ -987,7 +1098,7 @@ public:
 
 	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
 	{
-		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->labelOrName(), countCond));
+		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->nameDef, countCond));
 	}
 
 	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
@@ -1006,7 +1117,7 @@ public:
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
-			appendToWhereCondition(LogOp_AND, std::string(col->name) + " LIKE " + col->getLikeArg(val));
+			appendToWhereCondition(LogOp_AND, std::string(col->nameDef) + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
@@ -1105,13 +1216,13 @@ public:
 					m_sstr << ",";
 				}
 				auto ci = selCols[i].first;
-				m_sstr << ci->name;
+				m_sstr << ci->nameDef;
 				if (ci->label != nullptr) {
 					m_sstr << " AS " << ci->label;
 				}
 				if (litt.displayMode == DisplayMode::column) {
-					auto const width = ci->overriddenWidth > 0 ? ci->overriddenWidth : selCols[i].second;
-					_ASSERT(width > 0);
+					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
+					_ASSERT(width >= 0);
 					columnWidths.push_back(width);
 				}
 			}
@@ -1192,9 +1303,8 @@ public:
 			
 			#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
 			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
-		
 
-			addIfColumns("dr.so",       indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("dr.dw.dwl.ti.sec.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
 			addIfColumns("dg",          indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
 			addIfColumns("fn.ln.nn.st", indent + "INNER JOIN AuthorBooks USING(BookID)");
@@ -1221,7 +1331,7 @@ public:
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
-					m_sstr << (ci->labelOrName());
+					m_sstr << (ci->nameDef);
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
@@ -1248,8 +1358,10 @@ public:
 			auto val = argv[i] ? argv[i] : "";
 			switch (displayMode) {
 			case DisplayMode::column:
-				if (i != 0) m_output.write(colSep);
-				m_output.writeUtf8Width(val, query.columnWidths[i]);
+				if (query.columnWidths[i] > 0) {
+					if (i != 0) m_output.write(colSep);
+					m_output.writeUtf8Width(val, query.columnWidths[i]);
+				}
 				break;
 			case DisplayMode::list:
 				if (i != 0) m_output.write(listSep);
@@ -1278,6 +1390,129 @@ public:
 		m_output.write('\n');
 	}
 
+	enum class ConsRowMatchMethod {
+		columnValue,
+		regEx,
+		regExNot,
+		diffLt,
+		diffGt,
+	};
+
+	struct ConsRowColumnInfo {
+		std::string        name;
+		ConsRowMatchMethod matchMethod;
+		std::regex         re;
+		int                diff;
+		mutable int        index;
+	};
+
+	int m_consRowMinCount = 0;
+	std::vector<ConsRowColumnInfo> m_consRowColumns;
+	mutable std::vector<std::vector<std::string>> m_consRowBuffer;
+	mutable int m_consMatched = 0;
+
+	bool consEnabled() const { return m_consRowMinCount > 0; }
+
+	void consInit(int argc, char **argv, char **azColName) const
+	{ _ASSERT(consEnabled());
+		m_consRowBuffer.resize(std::max(1, m_consRowMinCount - 1));
+		for (auto& row : m_consRowBuffer) {
+			row.resize(argc);
+		}
+
+		for (auto& col : m_consRowColumns) {
+			int j = 0;
+			for (; j < argc; ++j) {
+				if (col.name == azColName[j]) {
+					col.index = j;
+					break;
+				}
+			}
+			if (j == argc) {
+				throw std::invalid_argument("Could not find cons column " 
+					+ col.name + " in the output columns");
+			}
+		}
+		consSetBufferRow(0, argv);
+		m_consMatched = 0;
+	}
+
+	void consSetBufferRow(int index, char **argv) const
+	{
+		std::transform(argv, argv + m_consRowBuffer[index].size(), m_consRowBuffer[index].begin(),
+			[](char* val) { return val ? val : ""; });
+	}
+
+	void consOutputMatchedCount() const // OBS! This is mainly intended for use with column display mode.
+	{ 
+		if (m_consMatched >= m_consRowMinCount) {
+			m_output.write(fmt("\n# = %i\n\n", m_consMatched));
+		}
+	}
+
+	void consProcessRow(OutputQuery& query, int argc, char **argv) const
+	{ _ASSERT(consEnabled());
+		bool cvMatch = true, reMatch = true;
+		for (auto const& col : m_consRowColumns) {
+			auto val = argv[col.index] ? argv[col.index] : "";
+			switch (col.matchMethod) {
+			case ConsRowMatchMethod::columnValue:
+				cvMatch = cvMatch && (m_consRowBuffer[0][col.index] == val);
+				break;
+			case ConsRowMatchMethod::regEx:
+				reMatch = reMatch && std::regex_match(val, col.re);
+				break;
+			case ConsRowMatchMethod::regExNot:
+				reMatch = reMatch && !std::regex_match(val, col.re);
+				break;
+			case ConsRowMatchMethod::diffLt:
+			case ConsRowMatchMethod::diffGt:
+				if (cvMatch) {
+					int prevIndex = std::min(std::max(0, m_consMatched - 1), std::max(0, m_consRowMinCount - 2));
+					auto& prevVal = m_consRowBuffer[prevIndex][col.index];
+					unsigned long long cur=0, prev=0;
+					if (toSecondsValue(val, cur) && toSecondsValue(prevVal, prev)) {
+						if (col.matchMethod == ConsRowMatchMethod::diffLt) {
+							cvMatch = ((cur - prev) < col.diff);
+						}
+						else {
+							cvMatch = ((cur - prev) > col.diff);
+						}
+					}
+					else {
+						cvMatch = false;
+					}
+				}
+				break;
+			}
+		}
+		bool const consMatch = cvMatch && reMatch;
+
+		if (consMatch) {
+			++m_consMatched;
+			if (m_consMatched == m_consRowMinCount && !(m_consRowMinCount == 1)) {
+				std::vector<char*> rChar(m_consRowBuffer[0].size());
+				for (auto const& r : m_consRowBuffer) {
+					std::transform(r.begin(), r.end(), rChar.begin(),
+						[](std::string const& str) { return const_cast<char*>(str.c_str()); });
+					outputRow(query, false, rChar.size(), rChar.data());
+				}
+			}
+			consSetBufferRow(std::min(m_consMatched - 1, std::max(0, m_consRowMinCount - 2)), argv);
+			if (m_consMatched >= m_consRowMinCount) {
+				outputRow(query, false, argc, argv);
+			}
+		}
+		else {
+			consOutputMatchedCount();
+			consSetBufferRow(0, argv);
+			m_consMatched = reMatch ? 1 : 0;
+			if (m_consRowMinCount == 1 && reMatch) {
+				outputRow(query, false, argc, argv);
+			}
+		}
+	}
+
 	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName) 
 	{
 		auto& query = *static_cast<OutputQuery*>(pArg);
@@ -1285,10 +1520,10 @@ public:
 		auto& output = litt.m_output;
 		try {
 			if (litt.rowCount == 0) {
-				if (query.columnWidths.empty() && litt.displayMode == DisplayMode::column) {
-					for (int i = 0; i < argc; ++i) {
+				if (litt.displayMode == DisplayMode::column) {
+					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(30u,
-							std::max(strlen(azColName[i]), strlen(argv[i]))));
+							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
 					}
 				}
 
@@ -1315,15 +1550,26 @@ public:
 					litt.outputRow(query, true, argc, azColName);
 					if (litt.displayMode == DisplayMode::column) {
 						for (int i = 0; i < argc; ++i) {
-							if (i != 0) output.write(litt.colSep);
-							std::string underLine(query.columnWidths[i], '-');
-							output.write(underLine);
+							if (query.columnWidths[i] > 0) {
+								if (i != 0) output.write(litt.colSep);
+								std::string underLine(query.columnWidths[i], '-');
+								output.write(underLine);
+							}
 						}
 						output.write('\n');
 					}
 				}
+				if (litt.consEnabled()) {
+					litt.consInit(argc, argv, azColName);
+				}
 			} // if (litt.rowCount == 0) {
-			litt.outputRow(query, false, argc, argv);
+
+			if (litt.consEnabled()) {
+				litt.consProcessRow(query, argc, argv);
+			}
+			else {
+				litt.outputRow(query, false, argc, argv);
+			}
 			++litt.rowCount;
 			return 0;
 		}
@@ -1348,8 +1594,13 @@ public:
 
 		litt.rowCount = 0;
 		int res = sqlite3_exec(litt.m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
-		if (res == SQLITE_OK && litt.displayMode == DisplayMode::htmldoc) {
-			output.write("</table>\n</body>\n</html>\n");
+		if (res == SQLITE_OK) {
+			if (litt.displayMode == DisplayMode::htmldoc) {
+				output.write("</table>\n</body>\n</html>\n");
+			}
+			if (consEnabled()) {
+				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
+			}
 		}
 		output.flushNoThrow();
 		if (res != SQLITE_OK) {
@@ -1472,42 +1723,69 @@ public:
 		runOutputQuery(query);
 	}
 
+	void listSamestory() 
+	{
+		OutputQuery query(*this);
+		//query.columnWidths = { 25,4,5,5,20,20,15,15,10,10,10,10 };
+		query.initColumnWidths();
+		query.initSelectBare();
+		query.a(
+R"(S1.Story as Story,
+case when S1.AuthorID = S2.AuthorID then 'YES' else '-' end as Dupe, 
+S1.BookID AS 'BID 1', S2.BookID as 'BID 2',
+S1.Title as Title1, S2.Title as Title2,
+S1."First Name" || ' ' || S1."Last Name" as 'Author 1', 
+case when S1.AuthorID <> S2.AuthorID then  S2."First Name" || ' ' || S2."Last Name" else '* see 1 *' end as 'Author 2',
+S1."Date read" as 'Date read 1', S2."Date read" as 'Date read 2',
+S1.Source as 'Source 1', S2.Source as 'Source 2'
+FROM (Stories
+	INNER JOIN Books USING(BookID)
+	INNER JOIN Authors USING(AuthorID)
+	INNER JOIN DatesRead USING(BookID)
+	INNER JOIN Sources USING(SourceID)
+) AS S1 
+JOIN (Stories
+	INNER JOIN Books USING(BookID)
+	INNER JOIN Authors USING(AuthorID)
+	INNER JOIN DatesRead USING(BookID)
+	INNER JOIN Sources USING(SourceID)
+) as S2
+WHERE S1.Story = S2.Story AND S1.StoryID <> S2.StoryID 
+	AND S1.BookID <> S2.BookID              -- Avoid stories with more than one author (River of Souls)
+	AND S1.BookID NOT Between 1274 AND 1276 -- Avoid Forever Yours, that's the book not the stories!
+GROUP BY S1.Story
+ORDER BY Dupe DESC)");
+		runOutputQuery(query);
+	}
+
 	void listTitlestory()
 	{
 		OutputQuery query(*this);
+		query.columnWidths = { 6,4,20,10,15,20,8,15,20,10,15 };
 		query.initColumnWidths();
 		query.initSelectBare(SelectOption::distinct);
 		query.a(
-R"(B.BookID as BookID, case when B.AuthorID = S.AuthorID then 'YES' else '-' end as Dupe,B.Title as Title, 
-B."Date read" as 'Book read', B.Source as 'Book source', B."First Name" || ' ' || B."Last Name" as 'Book Author',
-S.BookID as 'Story BID', S."First Name" || ' ' || S."Last Name" as 'Story Author', S.Title as 'Story book title',  
+R"(B.BookID as BookID, case when B.AuthorID = S.AuthorID then 'YES' else '-' end as Dupe, B.Title as Title, 
+B."Date read" as 'Book read', B.Source as 'Book source', 
+case when B.AuthorID <> S.AuthorID then B."First Name" || ' ' || B."Last Name" else '* see story *' end as 'Book Author',
+S.BookID as 'S BookID', S."First Name" || ' ' || S."Last Name" as 'Story Author', S.Title as 'Story book title',  
 S."Date read" as 'Story read', S.Source as 'Story source'
 FROM (Books 
-INNER JOIN AuthorBooks USING(BookID)
-INNER JOIN Authors USING(AuthorID)
-INNER JOIN DatesRead USING(BookID)
-INNER JOIN Sources USING(SourceID)
+	INNER JOIN AuthorBooks USING(BookID)
+	INNER JOIN Authors USING(AuthorID)
+	INNER JOIN DatesRead USING(BookID)
+	INNER JOIN Sources USING(SourceID)
 ) AS B 
 JOIN (Stories 
-INNER JOIN AuthorBooks USING(AuthorID)
-INNER JOIN Authors USING(AuthorID)
-INNER JOIN Books USING(BookID)
-INNER JOIN DatesRead USING(BookID)
-INNER JOIN Sources USING(SourceID)
+	INNER JOIN AuthorBooks USING(AuthorID)
+	INNER JOIN Authors USING(AuthorID)
+	INNER JOIN Books USING(BookID)
+	INNER JOIN DatesRead USING(BookID)
+	INNER JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story
-ORDER BY Dupe DESC, B."Date read"
-)");
+ORDER BY Dupe DESC, B."Date read")");
 		runOutputQuery(query);
-
-		// !!! more columns output -- see LITT TODO
-		/*OutputQuery query(*this);
-		appendToWhereCondition(LogOp_AND, "Title IN (Select Story FROM Stories)");
-		query.initSelect("bi.bt.nn", "Books", "bt.bi");
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);*/
 	}
 
 	void listBookCounts(std::string const & countCond, bool includeReReads, 
@@ -1521,7 +1799,7 @@ ORDER BY Dupe DESC, B."Date read"
 		query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
 		query.addAuxTables();
 		query.addWhere();
-		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->name));
+		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->nameDef));
 		query.addHaving();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -1591,12 +1869,13 @@ ORDER BY Dupe DESC, B."Date read"
 			if (name.empty()) {
 				throw std::invalid_argument(std::string("No name for def: ") + def);
 			}
-			width = std::max(width, name.length());
 			res.push_back({ def, name });
+			width = std::max(width, res.back().name.length());
 		}
 		for (auto const & pc : res) {
 			printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
 		}
+		printf("\n");
 		return res;
 	}
 
@@ -1683,7 +1962,9 @@ ORDER BY Dupe DESC, B."Date read"
 		std::vector<std::string> res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
-			static_cast<std::vector<std::string>*>(pArg)->assign(argv, argv + argc);
+			auto& res = *static_cast<std::vector<std::string>*>(pArg);
+			res.resize(argc);
+			std::transform(argv, argv + argc, res.begin(), [](char* v) { return v ? v : ""; });
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
@@ -1990,10 +2271,7 @@ ORDER BY Dupe DESC, B."Date read"
 			listTitlestory();
 		}
 		else if (action == "samestory") {
-			// !!!
-		}
-		else if (action == "dupstory") {
-			// !!!
+			listSamestory();
 		}
 		else if (action == "abc") {
 			listAuthorBookCounts(arg(0), arg(1) == "1");
