@@ -332,6 +332,22 @@ namespace Utils
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
+	bool enableVTMode()
+	{
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (hOut == INVALID_HANDLE_VALUE) {
+			return false;
+		}
+		DWORD dwMode = 0;
+		if (!GetConsoleMode(hOut, &dwMode)) {
+			return false;
+		}
+		dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+		if (!SetConsoleMode(hOut, dwMode)) {
+			return false;
+		}
+		return true;
+	}
 } // Utils
 using namespace Utils;
 
@@ -1354,13 +1370,26 @@ public:
 			break;
 		}
 
+		#define CSI "\x1b["
+
 		for (int i = 0; i < argc; i++) {
 			auto val = argv[i] ? argv[i] : "";
 			switch (displayMode) {
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(colSep);
+
+					if (i == 0) m_output.write(CSI "1m");
+					if (i == 2) m_output.write(CSI "104;93m");
+					if (i == 3) m_output.write(CSI "102;94m");
+					if (i == 4) m_output.write(CSI "95m");
+					if (i == 5) m_output.write(CSI "105m");
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
+					if (i == 0) m_output.write(CSI "0m");
+					if (i == 2) m_output.write(CSI "30;47m");
+					if (i == 3) m_output.write(CSI "30;47m");
+					if (i == 4) m_output.write(CSI "30;47m");
+					if (i == 5) m_output.write(CSI "30;47m");
 				}
 				break;
 			case DisplayMode::list:
@@ -2353,6 +2382,7 @@ ORDER BY Dupe DESC, B."Date read")");
 
 int main(int argc, char **argv)
 {
+	enableVTMode();
 	try {
 		if (argc <= 1) {
 			showHelp();
