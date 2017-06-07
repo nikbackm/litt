@@ -289,8 +289,17 @@ namespace Utils
 	}
 
 	std::string readLine() {
-		std::string str; 
+		CONSOLE_SCREEN_BUFFER_INFO info{};
+		HANDLE const hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		GetConsoleScreenBufferInfo(hOut, &info);
+		DWORD const fgMask = FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED|FOREGROUND_INTENSITY;
+		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
+		std::string str;
+		// Set text color to blue, keep background.
+	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_INTENSITY|(bgMask & info.wAttributes));
 		std::getline(std::cin, str);
+		// Restore the previous text color.
+		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask|bgMask));
 		return str;
 	}
 
