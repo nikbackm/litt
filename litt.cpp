@@ -1,7 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself.
+ * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
                Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
  * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
                even if the column definition itself works as ORDER BY. So label should really only be used as the "AS" value
@@ -108,11 +108,12 @@ Options:
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
 
-    --cons:<minRowCount>:{<colSnOrName>[:re|re!:<regExValue>]|[:dlt|dgt:<diffValue>]}+
+    --cons:<minRowCount>:{<colSnOrName>[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                     Specifies column conditions for consecutive output row matching.
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
+    --ansi:
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
@@ -288,8 +289,15 @@ namespace Utils
 	}
 
 	std::string readLine() {
-		std::string str; 
+		std::string str;
+		CONSOLE_SCREEN_BUFFER_INFO info{};
+		GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info);
+		DWORD maskFg = FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED|FOREGROUND_INTENSITY;
+		DWORD maskBg = BACKGROUND_BLUE|BACKGROUND_GREEN|BACKGROUND_RED|BACKGROUND_INTENSITY;
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_INTENSITY|(maskBg & info.wAttributes));
 		std::getline(std::cin, str);
+		SetConsoleTextAttribute(hOut, info.wAttributes & (maskFg|maskBg));
 		return str;
 	}
 
@@ -332,6 +340,22 @@ namespace Utils
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
+	bool enableVTMode()
+	{
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (hOut == INVALID_HANDLE_VALUE) {
+			return false;
+		}
+		DWORD dwMode = 0;
+		if (!GetConsoleMode(hOut, &dwMode)) {
+			return false;
+		}
+		//dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+		if (!SetConsoleMode(hOut, dwMode)) {
+			return false;
+		}
+		return true;
+	}
 } // Utils
 using namespace Utils;
 
@@ -880,8 +904,8 @@ public:
 							col.matchMethod = ConsRowMatchMethod::columnValue;
 							std::string mm;
 							if (extVal.getNext(mm)) {
-								if (mm == "regex" || mm == "re" || mm == "re!") {
-									col.matchMethod = (mm == "re!")
+								if (mm == "regex" || mm == "re" || mm == "ren") {
+									col.matchMethod = (mm == "ren")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
 									col.re = std::regex(extVal.getNext());
 									extVal.getNext(colName);
@@ -902,6 +926,13 @@ public:
 							m_consRowColumns.push_back(col);
 							if (colName.empty()) break;
 						};
+					}
+					else if (extName == "ansi") {
+						// enabled
+						// default color
+						// col colors
+						// col-regex-col colors
+						// #define CSI "\x1b[" // Add this to all provided colors if not starting with ESC.
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
@@ -1354,12 +1385,17 @@ public:
 			break;
 		}
 
+		if (m_ansiEnabled) {
+			ansiSetRowColors(isHeader, argc, argv);
+		}
+
 		for (int i = 0; i < argc; i++) {
 			auto val = argv[i] ? argv[i] : "";
 			switch (displayMode) {
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(colSep);
+					m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
 				}
 				break;
@@ -1388,6 +1424,44 @@ public:
 			break;
 		}
 		m_output.write('\n');
+	}
+
+	struct AnsiColumnColor {
+		std::string colName;
+		std::string ansiColor;
+	};
+
+	struct AnsiValueColor {
+		std::string colName; // For this column,
+		std::regex  rowValue; // matching this row value,
+		std::string ansiColor; // apply this row color,
+		std::vector<std::string> coloredColumns; // to these columns.
+		mutable std::vector<int> colIndexes;
+	};
+
+	bool m_ansiEnabled = false;
+	std::string m_ansiDefColor;
+	std::vector<AnsiColumnColor> m_ansiColColors;
+	std::vector<AnsiValueColor> m_ansiValueColors;
+	mutable std::vector<std::string> m_ansiColColorsParsed;
+
+	mutable std::vector<std::reference_wrapper<std::string const>> m_ansiRowColors;
+
+	void ansiInit(int argc, char **azColName) const
+	{
+		// parse m_ansiColColorsParsed from 
+
+		// Just to init the size, will need to reset for each row.
+		for (int i = 0; i < argc; ++i) { 
+			m_ansiRowColors.emplace_back(m_ansiDefColor);
+		}
+	}
+
+	void ansiSetRowColors(bool isHeader, int argc, char** argv) const
+	{
+		for (int i = 0; i < argc; ++i) {
+			m_ansiRowColors[i] = m_ansiColColorsParsed[i];
+		}
 	}
 
 	enum class ConsRowMatchMethod {
@@ -1525,6 +1599,9 @@ public:
 						query.columnWidths.push_back(std::min(30u,
 							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
 					}
+					if (litt.m_ansiEnabled) {
+						litt.ansiInit(argc, azColName);
+					}
 				}
 
 				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
@@ -1601,6 +1678,9 @@ public:
 			if (consEnabled()) {
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
+		}
+		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && rowCount > 0) {
+			m_output.write(m_ansiDefColor);
 		}
 		output.flushNoThrow();
 		if (res != SQLITE_OK) {
@@ -2353,6 +2433,8 @@ ORDER BY Dupe DESC, B."Date read")");
 
 int main(int argc, char **argv)
 {
+	//enableVTMode(); // !!
+
 	try {
 		if (argc <= 1) {
 			showHelp();

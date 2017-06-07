@@ -113,6 +113,7 @@ Options:
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
+    --ansi:
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
@@ -919,6 +920,13 @@ public:
 							if (colName.empty()) break;
 						};
 					}
+					else if (extName == "ansi") {
+						// enabled
+						// default color
+						// col colors
+						// col-regex-col colors
+						// #define CSI "\x1b[" // Add this to all provided colors if not starting with ESC.
+					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
 					break;
@@ -1370,7 +1378,9 @@ public:
 			break;
 		}
 
-		#define CSI "\x1b["
+		if (m_ansiEnabled) {
+			ansiSetRowColors(isHeader, argc, argv);
+		}
 
 		for (int i = 0; i < argc; i++) {
 			auto val = argv[i] ? argv[i] : "";
@@ -1378,18 +1388,8 @@ public:
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(colSep);
-
-					if (i == 0) m_output.write(CSI "1m");
-					if (i == 2) m_output.write(CSI "104;93m");
-					if (i == 3) m_output.write(CSI "102;94m");
-					if (i == 4) m_output.write(CSI "95m");
-					if (i == 5) m_output.write(CSI "105m");
+					m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
-					if (i == 0) m_output.write(CSI "0m");
-					if (i == 2) m_output.write(CSI "30;47m");
-					if (i == 3) m_output.write(CSI "30;47m");
-					if (i == 4) m_output.write(CSI "30;47m");
-					if (i == 5) m_output.write(CSI "30;47m");
 				}
 				break;
 			case DisplayMode::list:
@@ -1417,6 +1417,44 @@ public:
 			break;
 		}
 		m_output.write('\n');
+	}
+
+	struct AnsiColumnColor {
+		std::string colName;
+		std::string ansiColor;
+	};
+
+	struct AnsiValueColor {
+		std::string colName; // For this column,
+		std::regex  rowValue; // matching this row value,
+		std::string ansiColor; // apply this row color,
+		std::vector<std::string> coloredColumns; // to these columns.
+		mutable std::vector<int> colIndexes;
+	};
+
+	bool m_ansiEnabled = false;
+	std::string m_ansiDefColor;
+	std::vector<AnsiColumnColor> m_ansiColColors;
+	std::vector<AnsiValueColor> m_ansiValueColors;
+	mutable std::vector<std::string> m_ansiColColorsParsed;
+
+	mutable std::vector<std::reference_wrapper<std::string const>> m_ansiRowColors;
+
+	void ansiInit(int argc, char **azColName) const
+	{
+		// parse m_ansiColColorsParsed from 
+
+		// Just to init the size, will need to reset for each row.
+		for (int i = 0; i < argc; ++i) { 
+			m_ansiRowColors.emplace_back(m_ansiDefColor);
+		}
+	}
+
+	void ansiSetRowColors(bool isHeader, int argc, char** argv) const
+	{
+		for (int i = 0; i < argc; ++i) {
+			m_ansiRowColors[i] = m_ansiColColorsParsed[i];
+		}
 	}
 
 	enum class ConsRowMatchMethod {
@@ -1554,6 +1592,9 @@ public:
 						query.columnWidths.push_back(std::min(30u,
 							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
 					}
+					if (litt.m_ansiEnabled) {
+						litt.ansiInit(argc, azColName);
+					}
 				}
 
 				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
@@ -1630,6 +1671,9 @@ public:
 			if (consEnabled()) {
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
+		}
+		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && rowCount > 0) {
+			m_output.write(m_ansiDefColor);
 		}
 		output.flushNoThrow();
 		if (res != SQLITE_OK) {
@@ -2382,7 +2426,8 @@ ORDER BY Dupe DESC, B."Date read")");
 
 int main(int argc, char **argv)
 {
-	enableVTMode();
+	enableVTMode(); // !!
+
 	try {
 		if (argc <= 1) {
 			showHelp();
