@@ -1,6 +1,6 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
-Changelog:
+Changelog: 
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
                Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
  * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
