@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-07: Now uses blue text on input.
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
                Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
  * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
@@ -292,14 +293,14 @@ namespace Utils
 		CONSOLE_SCREEN_BUFFER_INFO info{};
 		HANDLE const hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 		GetConsoleScreenBufferInfo(hOut, &info);
-		DWORD const fgMask = FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED|FOREGROUND_INTENSITY;
+		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
 		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
 		std::string str;
 		// Set text color to blue, keep background.
-	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_INTENSITY|(bgMask & info.wAttributes));
+	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
 		std::getline(std::cin, str);
 		// Restore the previous text color.
-		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask|bgMask));
+		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
 		return str;
 	}
 
@@ -345,18 +346,10 @@ namespace Utils
 	bool enableVTMode()
 	{
 		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (hOut == INVALID_HANDLE_VALUE) {
-			return false;
-		}
+		if (hOut == INVALID_HANDLE_VALUE) { return false; }
 		DWORD dwMode = 0;
-		if (!GetConsoleMode(hOut, &dwMode)) {
-			return false;
-		}
-		dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-		if (!SetConsoleMode(hOut, dwMode)) {
-			return false;
-		}
-		return true;
+		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
+		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 	}
 } // Utils
 using namespace Utils;
@@ -932,9 +925,18 @@ public:
 					else if (extName == "ansi") {
 						// enabled
 						// default color
+						// header colors/style?
 						// col colors
 						// col-regex-col colors
 						// #define CSI "\x1b[" // Add this to all provided colors if not starting with ESC.
+						m_ansiEnabled = true;
+						m_ansiDefColor = "\x1b[" "35m";
+						AnsiColumnColor acc; acc.colName = "Title"; acc.ansiColor = "\x1b[" "32m";
+						m_ansiColColors.push_back(acc);
+
+						AnsiValueColor avc; avc.colName = "Source"; avc.ansiColor = "\x1b[" "31m"; avc.rowValueRegEx = std::regex(".*Kindle.*");
+						avc.coloredColumns.push_back("Title"); avc.coloredColumns.push_back("Author");
+						m_ansiValueColors.push_back(avc);
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
@@ -1381,14 +1383,13 @@ public:
 	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
 	{
 		switch (displayMode) {
+		case DisplayMode::column:
+			if (m_ansiEnabled) ansiSetRowColors(isHeader, argc, argv);
+			break;
 		case DisplayMode::htmldoc:
 		case DisplayMode::html:
 			m_output.write("<tr>");
 			break;
-		}
-
-		if (m_ansiEnabled) {
-			ansiSetRowColors(isHeader, argc, argv);
 		}
 
 		for (int i = 0; i < argc; i++) {
@@ -1397,7 +1398,7 @@ public:
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(colSep);
-					m_output.write(m_ansiRowColors[i].get());
+					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
 				}
 				break;
@@ -1435,34 +1436,83 @@ public:
 
 	struct AnsiValueColor {
 		std::string colName; // For this column,
-		std::regex  rowValue; // matching this row value,
+		std::regex  rowValueRegEx; // matching this row value,
 		std::string ansiColor; // apply this row color,
 		std::vector<std::string> coloredColumns; // to these columns.
-		mutable std::vector<int> colIndexes;
+	};
+
+	struct AnsiValueColorIndexed {
+		int colIndex;
+		std::regex  rowValueRegEx;
+		std::string ansiColor;
+		std::vector<int> colIndexes;
 	};
 
 	bool m_ansiEnabled = false;
 	std::string m_ansiDefColor;
+
 	std::vector<AnsiColumnColor> m_ansiColColors;
+	mutable std::vector<std::string> m_ansiColColorsIndexed;
+
 	std::vector<AnsiValueColor> m_ansiValueColors;
-	mutable std::vector<std::string> m_ansiColColorsParsed;
+	mutable std::vector<AnsiValueColorIndexed> m_ansiValueColorsIndexed;
 
 	mutable std::vector<std::reference_wrapper<std::string const>> m_ansiRowColors;
 
 	void ansiInit(int argc, char **azColName) const
 	{
-		// parse m_ansiColColorsParsed from 
-
-		// Just to init the size, will need to reset for each row.
 		for (int i = 0; i < argc; ++i) { 
-			m_ansiRowColors.emplace_back(m_ansiDefColor);
+			m_ansiRowColors.emplace_back(m_ansiDefColor); // Just to init the size, will need to reset for each row.
+			m_ansiColColorsIndexed.push_back(m_ansiDefColor); // Init to defaults
 		}
+
+		for (auto const& acc : m_ansiColColors) {
+			for (int i = 0; i < argc; ++i) {
+				if (acc.colName == azColName[i]) {
+					m_ansiColColorsIndexed[i] = acc.ansiColor;
+					break;
+				}
+			}
+		}
+
+		for (auto& avc : m_ansiValueColors) {
+			for (int i = 0; i < argc; ++i) {
+				if (avc.colName == azColName[i]) {
+					AnsiValueColorIndexed indexed;
+					indexed.colIndex = i;
+					indexed.rowValueRegEx = avc.rowValueRegEx;
+					indexed.ansiColor = avc.ansiColor;
+					for (auto const& cc : avc.coloredColumns) {
+						for (int ii = 0; ii < argc; ++ii) {
+							if (cc == azColName[ii]) {
+								indexed.colIndexes.push_back(ii);
+								break;
+							}
+						}
+					}
+					if (!indexed.colIndexes.empty()) {
+						m_ansiValueColorsIndexed.push_back(indexed);
+					}
+					break;
+				}
+			}
+		}
+
 	}
 
 	void ansiSetRowColors(bool isHeader, int argc, char** argv) const
 	{
 		for (int i = 0; i < argc; ++i) {
-			m_ansiRowColors[i] = m_ansiColColorsParsed[i];
+			m_ansiRowColors[i] = m_ansiColColorsIndexed[i];
+		}
+
+		for (auto const& avc : m_ansiValueColorsIndexed) {
+			auto val = argv[avc.colIndex] != nullptr ? argv[avc.colIndex] : "";
+			if (std::regex_match(val, avc.rowValueRegEx)) {
+				for (auto index : avc.colIndexes) {
+					m_ansiRowColors[index] = avc.ansiColor;
+				}
+			}
 		}
 	}
 
