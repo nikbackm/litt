@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
-Changelog: 
+Changelog:
+ * 2017-06-08: Added ANSI color support via --ansi option.
+ * 2017-06-07: Now uses blue text on input.
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
                Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
  * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
@@ -113,6 +115,13 @@ Options:
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
+    --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:<colCount>{:<col>}:<ansiC>}
+                    Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
+                    * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
+                    * defC : Specify default color for all values.
+                    * colC : Specify ANSI color for given column (either given as short name or full name).
+                    * valC : Specify ANSI color for the given columns when the value of the given value
+                             columns matches the included regex.
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
@@ -291,14 +300,14 @@ namespace Utils
 		CONSOLE_SCREEN_BUFFER_INFO info{};
 		HANDLE const hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 		GetConsoleScreenBufferInfo(hOut, &info);
-		DWORD const fgMask = FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED|FOREGROUND_INTENSITY;
+		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
 		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
 		std::string str;
 		// Set text color to blue, keep background.
-	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_INTENSITY|(bgMask & info.wAttributes));
+	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
 		std::getline(std::cin, str);
 		// Restore the previous text color.
-		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask|bgMask));
+		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
 		return str;
 	}
 
@@ -341,6 +350,14 @@ namespace Utils
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
+	bool enableVTMode()
+	{
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (hOut == INVALID_HANDLE_VALUE) { return false; }
+		DWORD dwMode = 0;
+		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
+		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	}
 } // Utils
 using namespace Utils;
 
@@ -566,6 +583,14 @@ struct OptionParser {
 		std::string value;
 		if (!getNext(value)) { throwError(); }
 		return value;
+	}
+
+	std::regex getRegex()
+	{
+		return std::regex(getNext(), 
+			std::regex_constants::ECMAScript | 
+			std::regex_constants::optimize | 
+			std::regex_constants::nosubs);
 	}
 
 	int nextInt()
@@ -879,10 +904,7 @@ public:
 					if (extName == "cons") {
 						m_consRowMinCount = extVal.nextInt();
 						for (std::string colName = extVal.getNext(); ; ) {
-							auto colInfo = m_columnInfos.find(colName);
-							if (colInfo != m_columnInfos.end()) {
-								colName = unquote(colInfo->second.labelName());
-							}
+							colName = getColumnName(colName);
 							ConsRowColumnInfo col;
 							col.name = colName; colName.clear();
 							col.index = -1; // Will be set when we get the first callback
@@ -892,7 +914,7 @@ public:
 								if (mm == "regex" || mm == "re" || mm == "ren") {
 									col.matchMethod = (mm == "ren")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
-									col.re = std::regex(extVal.getNext());
+									col.re = extVal.getRegex();
 									extVal.getNext(colName);
 								}
 								else if (mm == "dlt" || mm == "dgt") {
@@ -911,6 +933,43 @@ public:
 							m_consRowColumns.push_back(col);
 							if (colName.empty()) break;
 						};
+					}
+					else if (extName == "ansi") {
+						m_ansiEnabled = true; // On by default when using ansi option
+						std::string subOpt;
+
+						auto nextColor = [&]() 
+						{
+							auto val = extVal.getNext();
+							return (val[0] == '\x1b') ? val : "\x1b[" + val;
+						};
+
+						while (extVal.getNext(subOpt)) {
+							if (subOpt == "off") {
+								m_ansiEnabled = (extVal.nextInt() == 0);
+							}
+							else if (subOpt == "defC") {
+								m_ansiDefColor = nextColor();
+							}
+							else if (subOpt == "colC") {
+								AnsiColumnColor acc;
+								acc.colName = getColumnName(extVal.getNext());
+								acc.ansiColor = nextColor();
+								m_ansiColColors.push_back(acc);
+							}
+							else if (subOpt == "valC") {
+								AnsiValueColor avc;
+								avc.colName = getColumnName(extVal.getNext());
+								avc.rowValueRegEx = extVal.getRegex();
+								int colCount = extVal.nextInt();
+								for (int c = 0; c < colCount; ++c) {
+									avc.coloredColumns.push_back(getColumnName(extVal.getNext()));
+								}
+								avc.ansiColor = nextColor();
+								m_ansiValueColors.push_back(avc);
+							}
+							// header colors/style? just use defColor and bold?
+						}
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
@@ -1027,6 +1086,14 @@ public:
 		} // for
 
 		return res;
+	}
+
+	std::string getColumnName(std::string const snOrName)
+	{
+		auto colInfo = m_columnInfos.find(snOrName);
+		return (colInfo != m_columnInfos.end())
+			? unquote(colInfo->second.labelName()) 
+			: snOrName;
 	}
 
 	std::string getWherePredicate(std::string const & value) const
@@ -1357,6 +1424,9 @@ public:
 	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
 	{
 		switch (displayMode) {
+		case DisplayMode::column:
+			if (m_ansiEnabled) ansiSetRowColors(isHeader, argc, argv);
+			break;
 		case DisplayMode::htmldoc:
 		case DisplayMode::html:
 			m_output.write("<tr>");
@@ -1369,7 +1439,9 @@ public:
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(colSep);
+					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
+					if (m_ansiEnabled && i == argc - 1) m_output.write(m_ansiDefColor);
 				}
 				break;
 			case DisplayMode::list:
@@ -1397,6 +1469,93 @@ public:
 			break;
 		}
 		m_output.write('\n');
+	}
+
+	struct AnsiColumnColor {
+		std::string colName;
+		std::string ansiColor;
+	};
+
+	struct AnsiValueColor {
+		std::string colName; // For this column,
+		std::regex  rowValueRegEx; // matching this row value,
+		std::string ansiColor; // apply this row color,
+		std::vector<std::string> coloredColumns; // to these columns.
+	};
+
+	struct AnsiValueColorIndexed {
+		int colIndex;
+		std::regex  rowValueRegEx;
+		std::string ansiColor;
+		std::vector<int> colIndexes;
+	};
+
+	bool m_ansiEnabled = false;
+	std::string m_ansiDefColor = "\x1b[30m"; // TODO: Make it use current console text color by default.
+
+	std::vector<AnsiColumnColor> m_ansiColColors;
+	mutable std::vector<std::string> m_ansiColColorsIndexed;
+
+	std::vector<AnsiValueColor> m_ansiValueColors;
+	mutable std::vector<AnsiValueColorIndexed> m_ansiValueColorsIndexed;
+
+	mutable std::vector<std::reference_wrapper<std::string const>> m_ansiRowColors;
+
+	void ansiInit(int argc, char **azColName) const
+	{
+		for (int i = 0; i < argc; ++i) { 
+			m_ansiRowColors.emplace_back(m_ansiDefColor); // Just to init the size, will need to reset for each row.
+			m_ansiColColorsIndexed.push_back(m_ansiDefColor); // Init to defaults
+		}
+
+		for (auto const& acc : m_ansiColColors) {
+			for (int i = 0; i < argc; ++i) {
+				if (acc.colName == azColName[i]) {
+					m_ansiColColorsIndexed[i] = acc.ansiColor;
+					break;
+				}
+			}
+		}
+
+		for (auto& avc : m_ansiValueColors) {
+			for (int i = 0; i < argc; ++i) {
+				if (avc.colName == azColName[i]) {
+					AnsiValueColorIndexed indexed;
+					indexed.colIndex = i;
+					indexed.rowValueRegEx = avc.rowValueRegEx;
+					indexed.ansiColor = avc.ansiColor;
+					for (auto const& cc : avc.coloredColumns) {
+						for (int ii = 0; ii < argc; ++ii) {
+							if (cc == azColName[ii]) {
+								indexed.colIndexes.push_back(ii);
+								break;
+							}
+						}
+					}
+					if (!indexed.colIndexes.empty()) {
+						m_ansiValueColorsIndexed.push_back(indexed);
+					}
+					break;
+				}
+			}
+		}
+
+	}
+
+	void ansiSetRowColors(bool isHeader, int argc, char** argv) const
+	{
+		for (int i = 0; i < argc; ++i) {
+			m_ansiRowColors[i] = m_ansiColColorsIndexed[i];
+		}
+
+		for (auto const& avc : m_ansiValueColorsIndexed) {
+			auto val = argv[avc.colIndex] != nullptr ? argv[avc.colIndex] : "";
+			if (std::regex_search(val, avc.rowValueRegEx)) {
+				for (auto index : avc.colIndexes) {
+					m_ansiRowColors[index] = avc.ansiColor;
+				}
+			}
+		}
 	}
 
 	enum class ConsRowMatchMethod {
@@ -1534,6 +1693,9 @@ public:
 						query.columnWidths.push_back(std::min(30u,
 							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
 					}
+					if (litt.m_ansiEnabled) {
+						litt.ansiInit(argc, azColName);
+					}
 				}
 
 				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
@@ -1610,6 +1772,9 @@ public:
 			if (consEnabled()) {
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
+		}
+		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && rowCount > 0) {
+			m_output.write(m_ansiDefColor);
 		}
 		output.flushNoThrow();
 		if (res != SQLITE_OK) {
@@ -2362,6 +2527,8 @@ ORDER BY Dupe DESC, B."Date read")");
 
 int main(int argc, char **argv)
 {
+	enableVTMode(); // !!
+
 	try {
 		if (argc <= 1) {
 			showHelp();
