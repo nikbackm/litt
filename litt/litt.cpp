@@ -359,7 +359,7 @@ namespace Utils
 		if (hOut == INVALID_HANDLE_VALUE) { return false; }
 		DWORD dwMode = 0;
 		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
-		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // TODO: Only do this on supported Windows 10 editions?
 	}
 } // Utils
 using namespace Utils;
@@ -1512,6 +1512,8 @@ public:
 
 	void ansiInit(int argc, char **azColName) const
 	{
+		enableVTMode();
+
 		for (int i = 0; i < argc; ++i) { 
 			m_ansiRowColors.emplace_back(m_ansiDefColor); // Just to init the size, will need to reset for each row.
 			m_ansiColColorsIndexed.push_back(m_ansiDefColor); // Init to defaults
@@ -2535,8 +2537,6 @@ ORDER BY Dupe DESC, B."Date read")");
 
 int main(int argc, char **argv)
 {
-	enableVTMode(); // !!
-
 	try {
 		if (argc <= 1) {
 			showHelp();
