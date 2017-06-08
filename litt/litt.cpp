@@ -1425,6 +1425,11 @@ public:
 		}
 	}; // OutputQuery
 
+	static const char* rowValue(const char* val)  // Guard against nullptr:s coming from NULL db values.
+	{ 
+		return (val != nullptr) ? val : "";
+	}
+
 	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
 	{
 		switch (displayMode) {
@@ -1438,7 +1443,7 @@ public:
 		}
 
 		for (int i = 0; i < argc; i++) {
-			auto val = argv[i] ? argv[i] : "";
+			auto val = rowValue(argv[i]);
 			switch (displayMode) {
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
@@ -1553,7 +1558,7 @@ public:
 		}
 
 		for (auto const& avc : m_ansiValueColorsIndexed) {
-			auto val = argv[avc.colIndex] != nullptr ? argv[avc.colIndex] : "";
+			auto val = rowValue(argv[avc.colIndex]);
 			if (std::regex_search(val, avc.rowValueRegEx)) {
 				for (auto index : avc.colIndexes) {
 					m_ansiRowColors[index] = avc.ansiColor;
@@ -1611,8 +1616,7 @@ public:
 
 	void consSetBufferRow(int index, char **argv) const
 	{
-		std::transform(argv, argv + m_consRowBuffer[index].size(), m_consRowBuffer[index].begin(),
-			[](char* val) { return val ? val : ""; });
+		std::transform(argv, argv + m_consRowBuffer[index].size(), m_consRowBuffer[index].begin(), rowValue);
 	}
 
 	void consOutputMatchedCount() const // OBS! This is mainly intended for use with column display mode.
@@ -1626,7 +1630,7 @@ public:
 	{ _ASSERT(consEnabled());
 		bool cvMatch = true, reMatch = true;
 		for (auto const& col : m_consRowColumns) {
-			auto val = argv[col.index] ? argv[col.index] : "";
+			auto val = rowValue(argv[col.index]);
 			switch (col.matchMethod) {
 			case ConsRowMatchMethod::columnValue:
 				cvMatch = cvMatch && (m_consRowBuffer[0][col.index] == val);
@@ -1695,7 +1699,7 @@ public:
 				if (litt.displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(30u,
-							std::max(strlen(azColName[i]), strlen(argv[i] ? argv[i] : ""))));
+							std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
 					}
 					if (litt.m_ansiEnabled) {
 						litt.ansiInit(argc, azColName);
@@ -2142,7 +2146,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		{
 			auto& res = *static_cast<std::vector<std::string>*>(pArg);
 			res.resize(argc);
-			std::transform(argv, argv + argc, res.begin(), [](char* v) { return v ? v : ""; });
+			std::transform(argv, argv + argc, res.begin(), rowValue);
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
