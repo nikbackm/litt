@@ -1,7 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2017-07-07: Now uses blue text on input.
+ * 2017-06-08: Added ANSI color support via --ansi option.
+ * 2017-06-07: Now uses blue text on input.
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
                Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
  * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
@@ -114,7 +115,13 @@ Options:
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
-    --ansi:
+    --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:<colCount>{:<col>}:<ansiC>}
+                    Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
+                    * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
+                    * defC : Specify default color for all values.
+                    * colC : Specify ANSI color for given column (either given as short name or full name).
+                    * valC : Specify ANSI color for the given columns when the value of the given value
+                             columns matches the included regex.
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 )"
@@ -578,6 +585,14 @@ struct OptionParser {
 		return value;
 	}
 
+	std::regex getRegex()
+	{
+		return std::regex(getNext(), 
+			std::regex_constants::ECMAScript | 
+			std::regex_constants::optimize | 
+			std::regex_constants::nosubs);
+	}
+
 	int nextInt()
 	{
 		auto val = getNext();
@@ -889,10 +904,7 @@ public:
 					if (extName == "cons") {
 						m_consRowMinCount = extVal.nextInt();
 						for (std::string colName = extVal.getNext(); ; ) {
-							auto colInfo = m_columnInfos.find(colName);
-							if (colInfo != m_columnInfos.end()) {
-								colName = unquote(colInfo->second.labelName());
-							}
+							colName = getColumnName(colName);
 							ConsRowColumnInfo col;
 							col.name = colName; colName.clear();
 							col.index = -1; // Will be set when we get the first callback
@@ -902,7 +914,7 @@ public:
 								if (mm == "regex" || mm == "re" || mm == "ren") {
 									col.matchMethod = (mm == "ren")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
-									col.re = std::regex(extVal.getNext());
+									col.re = extVal.getRegex();
 									extVal.getNext(colName);
 								}
 								else if (mm == "dlt" || mm == "dgt") {
@@ -923,20 +935,41 @@ public:
 						};
 					}
 					else if (extName == "ansi") {
-						// enabled
-						// default color
-						// header colors/style?
-						// col colors
-						// col-regex-col colors
-						// #define CSI "\x1b[" // Add this to all provided colors if not starting with ESC.
-						m_ansiEnabled = true;
-						m_ansiDefColor = "\x1b[" "35m";
-						AnsiColumnColor acc; acc.colName = "Title"; acc.ansiColor = "\x1b[" "32m";
-						m_ansiColColors.push_back(acc);
+						m_ansiEnabled = true; // On by default when using ansi option
+						std::string subOpt;
 
-						AnsiValueColor avc; avc.colName = "Source"; avc.ansiColor = "\x1b[" "31m"; avc.rowValueRegEx = std::regex(".*Kindle.*");
-						avc.coloredColumns.push_back("Title"); avc.coloredColumns.push_back("Author");
-						m_ansiValueColors.push_back(avc);
+						auto nextColor = [&]() 
+						{
+							auto val = extVal.getNext();
+							return (val[0] == '\x1b') ? val : "\x1b[" + val;
+						};
+
+						while (extVal.getNext(subOpt)) {
+							if (subOpt == "off") {
+								m_ansiEnabled = (extVal.nextInt() == 0);
+							}
+							else if (subOpt == "defC") {
+								m_ansiDefColor = nextColor();
+							}
+							else if (subOpt == "colC") {
+								AnsiColumnColor acc;
+								acc.colName = getColumnName(extVal.getNext());
+								acc.ansiColor = nextColor();
+								m_ansiColColors.push_back(acc);
+							}
+							else if (subOpt == "valC") {
+								AnsiValueColor avc;
+								avc.colName = getColumnName(extVal.getNext());
+								avc.rowValueRegEx = extVal.getRegex();
+								int colCount = extVal.nextInt();
+								for (int c = 0; c < colCount; ++c) {
+									avc.coloredColumns.push_back(getColumnName(extVal.getNext()));
+								}
+								avc.ansiColor = nextColor();
+								m_ansiValueColors.push_back(avc);
+							}
+							// header colors/style? just use defColor and bold?
+						}
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
@@ -1053,6 +1086,14 @@ public:
 		} // for
 
 		return res;
+	}
+
+	std::string getColumnName(std::string const snOrName)
+	{
+		auto colInfo = m_columnInfos.find(snOrName);
+		return (colInfo != m_columnInfos.end())
+			? unquote(colInfo->second.labelName()) 
+			: snOrName;
 	}
 
 	std::string getWherePredicate(std::string const & value) const
@@ -1400,6 +1441,7 @@ public:
 					if (i != 0) m_output.write(colSep);
 					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
+					if (m_ansiEnabled && i == argc - 1) m_output.write(m_ansiDefColor);
 				}
 				break;
 			case DisplayMode::list:
@@ -1449,7 +1491,7 @@ public:
 	};
 
 	bool m_ansiEnabled = false;
-	std::string m_ansiDefColor;
+	std::string m_ansiDefColor = "\x1b[30m"; // TODO: Make it use current console text color by default.
 
 	std::vector<AnsiColumnColor> m_ansiColColors;
 	mutable std::vector<std::string> m_ansiColColorsIndexed;
@@ -1508,7 +1550,7 @@ public:
 
 		for (auto const& avc : m_ansiValueColorsIndexed) {
 			auto val = argv[avc.colIndex] != nullptr ? argv[avc.colIndex] : "";
-			if (std::regex_match(val, avc.rowValueRegEx)) {
+			if (std::regex_search(val, avc.rowValueRegEx)) {
 				for (auto index : avc.colIndexes) {
 					m_ansiRowColors[index] = avc.ansiColor;
 				}
