@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
+               specify trailing and/or preceding ".*" to match the whole value.
+			   Converts regex values to utf-8 before using them.
  * 2017-06-08: Added ANSI color support via --ansi option.
  * 2017-06-07: Now uses blue text on input.
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
@@ -585,14 +588,6 @@ struct OptionParser {
 		return value;
 	}
 
-	std::regex getRegex()
-	{
-		return std::regex(getNext(), 
-			std::regex_constants::ECMAScript | 
-			std::regex_constants::optimize | 
-			std::regex_constants::nosubs);
-	}
-
 	int nextInt()
 	{
 		auto val = getNext();
@@ -914,7 +909,7 @@ public:
 								if (mm == "regex" || mm == "re" || mm == "ren") {
 									col.matchMethod = (mm == "ren")
 										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
-									col.re = extVal.getRegex();
+									col.re = getRegex(extVal.getNext());
 									extVal.getNext(colName);
 								}
 								else if (mm == "dlt" || mm == "dgt") {
@@ -960,7 +955,7 @@ public:
 							else if (subOpt == "valC") {
 								AnsiValueColor avc;
 								avc.colName = getColumnName(extVal.getNext());
-								avc.rowValueRegEx = extVal.getRegex();
+								avc.rowValueRegEx = getRegex(extVal.getNext());
 								int colCount = extVal.nextInt();
 								for (int c = 0; c < colCount; ++c) {
 									avc.coloredColumns.push_back(getColumnName(extVal.getNext()));
@@ -1094,6 +1089,15 @@ public:
 		return (colInfo != m_columnInfos.end())
 			? unquote(colInfo->second.labelName()) 
 			: snOrName;
+	}
+
+	std::regex getRegex(std::string const & reVal)
+	{
+		return std::regex(
+			toUtf8(reVal),
+			std::regex_constants::ECMAScript |
+			std::regex_constants::optimize |
+			std::regex_constants::nosubs);
 	}
 
 	std::string getWherePredicate(std::string const & value) const
@@ -1628,10 +1632,10 @@ public:
 				cvMatch = cvMatch && (m_consRowBuffer[0][col.index] == val);
 				break;
 			case ConsRowMatchMethod::regEx:
-				reMatch = reMatch && std::regex_match(val, col.re);
+				reMatch = reMatch && std::regex_search(val, col.re);
 				break;
 			case ConsRowMatchMethod::regExNot:
-				reMatch = reMatch && !std::regex_match(val, col.re);
+				reMatch = reMatch && !std::regex_search(val, col.re);
 				break;
 			case ConsRowMatchMethod::diffLt:
 			case ConsRowMatchMethod::diffGt:
