@@ -2299,7 +2299,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		// Add it!
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
-		auto addedAuthorBooks = std::map<std::string,bool>();
+		auto addedAuthorBooks = std::set<std::string>();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
 		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\") VALUES(%s,%s,'%s',%i,%i);\n",
@@ -2311,7 +2311,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			auto const aid = std::get<0>(a);
 			auto abKey = std::to_string(aid) + "_" + bookId;
 			if (addedAuthorBooks.find(abKey) == addedAuthorBooks.end()) {
-				addedAuthorBooks[abKey] = true;
+				addedAuthorBooks.insert(abKey);
 				sql.append(fmt("INSERT INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%s);\n", aid, bid));
 			}
 			auto const& story = std::get<1>(a);
