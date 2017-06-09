@@ -118,7 +118,7 @@ Options:
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
-    --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:<colCount>{:<col>}:<ansiC>}
+    --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
                     Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
                     * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
                     * defC : Specify default color for all values.
@@ -353,6 +353,11 @@ namespace Utils
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
+	void toLowerCase(std::string& str)
+	{
+		std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+	}
+
 	bool enableVTMode()
 	{
 		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -541,6 +546,11 @@ struct OptionParser {
 	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
 		: m_ss(value), m_type(type), m_delim(delim)
 	{}
+
+	bool empty() const
+	{
+		return m_ss.eof();
+	}
 
 	bool getNext(std::string& next)
 	{
@@ -776,7 +786,7 @@ public:
 	mutable int rowCount = 0; // The number of rows printed so far.
 
 	Litt(int argc, char** argv) :
-		m_columnInfos({ // OBS! Don't use "desc" and "asc" and short names! :)
+		m_columnInfos({ // OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 			{"ai",   {"Authors.AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
@@ -940,30 +950,34 @@ public:
 						};
 
 						while (extVal.getNext(subOpt)) {
+							toLowerCase(subOpt);
 							if (subOpt == "off") {
 								m_ansiEnabled = (extVal.nextInt() == 0);
 							}
-							else if (subOpt == "defC") {
+							else if (subOpt == "defc") {
 								m_ansiDefColor = nextColor();
 							}
-							else if (subOpt == "colC") {
+							else if (subOpt == "colc") {
 								AnsiColumnColor acc;
 								acc.colName = getColumnName(extVal.getNext());
 								acc.ansiColor = nextColor();
 								m_ansiColColors.push_back(acc);
 							}
-							else if (subOpt == "valC") {
+							else if (subOpt == "valc") {
 								AnsiValueColor avc;
 								avc.colName = getColumnName(extVal.getNext());
 								avc.rowValueRegEx = getRegex(extVal.getNext());
-								int colCount = extVal.nextInt();
-								for (int c = 0; c < colCount; ++c) {
-									avc.coloredColumns.push_back(getColumnName(extVal.getNext()));
-								}
+								auto coloredCols = OptionParser(extVal.getNext(), "column", OptDelim);
+								do {
+									avc.coloredColumns.push_back(getColumnName(coloredCols.getNext()));
+								} while(!coloredCols.empty());
 								avc.ansiColor = nextColor();
 								m_ansiValueColors.push_back(avc);
 							}
-							// header colors/style? just use defColor and bold?
+							else {
+								throw std::invalid_argument("Unrecognized ansi sub-option: " + subOpt);
+							}
+							// TODO: header colors/style? just use defColor and bold?
 						}
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
