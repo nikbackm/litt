@@ -173,23 +173,7 @@ namespace std
 	template<> struct default_delete<sqlite3> { void operator()(sqlite3* ptr) { sqlite3_close(ptr); } };
 }
 
-using IdValue = unsigned long long;
-
-namespace LittConstants 
-{
-	const char*   DefDbName   = "litt.sqlite";
-	const char    OptDelim    = '.';
-	const char    OptExtDelim = ':';
-	const char    Wc          = '*';
-	const char*   WcS         = "*";
-	const char*   LogOp_OR    = " OR ";
-	const char*   LogOp_AND   = " AND ";
-	const IdValue EmptyId     = 0;
-}
-using namespace LittConstants;
-
-
-namespace Utils 
+namespace Utils
 {
 	bool toInt(std::string const & str, int& value)
 	{
@@ -202,7 +186,7 @@ namespace Utils
 		return true;
 	}
 
-	bool toIdValue(std::string const & str, IdValue & value)
+	bool toULongLong(std::string const & str, unsigned long long & value)
 	{
 		char* endPtr;
 		auto v = strtoull(str.c_str(), &endPtr, 10);
@@ -213,15 +197,7 @@ namespace Utils
 		return true;
 	}
 
-	bool toSecondsValue(std::string const & str, unsigned long long & value)
-	{
-		if (str[0] == '-' || str[0] == '\0') {
-			return false;
-		}
-		return toIdValue(str, value); // re-use!
-	}
-
-	void replaceAll(std::string& str, const std::string& from, const std::string& to) 
+	void replaceAll(std::string& str, const std::string& from, const std::string& to)
 	{
 		if (from.empty()) return;
 		for (size_t pos = 0; (pos = str.find(from, pos)) != std::string::npos; pos += to.length()) {
@@ -243,9 +219,9 @@ namespace Utils
 		return std::wstring();
 	}
 
-	std::wstring toWide(int codePage, std::string const & str) 
-	{ 
-		return toWide(codePage, str.c_str(), str.length()); 
+	std::wstring toWide(int codePage, std::string const & str)
+	{
+		return toWide(codePage, str.c_str(), str.length());
 	}
 
 	std::string toNarrow(int codePage, const wchar_t *src, int len = 0)
@@ -261,7 +237,7 @@ namespace Utils
 		}
 		return std::string();
 	}
-	
+
 	std::wstring utf8ToWide(const char* utf8String, int len = 0)
 	{
 		return toWide(CP_UTF8, utf8String, len);
@@ -285,7 +261,7 @@ namespace Utils
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 
-	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ... )
+	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 	{
 		va_list ap;
 		va_start(ap, fmtStr);
@@ -297,21 +273,6 @@ namespace Utils
 		res.pop_back(); // Remove the trailing '\0'
 		va_end(ap);
 		return res;
-	}
-
-	std::string readLine() {
-		CONSOLE_SCREEN_BUFFER_INFO info{};
-		HANDLE const hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-		GetConsoleScreenBufferInfo(hOut, &info);
-		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
-		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
-		std::string str;
-		// Set text color to blue, keep background.
-	    SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
-		std::getline(std::cin, str);
-		// Restore the previous text color.
-		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
-		return str;
 	}
 
 	std::string quote(std::string const & str)
@@ -329,12 +290,6 @@ namespace Utils
 		return res;
 	}
 
-	unsigned colWidth(std::string const & str) 
-	{
-		auto const w = str.length();
-		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
-	}
-
 	// Escape the SQL value and add the SQL quotes (if needed).
 	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
 	{
@@ -346,16 +301,9 @@ namespace Utils
 		return str;
 	}
 
-	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
-	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
-	{
-		std::replace(str.begin(), str.end(), Wc, '%');
-		return escSqlVal(str, tryToTreatAsNumeric);
-	}
-
 	void toLowerCase(std::string& str)
 	{
-		std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return static_cast<char>(tolower(c)); });
 	}
 
 	bool enableVTMode()
@@ -369,6 +317,92 @@ namespace Utils
 } // Utils
 using namespace Utils;
 
+namespace LittDefs
+{
+	using IdValue = unsigned long long;
+
+	enum class DisplayMode {
+		column,
+		html,
+		htmldoc,
+		list,
+		tabs,
+	};
+
+	enum class ColumnType {
+		text = 0,
+		numeric = 1,
+	};
+
+	enum class ColumnSortOrder {
+		Asc = 0,
+		Desc = 1,
+	};
+
+	const char*   DefDbName = "litt.sqlite";
+	const char    OptDelim = '.';
+	const char    OptExtDelim = ':';
+	const char    Wc = '*';
+	const char*   WcS = "*";
+	const char*   LogOp_OR = " OR ";
+	const char*   LogOp_AND = " AND ";
+	const IdValue EmptyId = 0;
+
+	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
+	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
+	{
+		std::replace(str.begin(), str.end(), Wc, '%');
+		return escSqlVal(str, tryToTreatAsNumeric);
+	}
+
+	unsigned colWidth(std::string const & str)
+	{
+		auto const w = str.length();
+		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
+	}
+
+	bool toSecondsValue(std::string const & str, unsigned long long & value)
+	{
+		if (str[0] == '-' || str[0] == '\0') {
+			return false;
+		}
+		return toULongLong(str, value);
+	}
+
+	bool toIdValue(std::string const & str, IdValue& value) { return toULongLong(str, value); }
+
+	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
+	struct ColumnInfo {
+		// These values are pre-configured:
+		char const* nameDef; // Name or definition for column
+		int         defWidth;
+		ColumnType  type;
+		char const* label; // optional, used when name does not refer to a direct table column.
+		bool        isGroupAggregate;
+
+		// These values are set at runtime. Stored here for convenience.
+		mutable int  overriddenWidth;
+		mutable bool usedInQuery;
+
+		const char* labelName() const { return label != nullptr ? label : nameDef; }
+
+		std::string getLikeArg(std::string val) const
+		{
+			return likeArg(std::move(val), type == ColumnType::numeric);
+		}
+	};
+
+	// A collection of columns including some integer data (width, sortOrder).
+	using Columns = std::vector<std::pair<ColumnInfo const *, int>>;
+
+	enum class ColumnsDataKind {
+		none,
+		width,
+		sortOrder
+	};
+}
+using namespace LittDefs;
+
 namespace Input
 {
 	enum InputOptions : unsigned {
@@ -376,6 +410,21 @@ namespace Input
 		optional = 0x00,
 		required = 0x01,
 	};
+
+	std::string readLine() {
+		CONSOLE_SCREEN_BUFFER_INFO info{};
+		HANDLE const hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		GetConsoleScreenBufferInfo(hOut, &info);
+		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
+		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
+		std::string str;
+		// Set text color to blue, keep background.
+		SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
+		std::getline(std::cin, str);
+		// Restore the previous text color.
+		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
+		return str;
+	}
 
 	void prefillInput(std::string const& str)
 	{
@@ -490,54 +539,6 @@ namespace Input
 	}
 }
 using namespace Input;
-
-enum class DisplayMode {
-	column,
-	html,
-	htmldoc,
-	list,
-	tabs,
-};
-
-enum class ColumnType {
-	text = 0,
-	numeric = 1,
-};
-
-enum class ColumnSortOrder {
-	Asc = 0,
-	Desc = 1,
-};
-
-// Note: All member value types are chosen/designed so that zero-init will set the desired default.
-struct ColumnInfo {
-	// These values are pre-configured:
-	char const* nameDef; // Name or definition for column
-	int         defWidth;
-	ColumnType  type;
-	char const* label; // optional, used when name does not refer to a direct table column.
-	bool        isGroupAggregate;
-
-	// These values are set at runtime. Stored here for convenience.
-	mutable int  overriddenWidth;
-	mutable bool usedInQuery;
-
-	const char* labelName() const { return label != nullptr ? label : nameDef; }
-
-	std::string getLikeArg(std::string val) const 
-	{ 
-		return likeArg(std::move(val), type == ColumnType::numeric); 
-	}
-};
-
-// A collection of columns including some integer data (width, sortOrder).
-using Columns = std::vector<std::pair<ColumnInfo const *, int>>; 
-
-enum class ColumnsDataKind {
-	none,
-	width,
-	sortOrder
-};
 
 struct OptionParser {
 	std::stringstream m_ss;
@@ -2051,7 +2052,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		{
 		}
 
-		unsigned colWidth() const { return Utils::colWidth(name); }
+		unsigned colWidth() const { return LittDefs::colWidth(name); }
 	};
 
 	std::vector<PeriodColumn> getPeriodColumns(int fromActionArgIndex)
