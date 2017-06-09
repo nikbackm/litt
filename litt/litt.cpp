@@ -1714,7 +1714,7 @@ public:
 			if (litt.rowCount == 0) {
 				if (litt.displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
-						query.columnWidths.push_back(std::min(30u,
+						query.columnWidths.push_back(std::min(size_t{30},
 							std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
 					}
 					if (litt.m_ansiEnabled) {
@@ -2057,7 +2057,7 @@ ORDER BY Dupe DESC, B."Date read")");
 	std::vector<PeriodColumn> getPeriodColumns(int fromActionArgIndex)
 	{
 		std::vector<PeriodColumn> res;
-		auto width = 0u;
+		size_t width = 0;
 		for (int i = fromActionArgIndex; ; ) {
 			auto def = arg(i++);
 			if (def.empty()) {
@@ -2268,7 +2268,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		auto ynInt = [](int yn) { return yn == 'y' ? 1     : 0;    };
 
 		printf("\n");
-		bool hasWidth = false; unsigned width = 0; again:
+		bool hasWidth = false; size_t width = 0; again:
 		for (auto const& a : authors) {
 			auto const& aid = std::get<0>(a);
 			auto const& story = std::get<1>(a);
