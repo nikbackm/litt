@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
+               behöva det för "ambiguity".
  * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
                specify trailing and/or preceding ".*" to match the whole value.
 			   Converts regex values to utf-8 before using them.
@@ -790,7 +792,7 @@ public:
 		m_columnInfos({ // OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 			{"ai",   {"Authors.AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
-			{"bi",   {"Books.BookID", 6, ColumnType::numeric}},
+			{"bi",   {"BookID", 6, ColumnType::numeric}},
 			{"bt",   {"Title", 40 }},
 			{"dr",   {"\"Date Read\"", 10 }},
 			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
