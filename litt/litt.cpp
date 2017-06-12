@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
  * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
  * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
                behöva det för "ambiguity".
@@ -1858,7 +1859,7 @@ public:
 			runSingleTableOutputCmd("ai.ln.fn", "Authors", "ai");
 		}
 		else {
-			runListData("bi.ln.fn.bt.dr.so.ge", "ln.fn.dr.bi");
+			runListData("bi.ln.fn.bt.dr.so.ge", "ai.dr.bi");
 		}
 	}
 
