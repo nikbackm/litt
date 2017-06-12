@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
  * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
                behöva det för "ambiguity".
  * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
@@ -67,9 +68,10 @@ Actions:
    add-g                            (Adds a new genre)
 
    abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
-                                     Supports virtual column abc - book count - for column selection, sorting and where)
+                                     Supports virtual column bc - book count - for column selection, sorting and where)
    gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
    sbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each book source, similar to abc)
+   ybca/ybcg/ybcs [#] [fy] [ly]     (Lists yearly book counts for authors, genres and sources. Args are row count, first and last year) 
    brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
    brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
 	);
@@ -315,6 +317,12 @@ namespace Utils
 		DWORD dwMode = 0;
 		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
 		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // TODO: Only do this on supported Windows 10 editions?
+	}
+
+	SYSTEMTIME GetSystemTime()
+	{
+		SYSTEMTIME st{}; ::GetSystemTime(&st);
+		return st;
 	}
 } // Utils
 using namespace Utils;
@@ -786,7 +794,7 @@ public:
 	std::string m_actionRightWildCard;
 	std::string m_actionLeftWildCard;
 
-	mutable int rowCount = 0; // The number of rows printed so far.
+	mutable int m_rowCount = 0; // The number of rows printed so far.
 
 	Litt(int argc, char** argv) :
 		m_columnInfos({ // OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
@@ -832,10 +840,8 @@ public:
 			// Intended for use in listRereads
 			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"", false }},
 
-			// This is for the "number of books" column in list*BookCounts
-			{"abc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
-			{"gbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
-			{"sbc", {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
+			// This is for the "number of books" column in list*BookCounts.
+			{"bc",  {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
 	})
 	{
 		for (auto& ci : m_columnInfos) { ci.second.overriddenWidth = -1; }
@@ -1248,6 +1254,13 @@ public:
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
+	int intarg(unsigned index, const char* name, int def) const 
+	{
+		return index < m_actionArgs.size()
+			? intarg(index, name) 
+			: def;
+	}
+
 	std::string argm(unsigned index, const char* name) const 
 	{
 		return index < m_actionArgs.size()
@@ -1302,6 +1315,14 @@ public:
 			} // else assumes columnWidths are properly set!
 		}
 
+		void addCol(ColumnInfo const * ci)
+		{
+			m_sstr << ci->nameDef;
+			if (ci->label != nullptr) {
+				m_sstr << " AS " << ci->label;
+			}
+		}
+
 		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
 		{
 			initSelectBare(selectOption);
@@ -1313,10 +1334,7 @@ public:
 					m_sstr << ",";
 				}
 				auto ci = selCols[i].first;
-				m_sstr << ci->nameDef;
-				if (ci->label != nullptr) {
-					m_sstr << " AS " << ci->label;
-				}
+				addCol(ci);
 				if (litt.displayMode == DisplayMode::column) {
 					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
 					_ASSERT(width >= 0);
@@ -1714,7 +1732,7 @@ public:
 		auto& litt = query.litt;
 		auto& output = litt.m_output;
 		try {
-			if (litt.rowCount == 0) {
+			if (litt.m_rowCount == 0) {
 				if (litt.displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(size_t{30},
@@ -1760,7 +1778,7 @@ public:
 				if (litt.consEnabled()) {
 					litt.consInit(argc, argv, azColName);
 				}
-			} // if (litt.rowCount == 0) {
+			} // if (litt.m_rowCount == 0) {
 
 			if (litt.consEnabled()) {
 				litt.consProcessRow(query, argc, argv);
@@ -1768,7 +1786,7 @@ public:
 			else {
 				litt.outputRow(query, false, argc, argv);
 			}
-			++litt.rowCount;
+			++litt.m_rowCount;
 			return 0;
 		}
 		catch (std::exception& ex) {
@@ -1790,7 +1808,7 @@ public:
 			return;
 		}
 
-		litt.rowCount = 0;
+		litt.m_rowCount = 0;
 		int res = sqlite3_exec(litt.m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
 		if (res == SQLITE_OK) {
 			if (litt.displayMode == DisplayMode::htmldoc) {
@@ -1800,7 +1818,7 @@ public:
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
 		}
-		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && rowCount > 0) {
+		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && m_rowCount > 0) {
 			m_output.write(m_ansiDefColor);
 		}
 		output.flushNoThrow();
@@ -1809,7 +1827,7 @@ public:
 		}
 
 		if (litt.showNumberOfRows) {
-			printf("\n# = %i\n", litt.rowCount);
+			printf("\n# = %i\n", litt.m_rowCount);
 		}
 	}
 
@@ -1989,15 +2007,15 @@ ORDER BY Dupe DESC, B."Date read")");
 		runOutputQuery(query);
 	}
 
-	void listBookCounts(std::string const & countCond, bool includeReReads, 
-		const char* snCount, const char* columns, const char* snGroupBy)
+	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy)
 	{
-		if (!countCond.empty()) { addCountCondToHavingCondition(snCount, countCond); }
+		auto selCols = columns + std::string(".bc");
+		if (!countCond.empty()) { addCountCondToHavingCondition("bc", countCond); }
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
-		getColumns(columns, ColumnsDataKind::width, true);  // In case -c option is used!
+		getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
 
 		OutputQuery query(*this);
-		query.initSelect(columns, "Books", (std::string(snCount) + ".desc").c_str());
+		query.initSelect(selCols.c_str(), "Books", "bc.desc");
 		query.addAuxTables();
 		query.addWhere();
 		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->nameDef));
@@ -2008,17 +2026,54 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void listAuthorBookCounts(std::string const & countCond, bool includeReReads) 
 	{
-		listBookCounts(countCond, includeReReads, "abc", "nn.35.abc", "ai");
+		listBookCounts(countCond, includeReReads, "nn.35", "ai");
 	}
 
 	void listGenreBookCounts(std::string const & countCond, bool includeReReads)
 	{
-		listBookCounts(countCond, includeReReads, "gbc", "ge.35.gbc", "gi");
+		listBookCounts(countCond, includeReReads, "ge.35", "gi");
 	}
 
 	void listSourceBookCounts(std::string const & countCond, bool includeReReads)
 	{
-		listBookCounts(countCond, includeReReads, "sbc", "so.35.sbc", "soid");
+		listBookCounts(countCond, includeReReads, "so.35", "soid");
+	}
+
+	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy)
+	{
+		auto col = getColumn(snColSelect);  col->usedInQuery = true;
+		auto bc  = getColumn("bc");         bc->usedInQuery = true;
+		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
+
+		auto whereCondStart = whereCondition;
+		OutputQuery q(*this);
+		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
+		q.initColumnWidths();
+		q.initSelectBare(); q.a("\"#\""); for (int y = firstYear; y <= lastYear; ++y) q.a(fmt(", \"%i\"", y));
+		q.add("FROM");
+		q.add(fmt("(WITH RECURSIVE Pos(\"#\") AS (SELECT 1 UNION ALL SELECT \"#\" + 1 FROM Pos WHERE \"#\" < %i) SELECT * FROM Pos)", count));
+		for (int year = firstYear; year <= lastYear; ++year) {
+			whereCondition = whereCondStart;
+			appendToWhereCondition(LogOp_AND, getWherePredicate(fmt("dr.%i-%%", year)));
+			q.add("LEFT OUTER JOIN");
+			q.add("(WITH t AS");
+			q.add(" (SELECT "); q.addCol(col); q.a(", "); q.addCol(bc);
+			q.add("  FROM BOOKS");
+			q.addAuxTables(IJF_DefaultsOnly, 2);
+			q.add("  WHERE " + whereCondition);
+			q.add("  GROUP BY " + std::string(gby->nameDef));
+			q.addHaving();
+			q.add("  ORDER BY " + std::string(bc->nameDef) + " DESC, " + col->nameDef);
+			q.add("  LIMIT + " + std::to_string(count) + ")");
+			q.add(" SELECT");
+			q.add(fmt("  printf('%%3i - %%s', %s, %s) as \"%i\"", bc->labelName(), col->labelName(), year));
+			q.add(fmt("  ,(SELECT COUNT(*) FROM t AS t2 WHERE (t2.%s > t.%s OR (t2.%s = t.%s AND t2.%s <= t.%s))) AS \"#\"",
+				bc->labelName(), bc->labelName(), bc->labelName(), bc->labelName(), col->labelName(), col->labelName()));
+			q.add(" FROM t)");
+			q.add("USING (\"#\")");
+		}
+		q.add("ORDER BY \"#\"");
+		runOutputQuery(q);
 	}
 
 	void listBooksReadPerDate(std::string countCond)
@@ -2225,7 +2280,7 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void addBook()
 	{
-		SYSTEMTIME st{}; GetSystemTime(&st);
+		auto st = GetSystemTime();
 		auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
 		auto title       = std::string();
 		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
@@ -2483,6 +2538,18 @@ ORDER BY Dupe DESC, B."Date read")");
 		else if (action == "sbc") {
 			listSourceBookCounts(arg(0), arg(1) == "1");
 		}
+		else if (action == "ybca" || action == "ybcg" || action == "ybcs") {
+			auto st = GetSystemTime();
+			auto count = intarg(0, "count", 10);
+			auto firstYear = intarg(1, "firstYear", st.wYear - 4);
+			auto lastYear = intarg(2, "lastYear", st.wYear);
+			auto snSel = "nn"; auto snGby = "ai"; // 'a' by default.
+			switch (action[3]) {
+				case 'g': snSel = "ge"; snGby = "gi"; break;
+				case 's': snSel = "so"; snGby = "soid"; break;
+			}
+			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby);
+		}
 		else if (action == "brd") {
 			listBooksReadPerDate(arg(0));
 		}
@@ -2508,7 +2575,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
 		}
 		else if (action == "brmy") {
-			SYSTEMTIME st{}; GetSystemTime(&st);
+			auto st = GetSystemTime();
 			std::vector<PeriodColumn> yearColumns;
 			for (int y = 2002; y <= st.wYear; ++y) {
 				char def[10]; sprintf_s(def, "dr.%04d-*", y);
