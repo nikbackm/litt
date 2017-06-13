@@ -1,13 +1,16 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-13: Speeded up ybca/g/s by using temporary memory tables instead of nested queries. Greatest speedup came from
+               being able to use rowId:s for joining year tables instead of generating RowNumbers in year queries via 
+               count(*) hack.
  * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
  * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
  * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
                behöva det för "ambiguity".
  * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
                specify trailing and/or preceding ".*" to match the whole value.
-			   Converts regex values to utf-8 before using them.
+               Converts regex values to utf-8 before using them.
  * 2017-06-08: Added ANSI color support via --ansi option.
  * 2017-06-07: Now uses blue text on input.
  * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
@@ -123,6 +126,7 @@ Options:
                     If no explicit method is specified then matching is done by comparing against the
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
+
     --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
                     Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
                     * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
@@ -787,8 +791,8 @@ public:
 	Columns selectedColumns; // Overrides the default action columns.
 	Columns additionalColumns; // Added to the action or overridden columns.
 
-	mutable std::string whereCondition;
-	mutable std::string havingCondition;
+	mutable std::string m_whereCondition;
+	mutable std::string m_havingCondition;
 
 	std::string m_action;
 	std::vector<std::string> m_actionArgs;
@@ -893,7 +897,7 @@ public:
 					}
 					break;
 				case 'w': 
-					appendToWhereCondition(LogOp_OR, getWherePredicate(val));
+					appendToWhereCondition(LogOp_OR, getWhereCondition(val));
 					break;
 				case 's':
 					// Not necessarily included in the query, hence "false".
@@ -1124,7 +1128,7 @@ public:
 			std::regex_constants::nosubs);
 	}
 
-	std::string getWherePredicate(std::string const & value) const
+	std::string getWhereCondition(std::string const & value) const // Will also update included columns!
 	{
 		OptionParser opts(value, "where");
 		std::string wcond;
@@ -1188,16 +1192,16 @@ public:
 		}
 	}
 
-	static void appendToCondition(std::string & cond, const char* logicalOp, std::string const & predicate)
+	static std::string appendConditions(const char* logicalOp, std::string const & cond, std::string const & cond2)
 	{
-		if (!predicate.empty()) {
-			cond = cond.empty() ? predicate : "(" + cond + ")" + logicalOp + "(" + predicate + ")";
-		}
+		if (cond.empty()) return cond2;
+		if (cond2.empty()) return cond;
+		return "(" + cond + ")" + logicalOp + "(" + cond2 + ")";
 	}
 
-	void appendToHavingCondition(const char* logicalOp, std::string const & predicate) const
+	void appendToHavingCondition(const char* logicalOp, std::string const & condition) const
 	{
-		appendToCondition(havingCondition, logicalOp, predicate);
+		m_havingCondition = appendConditions(logicalOp, m_havingCondition, condition);
 	}
 
 	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
@@ -1205,14 +1209,14 @@ public:
 		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->nameDef, countCond));
 	}
 
-	void appendToWhereCondition(const char* logicalOp, std::string const & predicate) const
+	void appendToWhereCondition(const char* logicalOp, std::string const & condition) const
 	{
-		appendToCondition(whereCondition, logicalOp, predicate);
+		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
 	}
 
 	void resetWhere() const
 	{
-		whereCondition.clear();
+		m_whereCondition.clear();
 	}
 
 	void addActionWhereCondition(const char* sn, std::string const & cond) const
@@ -1299,7 +1303,6 @@ public:
 
 		void initSelectBare(SelectOption selectOption = SelectOption::normal)
 		{
-			m_sstr.clear();
 			if (litt.explainQuery) {
 				m_sstr << "EXPLAIN QUERY PLAN ";
 			}
@@ -1357,15 +1360,15 @@ public:
 
 		void addWhere()
 		{
-			if (!litt.whereCondition.empty()) {
-				m_sstr << "\nWHERE " << litt.whereCondition;
+			if (!litt.m_whereCondition.empty()) {
+				m_sstr << "\nWHERE " << litt.m_whereCondition;
 			}
 		}
 
 		void addHaving()
 		{
-			if (!litt.havingCondition.empty()) {
-				m_sstr << "\nHAVING " << litt.havingCondition;
+			if (!litt.m_havingCondition.empty()) {
+				m_sstr << "\nHAVING " << litt.m_havingCondition;
 			}
 		}
 
@@ -2046,34 +2049,29 @@ ORDER BY Dupe DESC, B."Date read")");
 		auto bc  = getColumn("bc");         bc->usedInQuery = true;
 		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
 
-		auto whereCondStart = whereCondition;
 		OutputQuery q(*this);
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
 		q.initColumnWidths();
-		q.initSelectBare(); q.a("\"#\""); for (int y = firstYear; y <= lastYear; ++y) q.a(fmt(", \"%i\"", y));
-		q.add("FROM");
+		q.add("ATTACH DATABASE ':memory:' AS memdb;");
+		for (int year = firstYear; year <= lastYear; ++year) {
+			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
+			q.add(fmt("CREATE TABLE memdb.year%i AS", year));
+			q.add(fmt("SELECT printf('%%3i - %%s', %s, %s) as \"%i\"", bc->nameDef, col->nameDef, year));
+			q.add    ("FROM BOOKS");
+			q.addAuxTables();
+			q.add(fmt("WHERE %s", ycond.c_str()));
+			q.add(fmt("GROUP BY %s", gby->nameDef));
+			q.addHaving();
+			q.add(fmt("ORDER BY %s DESC, %s", bc->nameDef, col->nameDef));
+			q.add(fmt("LIMIT %i;", count));
+		} q.a("\n");
+		q.initSelectBare(); q.a("* FROM");
 		q.add(fmt("(WITH RECURSIVE Pos(\"#\") AS (SELECT 1 UNION ALL SELECT \"#\" + 1 FROM Pos WHERE \"#\" < %i) SELECT * FROM Pos)", count));
 		for (int year = firstYear; year <= lastYear; ++year) {
-			whereCondition = whereCondStart;
-			appendToWhereCondition(LogOp_AND, getWherePredicate(fmt("dr.%i-%%", year)));
-			q.add("LEFT OUTER JOIN");
-			q.add("(WITH t AS");
-			q.add(" (SELECT "); q.addCol(col); q.a(", "); q.addCol(bc);
-			q.add("  FROM BOOKS");
-			q.addAuxTables(IJF_DefaultsOnly, 2);
-			q.add("  WHERE " + whereCondition);
-			q.add("  GROUP BY " + std::string(gby->nameDef));
-			q.addHaving();
-			q.add("  ORDER BY " + std::string(bc->nameDef) + " DESC, " + col->nameDef);
-			q.add("  LIMIT + " + std::to_string(count) + ")");
-			q.add(" SELECT");
-			q.add(fmt("  printf('%%3i - %%s', %s, %s) as \"%i\"", bc->labelName(), col->labelName(), year));
-			q.add(fmt("  ,(SELECT COUNT(*) FROM t AS t2 WHERE (t2.%s > t.%s OR (t2.%s = t.%s AND t2.%s <= t.%s))) AS \"#\"",
-				bc->labelName(), bc->labelName(), bc->labelName(), bc->labelName(), col->labelName(), col->labelName()));
-			q.add(" FROM t)");
-			q.add("USING (\"#\")");
+			q.add(fmt("LEFT OUTER JOIN memdb.year%i ON \"#\" == memdb.year%i.rowId", year, year));
 		}
-		q.add("ORDER BY \"#\"");
+		q.add("ORDER BY \"#\";");
+		q.add("DETACH DATABASE memdb");
 		runOutputQuery(q);
 	}
 
@@ -2092,8 +2090,8 @@ ORDER BY Dupe DESC, B."Date read")");
 		query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead WHERE \"Date Read\" > \"2001-10\")");
 		query.add("  GROUP BY CalcDR");
 		query.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
-		if (!whereCondition.empty()) {
-		query.add(" AND " + whereCondition);
+		if (!m_whereCondition.empty()) {
+		query.add(" AND " + m_whereCondition);
 		}
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -2147,31 +2145,29 @@ ORDER BY Dupe DESC, B."Date read")");
 		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
 		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
 		q.initColumnWidths();
-		appendToWhereCondition(LogOp_AND, getWherePredicate("dr.gt.2002"));
-		auto whereCondStart = whereCondition;
+		appendToWhereCondition(LogOp_AND, getWhereCondition("dr.gt.2002"));
 
 		q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
 		q.add("   (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
 		q.add("    FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 4);
-		q.add("    WHERE " + whereCondition + ")");
+		q.add("    WHERE " + m_whereCondition + ")");
 		q.add("  GROUP BY " + period);
 		q.add(" ) Main");
 
 		for (auto& c : columns) {
 		// We don't update the having condition, it should be same for all columns and not included in col defs.
-		whereCondition = whereCondStart;
-		appendToWhereCondition(LogOp_AND, getWherePredicate(c.definition));
+		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
 		q.add(" LEFT OUTER JOIN");
 		q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
 		q.add("    (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
 		q.add("     FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 5);
-		q.add("     WHERE " + whereCondition + ")");
+		q.add("     WHERE " + ccond + ")");
 		q.add("  GROUP BY " + period);
-		if (!havingCondition.empty()) { 
-		q.add("  HAVING " + havingCondition);
+		if (!m_havingCondition.empty()) { 
+		q.add("  HAVING " + m_havingCondition);
 		}
 		q.add(" )");
 		q.add(" USING(" + period + ")");
@@ -2540,10 +2536,9 @@ ORDER BY Dupe DESC, B."Date read")");
 			listSourceBookCounts(arg(0), arg(1) == "1");
 		}
 		else if (action == "ybca" || action == "ybcg" || action == "ybcs") {
-			auto st = GetSystemTime();
 			auto count = intarg(0, "count", 10);
-			auto firstYear = intarg(1, "firstYear", st.wYear - 4);
-			auto lastYear = intarg(2, "lastYear", st.wYear);
+			auto firstYear = intarg(1, "firstYear", GetSystemTime().wYear - 4);
+			auto lastYear = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; // 'a' by default.
 			switch (action[3]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
