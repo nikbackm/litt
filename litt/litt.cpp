@@ -558,10 +558,11 @@ namespace Input
 }
 using namespace Input;
 
-struct OptionParser {
+class OptionParser {
 	std::stringstream m_ss;
 	const char* const m_type;
 	const char        m_delim;
+public:
 	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
 		: m_ss(value), m_type(type), m_delim(delim)
 	{}
