@@ -76,7 +76,7 @@ Actions:
    abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
                                      Supports virtual column bc - book count - for column selection, sorting and where)
    gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
-   sbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each book source, similar to abc)
+   sbc [<bookCountCond>]            (Lists the number of read books for each book source, similar to abc. Re-reads always included)
    ybca/ybcg/ybcs [#] [fy] [ly]     (Lists yearly book counts for authors, genres and sources. Args are row count, first and last year) 
    brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
    brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
@@ -2040,21 +2040,6 @@ ORDER BY Dupe DESC, B."Date read")");
 		runOutputQuery(query);
 	}
 
-	void listAuthorBookCounts(std::string const & countCond, bool includeReReads) 
-	{
-		listBookCounts(countCond, includeReReads, "nn.35", "ai");
-	}
-
-	void listGenreBookCounts(std::string const & countCond, bool includeReReads)
-	{
-		listBookCounts(countCond, includeReReads, "ge.35", "gi");
-	}
-
-	void listSourceBookCounts(std::string const & countCond, bool includeReReads)
-	{
-		listBookCounts(countCond, includeReReads, "so.35", "soid");
-	}
-
 	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy)
 	{
 		auto col = getColumn(snColSelect);  col->usedInQuery = true;
@@ -2538,19 +2523,19 @@ ORDER BY Dupe DESC, B."Date read")");
 			listSamestory();
 		}
 		else if (action == "abc") {
-			listAuthorBookCounts(arg(0), arg(1) == "1");
+			listBookCounts(arg(0), arg(1) == "1", "nn.35", "ai");
 		}
 		else if (action == "gbc") {
-			listGenreBookCounts(arg(0), arg(1) == "1");
+			listBookCounts(arg(0), arg(1) == "1", "ge.35", "gi");
 		}
 		else if (action == "sbc") {
-			listSourceBookCounts(arg(0), arg(1) == "1");
+			listBookCounts(arg(0), true, "so.35", "soid"); // DR always included when SO is.
 		}
 		else if (action == "ybca" || action == "ybcg" || action == "ybcs") {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", GetSystemTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
-			auto snSel = "nn"; auto snGby = "ai"; // 'a' by default.
+			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
 			switch (action[3]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
 				case 's': snSel = "so"; snGby = "soid"; break;
