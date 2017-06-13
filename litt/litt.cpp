@@ -270,17 +270,20 @@ namespace Utils
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 
+	#define std_string_fmt_impl(fmtStr,resVar) \
+		va_list ap; \
+		va_start(ap, fmtStr); \
+		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; /* Extra space for '\0' */ \
+		va_end(ap); \
+		std::string resVar(size, '\0'); \
+		va_start(ap, fmtStr); \
+		vsnprintf(&res[0], size, fmtStr, ap); \
+		res.pop_back(); /* Remove the trailing '\0' */ \
+		va_end(ap)
+
 	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 	{
-		va_list ap;
-		va_start(ap, fmtStr);
-		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; // Extra space for '\0'
-		va_end(ap);
-		std::string res(size, '\0');
-		va_start(ap, fmtStr);
-		vsnprintf(&res[0], size, fmtStr, ap);
-		res.pop_back(); // Remove the trailing '\0'
-		va_end(ap);
+		std_string_fmt_impl(fmtStr,res);
 		return res;
 	}
 
@@ -1392,6 +1395,12 @@ public:
 			add(line.c_str());
 		}
 
+		void adf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
+		{
+			std_string_fmt_impl(fmtStr, res);
+			add(res);
+		}
+
 		void addIf(bool cond, const char* line)
 		{
 			if (cond) add(line);
@@ -2052,26 +2061,25 @@ ORDER BY Dupe DESC, B."Date read")");
 		OutputQuery q(*this);
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
 		q.initColumnWidths();
-		q.add("ATTACH DATABASE ':memory:' AS memdb;");
+		q.add("ATTACH DATABASE ':memory:' AS mdb;");
+		q.add("CREATE TABLE mdb.Res (\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
+		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
+		q.add(");");
+		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
-			q.add(fmt("CREATE TABLE memdb.year%i AS", year));
-			q.add(fmt("SELECT printf('%%3i - %%s', %s, %s) as \"%i\"", bc->nameDef, col->nameDef, year));
-			q.add    ("FROM BOOKS");
+			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%3i - %%s',%s,%s) AS \"%i\"", year, bc->nameDef, col->nameDef, year);
+			q.add("FROM BOOKS");
 			q.addAuxTables();
-			q.add(fmt("WHERE %s", ycond.c_str()));
-			q.add(fmt("GROUP BY %s", gby->nameDef));
+			q.adf("WHERE %s", ycond.c_str());
+			q.adf("GROUP BY %s", gby->nameDef);
 			q.addHaving();
-			q.add(fmt("ORDER BY %s DESC, %s", bc->nameDef, col->nameDef));
-			q.add(fmt("LIMIT %i;", count));
+			q.adf("ORDER BY %s DESC, %s", bc->nameDef, col->nameDef);
+			q.adf("LIMIT %i;", count);
+			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");\n", year, year, year);
 		} q.a("\n");
-		q.initSelectBare(); q.a("* FROM");
-		q.add(fmt("(WITH RECURSIVE Pos(\"#\") AS (SELECT 1 UNION ALL SELECT \"#\" + 1 FROM Pos WHERE \"#\" < %i) SELECT * FROM Pos)", count));
-		for (int year = firstYear; year <= lastYear; ++year) {
-			q.add(fmt("LEFT OUTER JOIN memdb.year%i ON \"#\" == memdb.year%i.rowId", year, year));
-		}
-		q.add("ORDER BY \"#\";");
-		q.add("DETACH DATABASE memdb");
+		q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
+		q.add("DETACH DATABASE mdb");
 		runOutputQuery(q);
 	}
 
