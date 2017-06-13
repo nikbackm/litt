@@ -4,6 +4,8 @@ Changelog:
  * 2017-06-13: Speeded up ybca/g/s by using temporary memory tables instead of nested queries. Greatest speedup came from
                being able to use rowId:s for joining year tables instead of generating RowNumbers in year queries via 
                count(*) hack.
+			   No longer needs to specify a value for --ansi off sub-option, always sets to disabled.
+			   ybca/g/s now calculates lastYear from firstYear instead of calculating both from current year.
  * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
  * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
  * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
@@ -127,7 +129,7 @@ Options:
                     same column value of the previous row.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
 
-    --ansi[:off:<boolInt>][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
+    --ansi[:off][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
                     Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
                     * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
                     * defC : Specify default color for all values.
@@ -970,7 +972,7 @@ public:
 						while (extVal.getNext(subOpt)) {
 							toLowerCase(subOpt);
 							if (subOpt == "off") {
-								m_ansiEnabled = (extVal.nextInt() == 0);
+								m_ansiEnabled = false;
 							}
 							else if (subOpt == "defc") {
 								m_ansiDefColor = nextColor();
