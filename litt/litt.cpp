@@ -1,7 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2017-06-14: Simplified samestory. 
+ * 2017-06-14: Simplified samestory. Removed hacks for "Forever Yours"!
                Removed unnecessary SELECT DISTINCT by default in many places.
                Simplified titlestory a little, removed unneeded AuthorBooks, so no need for distinct.
  * 2017-06-14: Added the id values to addAuxTables, might want to select those too! Removed all table names from column names in
