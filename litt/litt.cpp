@@ -1,11 +1,16 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-14: Simplified samestory. 
+               Removed unnecessary SELECT DISTINCT by default in many places.
+               Simplified titlestory a little, removed unneeded AuthorBooks, so no need for distinct.
+ * 2017-06-14: Added the id values to addAuxTables, might want to select those too! Removed all table names from column names in
+               in columnInfo:s. (Not only Books.BookID as last time).
  * 2017-06-13: Speeded up ybca/g/s by using temporary memory tables instead of nested queries. Greatest speedup came from
                being able to use rowId:s for joining year tables instead of generating RowNumbers in year queries via 
                count(*) hack.
-			   No longer needs to specify a value for --ansi off sub-option, always sets to disabled.
-			   ybca/g/s now calculates lastYear from firstYear instead of calculating both from current year.
+               No longer needs to specify a value for --ansi off sub-option, always sets to disabled.
+               ybca/g/s now calculates lastYear from firstYear instead of calculating both from current year.
  * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
  * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
  * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
@@ -96,7 +101,7 @@ R"(
 R"(
    rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
    sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
-   samestory                        (Lists stories with same title - Shows duplicates)
+   samestory                        (Lists stories with same title)
    titlestory                       (Lists books with same title as a story - Shows duplicates)
    
    b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
@@ -809,7 +814,7 @@ public:
 
 	Litt(int argc, char** argv) :
 		m_columnInfos({ // OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
-			{"ai",   {"Authors.AuthorID", 8, ColumnType::numeric}},
+			{"ai",   {"AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"BookID", 6, ColumnType::numeric}},
 			{"bt",   {"Title", 40 }},
@@ -830,7 +835,7 @@ public:
 			{"st",   {"Story", 30 }},
 			{"stid", {"StoryID", 7, ColumnType::numeric }},
 			{"so",   {"Source", 40 }},
-			{"soid", {"Sources.SourceID", 7, ColumnType::numeric }},
+			{"soid", {"SourceID", 8, ColumnType::numeric }},
 			{"dw",   {"strftime('%w',\"Date Read\")", 3, ColumnType::text, "DOW" }},
 			{"btl",  {"length(Title)", 4, ColumnType::numeric }},
 			{"lnl",  {"length(\"Last Name\")", 4, ColumnType::numeric }},
@@ -1284,11 +1289,13 @@ public:
 
 	std::string encodeSqlFromInput(std::string const& sql) const { return toUtf8(sql); }
 
-	enum InnerJoinFor : unsigned {
+	enum AuxTableOptions : unsigned {
 		IJF_DefaultsOnly = 0x00,
 		IJF_Stories = 0x01,
 		IJF_Series = 0x02,
 		IJF_OrigTitle = 0x04,
+		Skip_AuthorBooks = 0x08,
+		Skip_Stories = 0x10,
 	};
 
 	enum class SelectOption {
@@ -1424,29 +1431,31 @@ public:
 			addIfColumns(columns, line.c_str());
 		}
 
-		void addAuxTables(InnerJoinFor ijf = IJF_DefaultsOnly, unsigned indentSize = 0)
+		void addAuxTables(AuxTableOptions opt = IJF_DefaultsOnly, unsigned indentSize = 0)
 		{
 			std::string indent(indentSize, ' ');
 
-			std::string serJoin = (ijf & IJF_Series)    ? "INNER" : "LEFT OUTER";
-			std::string stoJoin = (ijf & IJF_Stories)   ? "INNER" : "LEFT OUTER";
-			std::string ortJoin = (ijf & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
+			std::string serJoin = (opt & IJF_Series)    ? "INNER" : "LEFT OUTER";
+			std::string stoJoin = (opt & IJF_Stories)   ? "INNER" : "LEFT OUTER";
+			std::string ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
 			
 			#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
 			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
 
-			addIfColumns("dr.dw.dwl.ti.sec.so", indent + "INNER JOIN DatesRead USING(BookID)");
-			addIfColumns("ng",          indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
-			addIfColumns("dg",          indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
-			addIfColumns("fn.ln.nn.st", indent + "INNER JOIN AuthorBooks USING(BookID)");
-			addIfColumns("fn.ln.nn",    indent + "INNER JOIN Authors USING(AuthorID)");
-			addIfColumns("ot",          indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
-			addIfColumns("st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
-			addIfColumns("sp.se",       indent +  serJoin + " JOIN BookSeries USING(BookID)");
-			addIfColumns("se",          indent +  serJoin + " JOIN Series USING(SeriesID)");
-			addIfColumns("so",          indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
-			addIfColumns("ge.gi",       indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
-			addIfColumns("ge",          indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
+			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("ng",                       indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
+			addIfColumns("dg",                       indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
+			if ((opt & Skip_AuthorBooks) == 0)
+			addIfColumns("ai.fn.ln.nn.st.stid",      indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
+			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
+			if ((opt & Skip_Stories) == 0)
+			addIfColumns("stid.st",                  indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+			addIfColumns("si.sp.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
+			addIfColumns("so",                       indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
+			addIfColumns("gi.ge",                    indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
+			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
 
 			#undef ngSqlSelect
 			#undef dgSqlSelect
@@ -1856,11 +1865,11 @@ public:
 		runOutputQuery(query);
 	}
 
-	void runListData(const char* defColumns, const char* defOrderBy, InnerJoinFor ijf = IJF_DefaultsOnly)
+	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		OutputQuery query(*this);
 		query.initSelect(defColumns, "Books", defOrderBy);
-		query.addAuxTables(ijf);
+		query.addAuxTables(opt);
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -1938,7 +1947,7 @@ public:
 	{
 		OutputQuery query(*this);
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-		query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr", SelectOption::distinct);
+		query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr");
 		query.add("INNER JOIN Books USING(BookID)");
 		query.addAuxTables();
 		query.addWhere();
@@ -1950,7 +1959,7 @@ public:
 	{
 		OutputQuery query(*this);
 		const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
-		query.initSelect("bi.bt.ng.btc", from, "bt.bi", SelectOption::distinct);
+		query.initSelect("bi.bt.ng.btc", from, "bt.bi");
 		query.add("INNER JOIN Books USING(Title)");
 		query.addAuxTables();
 		query.addWhere();
@@ -1961,35 +1970,16 @@ public:
 	void listSamestory() 
 	{
 		OutputQuery query(*this);
-		//query.columnWidths = { 25,4,5,5,20,20,15,15,10,10,10,10 };
-		query.initColumnWidths();
-		query.initSelectBare();
-		query.a(
-R"(S1.Story as Story,
-case when S1.AuthorID = S2.AuthorID then 'YES' else '-' end as Dupe, 
-S1.BookID AS 'BID 1', S2.BookID as 'BID 2',
-S1.Title as Title1, S2.Title as Title2,
-S1."First Name" || ' ' || S1."Last Name" as 'Author 1', 
-case when S1.AuthorID <> S2.AuthorID then  S2."First Name" || ' ' || S2."Last Name" else '* see 1 *' end as 'Author 2',
-S1."Date read" as 'Date read 1', S2."Date read" as 'Date read 2',
-S1.Source as 'Source 1', S2.Source as 'Source 2'
-FROM (Stories
-	INNER JOIN Books USING(BookID)
-	INNER JOIN Authors USING(AuthorID)
-	INNER JOIN DatesRead USING(BookID)
-	INNER JOIN Sources USING(SourceID)
-) AS S1 
-JOIN (Stories
-	INNER JOIN Books USING(BookID)
-	INNER JOIN Authors USING(AuthorID)
-	INNER JOIN DatesRead USING(BookID)
-	INNER JOIN Sources USING(SourceID)
-) as S2
-WHERE S1.Story = S2.Story AND S1.StoryID <> S2.StoryID 
-	AND S1.BookID <> S2.BookID              -- Avoid stories with more than one author (River of Souls)
-	AND S1.BookID NOT Between 1274 AND 1276 -- Avoid Forever Yours, that's the book not the stories!
-GROUP BY S1.Story
-ORDER BY Dupe DESC)");
+		const char* from = 
+			"(SELECT DISTINCT S1.* FROM Stories AS S1 JOIN Stories as S2"
+			" WHERE S1.Story = S2.Story AND S1.StoryID <> S2.StoryID AND S1.BookID <> S2.BookID)";
+		query.initSelect("st.nn.bi.bt.dr.so", from, "st.nn.dr");
+		query.add("INNER JOIN Books USING(BookID)");
+		query.addAuxTables(AuxTableOptions(
+			Skip_AuthorBooks | // Already have AuthorID from S1 so skip to avoid need for SELECT DISTINCT.
+			Skip_Stories));    // Already have Stories content from S1 so skip to avoid ambigous column error.
+		query.addWhere();
+		query.addOrderBy();
 		runOutputQuery(query);
 	}
 
@@ -1998,23 +1988,22 @@ ORDER BY Dupe DESC)");
 		OutputQuery query(*this);
 		query.columnWidths = { 6,4,20,10,15,20,8,15,20,10,15 };
 		query.initColumnWidths();
-		query.initSelectBare(SelectOption::distinct);
+		query.initSelectBare();
 		query.a(
 R"(B.BookID as BookID, case when B.AuthorID = S.AuthorID then 'YES' else '-' end as Dupe, B.Title as Title, 
 B."Date read" as 'Book read', B.Source as 'Book source', 
 case when B.AuthorID <> S.AuthorID then B."First Name" || ' ' || B."Last Name" else '* see story *' end as 'Book Author',
 S.BookID as 'S BookID', S."First Name" || ' ' || S."Last Name" as 'Story Author', S.Title as 'Story book title',  
 S."Date read" as 'Story read', S.Source as 'Story source'
-FROM (Books 
+FROM (Books
 	INNER JOIN AuthorBooks USING(BookID)
 	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
-) AS B 
-JOIN (Stories 
-	INNER JOIN AuthorBooks USING(AuthorID)
-	INNER JOIN Authors USING(AuthorID)
+) AS B
+JOIN (Stories
 	INNER JOIN Books USING(BookID)
+	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
 ) as S 
