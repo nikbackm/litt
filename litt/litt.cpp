@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: Removed artifical 2001-10 start in brd. (Will now get a few "fake" hits from 1998-2001, but fine.)
  * 2017-06-16: Fixed output from getPeriodColumns; does not print a newline if there are no columns, takes BOM and utf-8 into
                account, just like output from the query.
  * 2017-06-16: Now listBooksReadPerPeriod supports all dates instead of limiting to 2002 and newer.
@@ -2120,7 +2121,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		query.addAuxTables();
 		query.add("WHERE " calcDRTimeWindow " IN");
-		query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead WHERE \"Date Read\" > \"2001-10\")");
+		query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead)");
 		query.add("  GROUP BY CalcDR");
 		query.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
 		if (!m_whereCondition.empty()) {
