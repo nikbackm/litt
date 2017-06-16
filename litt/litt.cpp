@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: Can now give max number of characters to compare in cons when comparing with prev row value.
  * 2017-06-14: Simplified samestory. Removed hacks for "Forever Yours"!
                Removed unnecessary SELECT DISTINCT by default in many places.
                Simplified titlestory a little, removed unneeded AuthorBooks, so no need for distinct.
@@ -128,10 +129,11 @@ Options:
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
 
-    --cons:<minRowCount>:{<colSnOrName>[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
+    --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                     Specifies column conditions for consecutive output row matching.
                     If no explicit method is specified then matching is done by comparing against the
-                    same column value of the previous row.
+                    same column value of the previous row. Can optionally specify the max number of characters
+                    to compare.
                     The dlt/dgt diff matching is only supported for the "sec" column.)
 
     --ansi[:off][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
@@ -939,6 +941,7 @@ public:
 							col.name = colName; colName.clear();
 							col.index = -1; // Will be set when we get the first callback
 							col.matchMethod = ConsRowMatchMethod::columnValue;
+							col.charCmpCount = 0;
 							std::string mm;
 							if (extVal.getNext(mm)) {
 								if (mm == "regex" || mm == "re" || mm == "ren") {
@@ -954,6 +957,9 @@ public:
 									col.matchMethod = (mm == "dlt")
 										? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
 									col.diff = extVal.nextInt();
+									extVal.getNext(colName);
+								}
+								else if (toInt(mm, col.charCmpCount)) {
 									extVal.getNext(colName);
 								}
 								else {
@@ -1640,6 +1646,7 @@ public:
 	struct ConsRowColumnInfo {
 		std::string        name;
 		ConsRowMatchMethod matchMethod;
+		int                charCmpCount;
 		std::regex         re;
 		int                diff;
 		mutable int        index;
@@ -1695,7 +1702,30 @@ public:
 			auto val = rowValue(argv[col.index]);
 			switch (col.matchMethod) {
 			case ConsRowMatchMethod::columnValue:
-				cvMatch = cvMatch && (m_consRowBuffer[0][col.index] == val);
+				if (cvMatch) {
+					auto const & prevVal = m_consRowBuffer[0][col.index];
+					if (col.charCmpCount <= 0) {
+						cvMatch = (prevVal == val);
+					}
+					else {
+						auto const maxCmp  = (size_t)col.charCmpCount;
+						auto const prevLen = prevVal.size();
+						auto const len     = strlen(val);
+						if (len != prevLen && (len < maxCmp || prevLen < maxCmp)) {
+							// If one (or both) of them is less than maxCmp and they have different lengths, then they are not equal.
+							cvMatch = false; 
+						}
+						else {
+							auto const cmpCnt = std::min({maxCmp, prevLen, len});
+							for (size_t i = 0; i < cmpCnt; ++i) {
+								if (prevVal[i] != val[i]) {
+									cvMatch = false;
+									break;
+								}
+							}
+						}
+					}
+				}
 				break;
 			case ConsRowMatchMethod::regEx:
 				reMatch = reMatch && std::regex_search(val, col.re);
