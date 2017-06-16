@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: brmy action now takes firstYear and lastYear as parameters instead of the pretty useless date condition used
+               to select a specific month.
  * 2017-06-16: Can now give max number of characters to compare in cons when comparing with prev row value.
  * 2017-06-14: Simplified samestory. Removed hacks for "Forever Yours"!
                Removed unnecessary SELECT DISTINCT by default in many places.
@@ -85,7 +87,8 @@ Actions:
    sbc [<bookCountCond>]            (Lists the number of read books for each book source, similar to abc. Re-reads always included)
    ybca/ybcg/ybcs [#] [fy] [ly]     (Lists yearly book counts for authors, genres and sources. Args are row count, first and last year) 
    brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
-   brm/bry/brmy/brym/brwd [...]     (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w))"
+   brm/bry/brym/brwd [...]          (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w)
+   brmy [firstYear] [lastYear]      (Lists the number of books read per month for given years. Supports prc as well)"
 	);
 	if (showExtended) {
 		printf(
@@ -2587,12 +2590,15 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		else if (action == "brmy") {
 			auto st = GetSystemTime();
+			auto firstYear = intarg(0, "firstYear", st.wYear);
+			auto lastYear  = intarg(1, "lastYear", st.wYear);
 			std::vector<PeriodColumn> yearColumns;
-			for (int y = 2002; y <= st.wYear; ++y) {
+			for (int y = firstYear; y <= lastYear; ++y) {
 				char def[10]; sprintf_s(def, "dr.%04d-*", y);
 				yearColumns.push_back({ def, std::to_string(y) });
 			}
-			listBooksReadPerPeriod("%m", "Month", arg(0, WcS), yearColumns);
+			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", firstYear, lastYear)));
+			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
 		}
 		else if (action == "add-a" || action == "adda") {
 			addAuthor();
