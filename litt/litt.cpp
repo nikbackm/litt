@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: Fixed output from getPeriodColumns; does not print a newline if there are no columns, takes BOM and utf-8 into
+               account, just like output from the query.
  * 2017-06-16: Now listBooksReadPerPeriod supports all dates instead of limiting to 2002 and newer.
                Done by simply using substr instead of strftime where possible. Requires YYYY-MM-DD [HH:MM] 
                date format though so less general now, cannot have dates as timestamps. Not an issue of course.
@@ -1787,6 +1789,21 @@ public:
 		}
 	}
 
+	void writeBomIfNeeded() const
+	{
+		static bool wroteBom = false;
+		if (wroteBom) return;
+
+		if (!m_output.stdOutIsConsole() && displayMode == DisplayMode::column) {
+			// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
+			// detect the utf-8 encoding depending on the actual output.
+			// Seems to interfere with V:S CSV mode though!
+			const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+			m_output.write((const char*)&bom[0], sizeof(bom));
+			wroteBom = true;
+		}
+	}
+
 	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName) 
 	{
 		auto& query = *static_cast<OutputQuery*>(pArg);
@@ -1804,13 +1821,8 @@ public:
 					}
 				}
 
-				if (!output.stdOutIsConsole() && litt.displayMode == DisplayMode::column) {
-					// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
-					// detect the utf-8 encoding depending on the actual output.
-					// Seems to interfere with V:S CSV mode though!
-					const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
-					output.write((const char*)&bom[0], sizeof(bom));
-				}
+				litt.writeBomIfNeeded();
+
 				if (litt.displayMode == DisplayMode::htmldoc) {
 					auto docStart = 
 						"<!DOCTYPE html>\n" 
@@ -2148,10 +2160,16 @@ ORDER BY Dupe DESC, B."Date read")");
 			res.push_back({ def, name });
 			width = std::max(width, res.back().name.length());
 		}
-		for (auto const & pc : res) {
-			printf("%-*s : %s\n", width, pc.name.c_str(), pc.definition.c_str());
+		if (!res.empty()) {
+			writeBomIfNeeded();
+			for (auto const & pc : res) {
+				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width);
+				m_output.write(" : ");
+				m_output.write(toUtf8(pc.definition));
+				m_output.write("\n");
+			}
+			m_output.write("\n");
 		}
-		printf("\n");
 		return res;
 	}
 
