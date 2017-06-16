@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: Added set-ot (to tiresome to use DB Browser!)
  * 2017-06-16: Removed artifical 2001-10 start in brd. (Will now get a few "fake" hits from 1998-2001, but fine.)
  * 2017-06-16: Fixed output from getPeriodColumns; does not print a newline if there are no columns, takes BOM and utf-8 into
                account, just like output from the query.
@@ -118,6 +119,7 @@ R"(
    
    set-dr <BookID> [C|D CurGenreID] (Add, Change or Delete 'date read' for a book. Need to specify current dr for C and D)
    set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
+   set-ot <BookID> <Original title> (Set the original title for a book. Will update current if already set)
 
    h                                (Show more extensive help)
    
@@ -2533,6 +2535,16 @@ ORDER BY Dupe DESC, B."Date read")");
 		if (changes != -1) { printf("Updated %i rows\n", changes); }
 	}
 
+	void setOriginalTitle(IdValue bookId, std::string const & originalTitle)
+	{
+		auto const bt = selTitle(bookId);
+		if (confirm(fmt("Set original title of '%s' => '%s'", bt.c_str(), originalTitle.c_str()))) {
+			int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
+				bookId, ESC_S(originalTitle)));
+			printf("Updated %i rows\n", changes);
+		}
+	}
+
 	void executeAction() 
 	{
 		auto const& action = m_action;
@@ -2657,6 +2669,11 @@ ORDER BY Dupe DESC, B."Date read")");
 			auto cmd = arg(1, "a");
 			auto dr = (cmd == "a" ? "" : argm(2, "dateRead"));
 			setBookDateRead(bid, cmd, dr);
+		}
+		else if (action == "set-ot" || action == "setot") {
+			auto bid = idarg(0, "bookId");
+			auto ot = argm(1, "originalTitle");
+			setOriginalTitle(bid, ot);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
