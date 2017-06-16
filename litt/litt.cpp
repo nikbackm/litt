@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: Now listBooksReadPerPeriod supports all dates instead of limiting to 2002 and newer.
+               Done by simply using substr instead of strftime where possible. Requires YYYY-MM-DD [HH:MM] 
+               date format though so less general now, cannot have dates as timestamps. Not an issue of course.
  * 2017-06-16: brmy action now takes firstYear and lastYear as parameters instead of the pretty useless date condition used
                to select a specific month.
  * 2017-06-16: Can now give max number of characters to compare in cons when comparing with prev row value.
@@ -1380,10 +1383,10 @@ public:
 				: litt.orderBy;
 		}
 
-		void addWhere()
+		void addWhere(int indentSize = 0)
 		{
 			if (!litt.m_whereCondition.empty()) {
-				m_sstr << "\nWHERE " << litt.m_whereCondition;
+				m_sstr << "\n" << std::string(indentSize, ' ') << "WHERE " << litt.m_whereCondition;
 			}
 		}
 
@@ -2163,14 +2166,20 @@ ORDER BY Dupe DESC, B."Date read")");
 		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
 		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
 		q.initColumnWidths();
-		appendToWhereCondition(LogOp_AND, getWhereCondition("dr.gt.2002"));
+		getColumn("dr")->usedInQuery = true; // Need to JOIN with DatesRead also when not used in WHERE.
+		std::string periodFunc;
+		if      (periodDef == "%Y")    periodFunc = "substr(\"Date Read\",1,4)";
+		else if (periodDef == "%m")    periodFunc = "substr(\"Date Read\",6,2)";
+		else if (periodDef == "%Y-%m") periodFunc = "substr(\"Date Read\",1,7)";
+		else                           periodFunc = fmt("strftime('%s', \"Date Read\")", periodDef.c_str());
 
 		q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
-		q.add("   (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+		q.add("   (SELECT BookID, " + periodFunc + " AS " + period);
 		q.add("    FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 4);
-		q.add("    WHERE " + m_whereCondition + ")");
+		q.addWhere(4);
+		q.add("   )");
 		q.add("  GROUP BY " + period);
 		q.add(" ) Main");
 
@@ -2179,7 +2188,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
 		q.add(" LEFT OUTER JOIN");
 		q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
-		q.add("    (SELECT BookID, strftime('" + periodDef + "', \"Date Read\") AS " + period);
+		q.add("    (SELECT BookID, " + periodFunc + " AS " + period);
 		q.add("     FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 5);
 		q.add("     WHERE " + ccond + ")");
