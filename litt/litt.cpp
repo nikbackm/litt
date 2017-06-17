@@ -1,7 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2017-06-16: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
+ * 2017-06-17: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
                Also made it possible to use non-int part values.
  * 2017-06-16: Added set-ot (to tiresome to use DB Browser!)
  * 2017-06-16: Removed artifical 2001-10 start in brd. (Will now get a few "fake" hits from 1998-2001, but fine.)
