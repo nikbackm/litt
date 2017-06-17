@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-16: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
+               Also made it possible to use non-int part values.
  * 2017-06-16: Added set-ot (to tiresome to use DB Browser!)
  * 2017-06-16: Removed artifical 2001-10 start in brd. (Will now get a few "fake" hits from 1998-2001, but fine.)
  * 2017-06-16: Fixed output from getPeriodColumns; does not print a newline if there are no columns, takes BOM and utf-8 into
@@ -115,7 +117,7 @@ R"(
    samestory                        (Lists stories with same title)
    titlestory                       (Lists books with same title as a story - Shows duplicates)
    
-   b2s <BookID> <SeriesID> <part>   (Adds a book to a series)
+   b2s <BookID> <SeriesID> <part>   (Adds a book to a series, will update current if already set)
    
    set-dr <BookID> [C|D CurGenreID] (Add, Change or Delete 'date read' for a book. Need to specify current dr for C and D)
    set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
@@ -2445,13 +2447,13 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
-	void addBookToSeries(IdValue bookId, IdValue seriesId, int part)
+	void addBookToSeries(IdValue bookId, IdValue seriesId, std::string const & part)
 	{
-		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %i", 
+		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
 				selTitle(bookId).c_str(), bookId, 
-				selSeries(seriesId).c_str(), seriesId, part))) {
-			executeInsert(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%i)", 
-				bookId, seriesId, part), "BookSeries");
+				selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
+			executeInsert(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
+				bookId, seriesId, escSqlVal(part, true).c_str()), "BookSeries");
 		}
 	}
 
@@ -2655,7 +2657,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		else if (action == "b2s" || action == "btos") {
 			auto bid  = idarg(0, "bookId");
 			auto sid  = idarg(1, "seriesId");
-			auto part = intarg(2, "part");
+			auto part = argm(2, "part");
 			addBookToSeries(bid, sid, part);
 		}
 		else if (action == "set-g" || action == "setg") {
