@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-19: Made listing output more consistent. Uses nn instead of ln.fn by default, changed some default column widths and
+               default columns sizes used by runSingleTableOutputCmd.
  * 2017-06-17: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
                Also made it possible to use non-int part values.
  * 2017-06-16: Added set-ot (to tiresome to use DB Browser!)
@@ -832,24 +834,24 @@ public:
 			{"ai",   {"AuthorID", 8, ColumnType::numeric}},
 			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
 			{"bi",   {"BookID", 6, ColumnType::numeric}},
-			{"bt",   {"Title", 40 }},
+			{"bt",   {"Title", 45 }},
 			{"dr",   {"\"Date Read\"", 10 }},
 			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
 			{"fn",   {"\"First Name\"",15 }},
-			{"ge",   {"Genre", 25 }},
+			{"ge",   {"Genre", 30 }},
 			{"gi",   {"GenreID", 8, ColumnType::numeric }},
-			{"ln",   {"\"Last Name\"",15 }},
-			{"ng",   {"\"Author(s)\"", 35, ColumnType::text, nullptr, false }},
-			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 20, ColumnType::text, "Author" }},
+			{"ln",   {"\"Last Name\"", 20 }},
+			{"ng",   {"\"Author(s)\"", 50, ColumnType::text, nullptr, false }},
+			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 25, ColumnType::text, "Author" }},
 			{"la",   {"Language", 4 }},
 			{"own",  {"Owned", 3, ColumnType::numeric }},
-			{"ot",   {"\"Original Title\"", 30 }},
-			{"se",   {"Series", 27 }},
+			{"ot",   {"\"Original Title\"", 45 }},
+			{"se",   {"Series", 40 }},
 			{"si",   {"SeriesID", 8, ColumnType::numeric }},
 			{"sp",   {"\"Part in Series\"", 4 }},
-			{"st",   {"Story", 30 }},
+			{"st",   {"Story", 45 }},
 			{"stid", {"StoryID", 7, ColumnType::numeric }},
-			{"so",   {"Source", 40 }},
+			{"so",   {"Source", 35 }},
 			{"soid", {"SourceID", 8, ColumnType::numeric }},
 			{"dw",   {"strftime('%w',\"Date Read\")", 3, ColumnType::text, "DOW" }},
 			{"btl",  {"length(Title)", 4, ColumnType::numeric }},
@@ -1933,10 +1935,10 @@ public:
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
 		if (action == "a") {
-			runSingleTableOutputCmd("ai.ln.fn", "Authors", "ai");
+			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.ln.fn.bt.dr.so.ge", "ai.dr.bi");
+			runListData("bi.nn.bt.dr.so.ge", "ai.dr.bi");
 		}
 	}
 
@@ -1944,10 +1946,10 @@ public:
 	{
 		addActionWhereCondition("bt", 0);
 		if (m_action == "b") {
-			runSingleTableOutputCmd("bi.bt.100", "Books", "bi");
+			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
-			runListData("bi.nn.bt.dr.so.ge", "dr.bi.ln.fn.bt");
+			runListData("bi.nn.bt.dr.so.ge", "dr.bi.ln.fn");
 		}
 	}
 
@@ -1955,10 +1957,10 @@ public:
 	{
 		addActionWhereCondition("se", series);
 		if (action == "s") {
-			runSingleTableOutputCmd("si.se", "Series", "si");
+			runSingleTableOutputCmd("si.se.70", "Series", "si");
 		}
 		else {
-			runListData("se.sp.bt.dr.bi.ln.fn", "se.sp.dr.bi", IJF_Series);
+			runListData("se.sp.bt.dr.bi.nn", "se.sp.dr.bi.ln.fn", IJF_Series);
 		}
 	}
 
@@ -1966,33 +1968,33 @@ public:
 	{
 		addActionWhereCondition("ge", genre);
 		if (action == "g") {
-			runSingleTableOutputCmd("gi.ge", "Genres", "ge");
+			runSingleTableOutputCmd("gi.ge.50", "Genres", "ge");
 		}
 		else {
-			runListData("bi.bt.ge.dr.nn", "dr.bi.bt");
+			runListData("ge.bi.bt.dr.nn", "ge.dr.bi.ln.fn");
 		}
 	}
 
 	void listOriginalTitles()
 	{
 		addActionWhereCondition("ot", 0);
-		runListData("bi.nn.ot.bt.dr.so.20.ge", "ot.dr.bi.ln.fn.bt", IJF_OrigTitle);
+		runListData("bi.nn.ot.bt.dr.so.ge", "ot.dr.bi.ln.fn", IJF_OrigTitle);
 	}
 
 	void listStories()
 	{
 		addActionWhereCondition("st", 0);
-		runListData("bi.bt.30.st.50.ln.fn.dr", "bt.bi", IJF_Stories);
+		runListData("bi.bt.st.nn.dr", "bt.bi.st.ln.fn", IJF_Stories);
 	}
 
 	void listSources(std::string const & action, std::string const & sourceName)
 	{
 		addActionWhereCondition("so", sourceName);
 		if (action == "so") {
-			runSingleTableOutputCmd("soid.so", "Sources", "so");
+			runSingleTableOutputCmd("soid.so.50", "Sources", "so");
 		}
 		else {
-			runListData("dr.so.50.bt.30.ln.fn", "so");
+			runListData("so.bi.bt.dr.nn", "so.dr.bi.ln.fn");
 		}
 	}
 
@@ -2121,7 +2123,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		#define calcDRTimeWindow "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end"
 
 		OutputQuery query(*this);
-		query.initSelect("dr.bt.ln.fn", "Books", "dr.bt"); 
+		query.initSelect("dr.bt.nn", "Books", "dr.bt"); 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		query.addAuxTables();
 		query.add("WHERE " calcDRTimeWindow " IN");
