@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-19: Added "fit width" option -f[on|off|auto|<widthValue>] for column display mode, where default is auto, 
+               meaning will be used where appropriate. Specifying a custom widthValue is same as "on", but will use specified
+               width instead of the console window width or the default value for when there is no console.
  * 2017-06-19: Made listing output more consistent. Uses nn instead of ln.fn by default, changed some default column widths and
                default columns sizes used by runSingleTableOutputCmd.
  * 2017-06-17: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
@@ -593,7 +596,7 @@ public:
 
 	bool empty() const
 	{
-		return m_ss.eof();
+		return m_ss.eof() || m_ss.str().empty();
 	}
 
 	bool getNext(std::string& next)
@@ -806,6 +809,9 @@ class Litt {
 public:
 	int const consoleCodePage = GetConsoleCP();
 	bool headerOn = true;
+	bool m_fitWidthOn = false;
+	bool m_fitWidthAuto = true;
+	int  m_fitWidthValue = 200;
 	bool selectDistinct = false;
 	bool showQuery = false;
 	bool explainQuery = false;
@@ -879,6 +885,11 @@ public:
 	{
 		for (auto& ci : m_columnInfos) { ci.second.overriddenWidth = -1; }
 
+		if (m_output.stdOutIsConsole()) {
+			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+			m_fitWidthValue = csbi.srWindow.Right - csbi.srWindow.Left;
+		}
+
 		for (int i = 1; i < argc; ++i) {
 			if (argv[i][0] == '-' && argv[i][1] != '\0') { // A stand-alone '-' can be used as an (action) argument.
 				auto const opt = argv[i][1];
@@ -905,9 +916,18 @@ public:
 						throw std::invalid_argument("Invalid display mode: " + val);
 					}
 					break;
+				case 'f': {
+					OptionParser fval(val);
+					auto v = fval.empty() ? "on" : fval.getNext();
+					if      (v == "on" || toInt(v, m_fitWidthValue)) { m_fitWidthOn = true;  m_fitWidthAuto = true; }
+					else if (v == "off")                             { m_fitWidthOn = false; m_fitWidthAuto = false; }
+					else if (v == "auto")                            { m_fitWidthOn = false; m_fitWidthAuto = true; }
+					else throw std::invalid_argument("Invalid fit width value: " + val);
+					break;
+				}
 				case 'h':
-					if (val == "on") headerOn = true;
-					else if (val == "off") headerOn = false;
+					if (val == "on"  || val == "") headerOn = true;
+					else if (val == "off")         headerOn = false;
 					else throw std::invalid_argument("Invalid header value: " + val);
 					break;
 				case 'o':
@@ -1823,6 +1843,32 @@ public:
 						query.columnWidths.push_back(std::min(size_t{30},
 							std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
 					}
+
+					if (litt.m_fitWidthOn) {
+						size_t const target = litt.m_fitWidthValue;
+						size_t current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
+						if (current != target) {
+							int const inc = (target > current) ? 1 : -1;
+							size_t diff = abs((long)(target - current));
+							for (;;) {
+								size_t changed = 0;
+								for (auto& w : query.columnWidths) {
+									// Don't touch columns with smallish widths (IDs, dates)
+									// Also don't make arbitrarily small and large. 
+									// Currently widest value in any column (not ng!) is 59.
+									if (10 < w && w < 60) {
+										w += inc;
+										changed += abs(inc);
+										if (changed >= diff) goto done;
+									}
+								}
+								if (changed == 0) goto done;
+								diff -= changed;
+							}
+							done:;
+						}
+					}
+
 					if (litt.m_ansiEnabled) {
 						litt.ansiInit(argc, azColName);
 					}
@@ -1913,6 +1959,7 @@ public:
 
 	void runSingleTableOutputCmd(const char* defColumns, const char* table, const char* defOrderBy)
 	{
+		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		query.initSelect(defColumns, table, defOrderBy);
 		query.addWhere();
@@ -1922,6 +1969,7 @@ public:
 
 	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
+		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		query.initSelect(defColumns, "Books", defOrderBy);
 		query.addAuxTables(opt);
@@ -2024,6 +2072,7 @@ public:
 
 	void listSamestory() 
 	{
+		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		const char* from = 
 			"(SELECT DISTINCT S1.* FROM Stories AS S1 JOIN Stories as S2"
@@ -2040,6 +2089,7 @@ public:
 
 	void listTitlestory()
 	{
+		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		query.columnWidths = { 6,4,20,10,15,20,8,15,20,10,15 };
 		query.initColumnWidths();
@@ -2086,6 +2136,8 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy)
 	{
+		m_fitWidthOn = m_fitWidthAuto;
+
 		auto col = getColumn(snColSelect);  col->usedInQuery = true;
 		auto bc  = getColumn("bc");         bc->usedInQuery = true;
 		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
