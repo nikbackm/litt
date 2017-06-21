@@ -149,6 +149,7 @@ Options:
     -q              (Debug - dumps the SQLITE commands instead of producing results)
     -u              (Makes sure the results only contain UNIQUE/DISTICT values)
     -l[dbPath]      (Can specify an alternate litt database file)
+    -e[encoding]    (Output encoding for pipes and redirection. Default is utf8)
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                     Specifies column conditions for consecutive output row matching.
