@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-21: Can now use cons-dlt/dgt also with other than "sec" column, useful for ID columns at least. Also now works to
+               compare with negative difference values.
  * 2017-06-19: Added "fit width" option -f[on|off|auto|<widthValue>] for column display mode, where default is auto, 
                meaning will be used where appropriate. Specifying a custom widthValue is same as "on", but will use specified
                width instead of the console window width or the default value for when there is no console.
@@ -986,9 +988,6 @@ public:
 									extVal.getNext(colName);
 								}
 								else if (mm == "dlt" || mm == "dgt") {
-									if (col.name != getColumn("sec")->labelName()) {
-										throw std::invalid_argument("Diff match not valid for column " + col.name);
-									}
 									col.matchMethod = (mm == "dlt")
 										? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
 									col.diff = extVal.nextInt();
@@ -1776,10 +1775,10 @@ public:
 					unsigned long long cur=0, prev=0;
 					if (toSecondsValue(val, cur) && toSecondsValue(prevVal, prev)) {
 						if (col.matchMethod == ConsRowMatchMethod::diffLt) {
-							cvMatch = ((cur - prev) < col.diff);
+							cvMatch = (((long long)cur - (long long)prev) < col.diff);
 						}
 						else {
-							cvMatch = ((cur - prev) > col.diff);
+							cvMatch = (((long long)cur - (long long)prev) > col.diff);
 						}
 					}
 					else {
