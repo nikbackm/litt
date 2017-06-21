@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-21: Re-organized the online help.
  * 2017-06-21: Added option -e<encoding> to specify output encoding. Will be used when stdout is redirected.
  * 2017-06-21: Can now use cons-dlt/dgt also with other than "sec" column, useful for ID columns at least. Also now works to
                compare with negative difference values.
@@ -81,22 +82,19 @@ void showHelp(bool showExtended = false)
 	printf(
 R"(Usage: LITT [<options>] action <action arguments>
 
-Actions:
+Simple list actions:
    a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
-   aa  [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
-   b   [<title>]                    (Lists all books matching the given title).
+   aa  [<last name>] [<first name>] (Same as above, but also includes books by the authors).
+   b   [<title>]                    (Lists books matching the given title).
    bb  [<title>]                    (Same as above, but includes more details)
    ot  [<origTitle>]                (Only lists books with original titles)
    st  [<story>]                    (Only lists books with separate stories)
    s   [<series>]                   (Lists series)
+   ss  [<series>]                   (Lists series with books)
    g   [<genre>]                    (Lists genre)
+   gg  [<genre>]                    (Lists genres with books)
    so  [<source>]                   (Lists book sources - where a certain book "read" was gotten)
-   soo [<source>]                   (Lists book sources WITH read books for the sources)
-
-   add-a                            (Adds a new author)
-   add-b                            (Adds a new book)
-   add-s                            (Adds a new series)
-   add-g                            (Adds a new genre)
+   soo [<source>]                   (Lists book sources with books)
 
    abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
                                      Supports virtual column bc - book count - for column selection, sorting and where)
@@ -104,38 +102,40 @@ Actions:
    sbc [<bookCountCond>]            (Lists the number of read books for each book source, similar to abc. Re-reads always included)
    ybca/ybcg/ybcs [#] [fy] [ly]     (Lists yearly book counts for authors, genres and sources. Args are row count, first and last year) 
    brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
-   brm/bry/brym/brwd [...]          (Lists the number of books read per month/year/etc. Supports extra virtual column prc in in -w)
-   brmy [firstYear] [lastYear]      (Lists the number of books read per month for given years. Supports prc as well)"
-	);
-	if (showExtended) {
-		printf(
-R"(
 
-       [<dateCondition>] {<column def(where condition)> <column name>}
-       
-       Can also use brp which is more generic, it takes [<period col def(strftime string)>] [<period col name]>
-       BEFORE the parameters the previos ones do.
-)"
-		);
-	}
-	printf(
-R"(
    rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
    sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
    samestory                        (Lists stories with same title)
    titlestory                       (Lists books with same title as a story - Shows duplicates)
-   
-   b2s <BookID> <SeriesID> <part>   (Adds a book to a series, will update current if already set)
+
+   h                                (Show more extensive help)
+
+Lists number of books read for various periods along with a total. Supports virtual column "prc":
+   brmy [firstYear] [lastYear]      (Total over month/year)
+   brym [<yearCondition>]           (Total over year/month)
+
+   brm/bry/brwd [<periodCondition>] {<column where condition> <column name>}
+                                    (Total over year-months, years and weekdays with optional condition based columns)
+
+   brp [<periodColumn strftime-def)>] [<periodColumn name]> [<periodCondition>] {<column where condition> <column name>}
+                                    (Generalization of brm/bry/brwd, can customize the period and its name)
+
+Adding and modifying data:
+   add-a                            (Adds a new author)
+   add-b                            (Adds a new book)
+   add-s                            (Adds a new series)
+   add-g                            (Adds a new genre)
    
    set-dr <BookID> [C|D CurGenreID] (Add, Change or Delete 'date read' for a book. Need to specify current dr for C and D)
    set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
    set-ot <BookID> <Original title> (Set the original title for a book. Will update current if already set)
-
-   h                                (Show more extensive help)
-   
-NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
-      listing actions also supported for similar effect, e.g. *b* will list all books containing the given title string, while
-      b* will list books starting with it instead.
+   b2s <BookID> <SeriesID> <part>   (Adds a book to a series, will update current if already set)
+)"
+	); if (showExtended) printf(
+R"(
+NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
+      around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
+      string, while b* will only list books starting with it instead.
       
 Options:
     -d[DisplayMode] (Determines how the results are displayed)
@@ -167,11 +167,7 @@ Options:
                              columns matches the included regex.
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
-)"
-	);
-	if (showExtended) {
-		printf(
-R"(
+
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
@@ -204,8 +200,7 @@ Column short name values:
     se,si,sp        - Series, SeriesID, Part in Series
     so,soid         - Source, SourceID
 )"
-		);
-	}
+	);
 }
 
 namespace std
@@ -2702,7 +2697,9 @@ ORDER BY Dupe DESC, B."Date read")");
 			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1));
 		}
 		else if (action == "brp") {
-			listBooksReadPerPeriod(arg(0), arg(1), arg(2, WcS), getPeriodColumns(3));
+			auto def = argm(0, "periodDef");
+			auto name = argm(1, "periodName");
+			listBooksReadPerPeriod(def, name, arg(2, WcS), getPeriodColumns(3));
 		}
 		else if (action == "brym") {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
