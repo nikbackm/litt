@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-21: Added option -e<encoding> to specify output encoding. Will be used when stdout is redirected.
  * 2017-06-21: Can now use cons-dlt/dgt also with other than "sec" column, useful for ID columns at least. Also now works to
                compare with negative difference values.
  * 2017-06-19: Added "fit width" option -f[on|off|auto|<widthValue>] for column display mode, where default is auto, 
@@ -213,6 +214,23 @@ namespace std
 
 namespace Utils
 {
+	#define std_string_fmt_impl(fmtStr,resVar) \
+		va_list ap; \
+		va_start(ap, fmtStr); \
+		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; /* Extra space for '\0' */ \
+		va_end(ap); \
+		std::string resVar(size, '\0'); \
+		va_start(ap, fmtStr); \
+		vsnprintf(&res[0], size, fmtStr, ap); \
+		res.pop_back(); /* Remove the trailing '\0' */ \
+		va_end(ap)
+
+	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
+	{
+		std_string_fmt_impl(fmtStr,res);
+		return res;
+	}
+
 	bool toInt(std::string const & str, int& value)
 	{
 		char* endPtr;
@@ -245,16 +263,16 @@ namespace Utils
 
 	std::wstring toWide(int codePage, const char *src, int len = 0)
 	{
-		if (int const nLen = (len > 0 ? len : lstrlenA(src))) {
-			if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
-				std::wstring wstr(sizeNeeded, '\0');
-				int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
-				if (res == sizeNeeded) {
-					return wstr;
-				}
+		int const nLen = (len > 0 ? len : lstrlenA(src));
+		if (nLen == 0) return std::wstring();
+		if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
+			std::wstring wstr(sizeNeeded, '\0');
+			int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
+			if (res == sizeNeeded) {
+				return wstr;
 			}
 		}
-		return std::wstring();
+		throw std::runtime_error(fmt("MultiByteToWideChar for code page %i failed", codePage));
 	}
 
 	std::wstring toWide(int codePage, std::string const & str)
@@ -264,16 +282,16 @@ namespace Utils
 
 	std::string toNarrow(int codePage, const wchar_t *src, int len = 0)
 	{
-		if (int const nLen = (len > 0 ? len : lstrlenW(src))) {
-			if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
-				std::string str(sizeNeeded, '\0');
-				int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
-				if (res == sizeNeeded) {
-					return str;
-				}
+		int const nLen = (len > 0 ? len : lstrlenW(src));
+		if (nLen == 0) return std::string();
+		if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
+			std::string str(sizeNeeded, '\0');
+			int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
+			if (res == sizeNeeded) {
+				return str;
 			}
 		}
-		return std::string();
+		throw std::runtime_error(fmt("WideCharToMultiByte for code page %i failed", codePage));
 	}
 
 	std::wstring utf8ToWide(const char* utf8String, int len = 0)
@@ -297,23 +315,6 @@ namespace Utils
 	{
 		auto wstr = toWide(CP_UTF8, str);
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
-	}
-
-	#define std_string_fmt_impl(fmtStr,resVar) \
-		va_list ap; \
-		va_start(ap, fmtStr); \
-		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; /* Extra space for '\0' */ \
-		va_end(ap); \
-		std::string resVar(size, '\0'); \
-		va_start(ap, fmtStr); \
-		vsnprintf(&res[0], size, fmtStr, ap); \
-		res.pop_back(); /* Remove the trailing '\0' */ \
-		va_end(ap)
-
-	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
-	{
-		std_string_fmt_impl(fmtStr,res);
-		return res;
 	}
 
 	std::string quote(std::string const & str)
@@ -658,10 +659,13 @@ public:
 };
 
 class Output {
+	const int Utf8Encoding = 65001;
+
 	DWORD        m_consoleMode = 0;
 	int    const m_consoleCodePage = GetConsoleCP();
 	HANDLE const m_stdOutHandle    = GetStdHandle(STD_OUTPUT_HANDLE);
 	bool   const m_stdOutIsConsole = m_stdOutHandle != NULL && GetConsoleMode(m_stdOutHandle, &m_consoleMode);
+	int          m_encoding = Utf8Encoding; 
 	// Got missing WriteConsole output with 32K buffer! 20K seems ok so far... but uses 10K to avoid analyse warning..
 	// 32K seems to work at home with Win10 though, but not at work with Win7.
 	static const int BufSize = 1000*10;
@@ -669,6 +673,16 @@ class Output {
 	mutable int  m_bufPos = 0;
 public:
 	bool stdOutIsConsole() const { return m_stdOutIsConsole; }
+
+	void setEncoding(int encoding) { m_encoding = encoding; }
+
+	void writeUtf8Bom() const
+	{
+		if (m_encoding == Utf8Encoding && !m_stdOutIsConsole) {
+			const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
+			write((const char*)&bom[0], sizeof(bom));
+		}
+	}
 
 	void write(const char* str, int len) const
 	{
@@ -780,7 +794,16 @@ public:
 			}
 		}
 		else {
-			if (fwrite(str, len, 1, stdout) != 1) {
+			int res;
+			if (m_encoding == Utf8Encoding) {
+				res = fwrite(str, len, 1, stdout);
+			}
+			else {
+				auto wstr = Utils::utf8ToWide(str, len);
+				auto encStr = Utils::toNarrow(m_encoding, wstr.c_str(), wstr.length());
+				res = fwrite(encStr.c_str(), encStr.length(), 1, stdout);
+			}
+			if (res != 1) {
 				throw std::runtime_error("fwrite failed to write all data, errno: " + std::to_string(errno));
 			}
 		}
@@ -917,6 +940,13 @@ public:
 						invalidDisplayMode:
 						throw std::invalid_argument("Invalid display mode: " + val);
 					}
+					break;
+				case 'e':
+					int encoding;
+					if (toInt(val, encoding)) {
+						m_output.setEncoding(encoding);
+					}
+					else throw std::invalid_argument("Invalid encoding value: " + val);
 					break;
 				case 'f': {
 					OptionParser fval(val);
@@ -1820,12 +1850,11 @@ public:
 		static bool wroteBom = false;
 		if (wroteBom) return;
 
-		if (!m_output.stdOutIsConsole() && displayMode == DisplayMode::column) {
+		if (displayMode == DisplayMode::column) {
 			// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
 			// detect the utf-8 encoding depending on the actual output.
-			// Seems to interfere with V:S CSV mode though!
-			const unsigned char bom[] = { 0xEF, 0xBB, 0xBF };
-			m_output.write((const char*)&bom[0], sizeof(bom));
+			// Seems to interfere with V:s CSV mode though!
+			m_output.writeUtf8Bom();
 			wroteBom = true;
 		}
 	}
