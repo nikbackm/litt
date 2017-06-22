@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-22: Added length short names for rest of the text columns. Makes sure the needed tables are joined for length sns.
  * 2017-06-21: Re-organized the online help.
  * 2017-06-21: Added option -e<encoding> to specify output encoding. Will be used when stdout is redirected.
  * 2017-06-21: Can now use cons-dlt/dgt also with other than "sec" column, useful for ID columns at least. Also now works to
@@ -189,16 +190,20 @@ DisplayMode values:
     tabs        Tab-separated values
 
 Column short name values:
-    bt,bi,btl       - Book title, BookID, length of book title
-    ln,fn,lnl,fnl   - Last/First Name & length thereof
-    nn/ng           - Full name/Aggregated full name(s) per book.
-    gi,ge           - GenreID and Genre
-    dr/dg,dw,dwl,ti,sec
-                    - Date read/Aggregated dates, DOW for Date read, DOW string, Time, TotalSeconds
-    own,la,beb      - Owned, Language, Bought Ebook
-    st,stid         - Story,StoryID
-    se,si,sp        - Series, SeriesID, Part in Series
-    so,soid         - Source, SourceID
+    bt, bi, ot      - Book title, BookID, Original title
+    ln, fn, ai      - Author last and first name, AuthorID
+    nn, ng          - Author full name, Aggregated full name(s) per book.
+    ge, gi          - Genre, GenreID
+    dr, dg          - Date read, Aggregated dates
+    dw, dwl         - Day of week numeral and Day of week string for Date read
+    ti, sec         - Time of day and TotalSeconds for Date read
+    own, la, beb    - Owned, Language, Bought Ebook
+    st, stid        - Story, StoryID
+    se, si, sp      - Series, SeriesID, Part in Series
+    so, soid        - Source, SourceID
+ 
+    To get the length of column values "l" can be appended to the short name for:
+     - bt, ot, ln, fn, nn, ng, ge, dr, dg, st, se, so   
 )"
 	);
 }
@@ -418,17 +423,18 @@ namespace LittDefs
 	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
 	struct ColumnInfo {
 		// These values are pre-configured:
-		char const* nameDef; // Name or definition for column
-		int         defWidth;
-		ColumnType  type;
-		char const* label; // optional, used when name does not refer to a direct table column.
-		bool        isGroupAggregate;
+		std::string const nameDef; // Name or definition for column
+		int         const defWidth;
+		ColumnType  const type;
+		std::string const label; // optional, used when name does not refer to a direct table column.
+		bool        const isGroupAggregate;
+		ColumnInfo const* lengthColumn; // Will be set only if the column has a length column added.
 
 		// These values are set at runtime. Stored here for convenience.
 		mutable int  overriddenWidth;
 		mutable bool usedInQuery;
 
-		const char* labelName() const { return label != nullptr ? label : nameDef; }
+		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
 		std::string getLikeArg(std::string val) const
 		{
@@ -823,8 +829,7 @@ public:
 };
 
 class Litt {
-	// Maps short name to column info.
-	std::map<std::string, ColumnInfo> m_columnInfos;
+	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3> m_conn;
 	Output m_output;
 public:
@@ -856,55 +861,80 @@ public:
 
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
-	Litt(int argc, char** argv) :
-		m_columnInfos({ // OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
-			{"ai",   {"AuthorID", 8, ColumnType::numeric}},
-			{"beb",  {"\"Bought Ebook\"", 3, ColumnType::numeric}},
-			{"bi",   {"BookID", 6, ColumnType::numeric}},
-			{"bt",   {"Title", 45 }},
-			{"dr",   {"\"Date Read\"", 10 }},
-			{"dg",   {"\"Date(s)\"", 30, ColumnType::text, nullptr, false }},
-			{"fn",   {"\"First Name\"",15 }},
-			{"ge",   {"Genre", 30 }},
-			{"gi",   {"GenreID", 8, ColumnType::numeric }},
-			{"ln",   {"\"Last Name\"", 20 }},
-			{"ng",   {"\"Author(s)\"", 50, ColumnType::text, nullptr, false }},
-			{"nn",   {"ltrim(\"First Name\"||' '||\"Last Name\")", 25, ColumnType::text, "Author" }},
-			{"la",   {"Language", 4 }},
-			{"own",  {"Owned", 3, ColumnType::numeric }},
-			{"ot",   {"\"Original Title\"", 45 }},
-			{"se",   {"Series", 40 }},
-			{"si",   {"SeriesID", 8, ColumnType::numeric }},
-			{"sp",   {"\"Part in Series\"", 4 }},
-			{"st",   {"Story", 45 }},
-			{"stid", {"StoryID", 7, ColumnType::numeric }},
-			{"so",   {"Source", 35 }},
-			{"soid", {"SourceID", 8, ColumnType::numeric }},
-			{"dw",   {"strftime('%w',\"Date Read\")", 3, ColumnType::text, "DOW" }},
-			{"btl",  {"length(Title)", 4, ColumnType::numeric }},
-			{"lnl",  {"length(\"Last Name\")", 4, ColumnType::numeric }},
-			{"fnl",  {"length(\"First Name\")", 4, ColumnType::numeric }},
-			{"dwl",  {"case cast (strftime('%w',\"Date Read\") as integer)"
-					  " when 0 then 'Sun' when 1 then 'Mon' when 2 then 'Tue' when 3 then 'Wed' when 4 then 'Thu' when 5 then 'Fri' when 6 then 'Sat' else '' end",
-					  5, ColumnType::text, "DoW" }},
-			{"ti",   {"time(\"Date Read\")", 5, ColumnType::text, "Time" }},
-			{"sec",  {"strftime('%s',\"Date Read\")", 11, ColumnType::numeric, "Timestamp" }},
-
-			// Some special-purpose virtual columns, these are not generally usable:
-
-			// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
-			{"prc", {"Count(BookID)", 0, ColumnType::numeric, nullptr, true }},
-
-			// Intended for use in listSametitle
-			{"btc", {"TitleCount", 11, ColumnType::numeric, "\"Title count\"", false }},
-			// Intended for use in listRereads
-			{"brc", {"ReadCount", 10, ColumnType::numeric, "\"Read count\"", false }},
-
-			// This is for the "number of books" column in list*BookCounts.
-			{"bc",  {"COUNT(Books.BookID)", 6, ColumnType::numeric, "Books", true }},
-	})
+	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
 	{
-		for (auto& ci : m_columnInfos) { ci.second.overriddenWidth = -1; }
+		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, defWidth, type, label, isGroupAgg })); _ASSERT(res.second);
+		res.first->second.overriddenWidth = -1;
+		return res.first->second;
+	}
+
+	ColumnInfo& addColumnText(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
+	{
+		return addColumn(sn, nameDef, defWidth, ColumnType::text, label);
+	}
+
+	ColumnInfo& addColumnNumeric(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
+	{
+		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label);
+	}
+
+	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "" )
+	{
+		auto& ci = addColumnText(sn, nameDef, defWidth, label);
+		auto const labelLength = "l_" + sn;
+		auto & ciLength = addColumnNumeric(sn + "l", "length(" + nameDef + ")", labelLength.length(), labelLength);
+		ci.lengthColumn = &ciLength;
+		return ci;
+	}
+
+	ColumnInfo& addColumnNumericAggregate(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
+	{
+		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label, true); 
+	}
+
+	Litt(int argc, char** argv)
+	{
+		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
+		addColumnNumeric("ai", "AuthorID", 8);
+		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
+		addColumnNumeric("bi", "BookID", 6);
+		addColumnTextWithLength("bt", "Title", 45);
+		addColumnTextWithLength("dr", "\"Date Read\"", 10);
+		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
+		addColumnTextWithLength("fn", "\"First Name\"", 15);
+		addColumnTextWithLength("ge", "Genre", 30);
+		addColumnNumeric("gi", "GenreID", 8);
+		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
+		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
+		addColumnTextWithLength("nn", "ltrim(\"First Name\"||' '||\"Last Name\")", 25, "Author");
+		addColumnText("la", "Language", 4);
+		addColumnNumeric("own", "Owned", 3);
+		addColumnTextWithLength("ot", "\"Original Title\"", 45);
+		addColumnTextWithLength("se", "Series", 40);
+		addColumnNumeric("si", "SeriesID", 8);
+		addColumnText("sp", "\"Part in Series\"", 4);
+		addColumnTextWithLength("st", "Story", 45);
+		addColumnNumeric("stid", "StoryID", 7);
+		addColumnTextWithLength("so", "Source", 35);
+		addColumnNumeric("soid", "SourceID", 8);
+
+		// Columns for more formats of Date Read:
+		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", 3, "DOW");
+		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
+					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE '' END",
+					  5, "DoW");
+		addColumnText("ti", "time(\"Date Read\")", 5, "Time");
+		addColumnNumeric("sec", "CAST(strftime('%s',\"Date Read\") AS INTEGER)", 11, "Timestamp");
+
+		// Special-purpose "virtual" columns, these are not generally usable:
+		// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
+		addColumnNumericAggregate("prc", "Count(BookID)", 0);
+		// Intended for use in listSametitle
+		addColumnNumeric("btc", "TitleCount", 11, "\"Title count\"");
+		// Intended for use in listRereads
+		addColumnNumeric("brc", "ReadCount", 10, "\"Read count\"");
+		// This is for the "number of books" column in list*BookCounts.
+		addColumnNumericAggregate("bc",  "COUNT(Books.BookID)", 6, "Books");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1302,7 +1332,7 @@ public:
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
-			appendToWhereCondition(LogOp_AND, std::string(col->nameDef) + " LIKE " + col->getLikeArg(val));
+			appendToWhereCondition(LogOp_AND, col->nameDef + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
@@ -1401,7 +1431,7 @@ public:
 		void addCol(ColumnInfo const * ci)
 		{
 			m_sstr << ci->nameDef;
-			if (ci->label != nullptr) {
+			if (!ci->label.empty()) {
 				m_sstr << " AS " << ci->label;
 			}
 		}
@@ -1484,10 +1514,19 @@ public:
 
 		void addIfColumns(const char* columns, const char* line) 
 		{
-			for (auto& col : litt.getColumns(columns, ColumnsDataKind::none, false)) {
-				if (col.first->usedInQuery) {
-					add(line);
-					return;
+			std::string sn;
+			for (const char* c = columns; ; ++c) {
+				if (*c == '.' || *c == '\0') {
+					auto ci = litt.getColumn(sn);
+					if (ci->usedInQuery || (ci->lengthColumn && ci->lengthColumn->usedInQuery)) { 
+						add(line); 
+						break;
+					}
+					if (*c == '\0') { break; }
+					sn.clear();
+				}
+				else {
+					sn.push_back(*c);
 				}
 			}
 		}
@@ -1537,7 +1576,7 @@ public:
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
-					m_sstr << (ci->nameDef);
+					m_sstr << ci->nameDef;
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
@@ -2152,7 +2191,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		query.initSelect(selCols.c_str(), "Books", "bc.desc");
 		query.addAuxTables();
 		query.addWhere();
-		query.add("GROUP BY " + std::string(getColumn(snGroupBy)->nameDef));
+		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
 		query.addHaving();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -2176,13 +2215,13 @@ ORDER BY Dupe DESC, B."Date read")");
 		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
-			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%3i - %%s',%s,%s) AS \"%i\"", year, bc->nameDef, col->nameDef, year);
+			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%3i - %%s',%s,%s) AS \"%i\"", year, bc->nameDef.c_str(), col->nameDef.c_str(), year);
 			q.add("FROM BOOKS");
 			q.addAuxTables();
 			q.adf("WHERE %s", ycond.c_str());
-			q.adf("GROUP BY %s", gby->nameDef);
+			q.adf("GROUP BY %s", gby->nameDef.c_str());
 			q.addHaving();
-			q.adf("ORDER BY %s DESC, %s", bc->nameDef, col->nameDef);
+			q.adf("ORDER BY %s DESC, %s", bc->nameDef.c_str(), col->nameDef.c_str());
 			q.adf("LIMIT %i;", count);
 			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");\n", year, year, year);
 		} q.a("\n");
