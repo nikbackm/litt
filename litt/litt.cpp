@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-22: Re-organized and fixed the online help again. Action ybc* => *bcy to match *bc action.
  * 2017-06-22: Added length short names for rest of the text columns. Makes sure the needed tables are joined for length sns.
  * 2017-06-21: Re-organized the online help.
  * 2017-06-21: Added option -e<encoding> to specify output encoding. Will be used when stdout is redirected.
@@ -80,92 +81,86 @@ Changelog:
 
 void showHelp(bool showExtended = false)
 {
-	printf(
-R"(Usage: LITT [<options>] action <action arguments>
+	puts(
+		R"(Usage: LITT {options} <action with arguments> {options}
 
-Simple list actions:
-   a   [<last name>] [<first name>] (Lists authors with given last name (and first name)).
-   aa  [<last name>] [<first name>] (Same as above, but also includes books by the authors).
-   b   [<title>]                    (Lists books matching the given title).
-   bb  [<title>]                    (Same as above, but includes more details)
-   ot  [<origTitle>]                (Only lists books with original titles)
-   st  [<story>]                    (Only lists books with separate stories)
-   s   [<series>]                   (Lists series)
-   ss  [<series>]                   (Lists series with books)
-   g   [<genre>]                    (Lists genre)
-   gg  [<genre>]                    (Lists genres with books)
-   so  [<source>]                   (Lists book sources - where a certain book "read" was gotten)
-   soo [<source>]                   (Lists book sources with books)
+Basic list actions:
+   h                              Show full help.
+   a/aa   [lastName] [firstName]  List authors - without/with books.
+   b/bb   [title]                 List books - with minimum/full details.
+   ot     [origTitle]             List original titles for books.
+   st     [story]                 List (anthology) stories for books.
+   s/ss   [series]                List series - without/with books.
+   g/gg   [genre]                 List genre - without/with books.
+   so/soo [source]                List book sources where a certain book "read" was gotten - without/with books.
 
-   abc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each author, second param = 1 => re-reads included.
-                                     Supports virtual column bc - book count - for column selection, sorting and where)
-   gbc [<bookCountCond>] [<bRRs>]   (Lists the number of read books for each genre, similar to abc)
-   sbc [<bookCountCond>]            (Lists the number of read books for each book source, similar to abc. Re-reads always included)
-   ybca/ybcg/ybcs [#] [fy] [ly]     (Lists yearly book counts for authors, genres and sources. Args are row count, first and last year) 
-   brd [<booksReadCond>]            (Lists the dates and books where [cond] books where read.)
+   rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
+   sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
+   samestory                      List stories with same title.
+   titlestory                     List books with same title as a story - Duplicates shown.
+   brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
-   rereads                          (Lists re-read books. Can use extra virtual column "brc" - Read Count)
-   sametitle                        (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
-   samestory                        (Lists stories with same title)
-   titlestory                       (Lists books with same title as a story - Shows duplicates)
+List number of books read for author, genre and source. Can use virtual column "bc":
+   abc/gbc        [bookCountCond] [bRRs]             For author and genre. bRRs=1 => include re-reads.
+   sbc            [bookCountCond]                    For source. Re-reads are always included.
+   abcy/gbcy/sbcy [rowCount] [firstYear] [lastYear]  Yearly book counts for author, genre and source.
 
-   h                                (Show more extensive help)
+List number of books read for specific periods along with a total count. Can use virtual column "prc":
+   brmy [firstYear] [lastYear]    Total over month/year.
+   brym [yearCondition]           Total over year/month.
 
-Lists number of books read for various periods along with a total. Supports virtual column "prc":
-   brmy [firstYear] [lastYear]      (Total over month/year)
-   brym [<yearCondition>]           (Total over year/month)
+   brm/bry/brwd [periodCondition] {<columnWhereCond> <columnName>}
+                                  - Total over year-months, years and weekdays with optional extra columns.
 
-   brm/bry/brwd [<periodCondition>] {<column where condition> <column name>}
-                                    (Total over year-months, years and weekdays with optional condition based columns)
-
-   brp [<periodColumn strftime-def)>] [<periodColumn name]> [<periodCondition>] {<column where condition> <column name>}
-                                    (Generalization of brm/bry/brwd, can customize the period and its name)
+   brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
+                                  - Generalization of brm/bry/brwd, can customize the period and its name.
 
 Adding and modifying data:
-   add-a                            (Adds a new author)
-   add-b                            (Adds a new book)
-   add-s                            (Adds a new series)
-   add-g                            (Adds a new genre)
+   add-a                              Add a new author.
+   add-b                              Add a new book.
+   add-s                              Add a new series.
+   add-g                              Add a new genre.
    
-   set-dr <BookID> [C|D CurGenreID] (Add, Change or Delete 'date read' for a book. Need to specify current dr for C and D)
-   set-g <BookID> [C|D CurGenreID]  (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
-   set-ot <BookID> <Original title> (Set the original title for a book. Will update current if already set)
-   b2s <BookID> <SeriesID> <part>   (Adds a book to a series, will update current if already set)
+   set-dr <BookID> [C|D] [DateRead]   Add, Change or Delete 'date read' for a book. Must specify current DR for C and D.
+   set-g  <BookID> [C|D] [GenreID]    Add, Change or Delete genre for a book. Must specify current GenreID for C and D.
+   set-ot <BookID> <origTitle>        Set the original title for a book. Will update current if already set.
+   b2s    <BookID> <SeriesID> <part>  Add a book to a series, will update current if already set.
 )"
-	); if (showExtended) printf(
+	); if (showExtended) puts(
 R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
       around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
       string, while b* will only list books starting with it instead.
       
 Options:
-    -d[DisplayMode] (Determines how the results are displayed)
-    -h[on|off]      (Determines if a header row is shown or not)
-    -c[selColumns]  (Determines the included colums, overrides default columns for the action)
-    -a[addColumns]  (Include these columns in addition to the default ones for the action)
-    -o[colOrder]    (Determines sort order for results, by default sorts by included columns starting from left)
-    -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
-                     If several -w options are included their values will be OR:ed)
-    -s[colSizes]    (Override the default column sizes)
-    -q              (Debug - dumps the SQLITE commands instead of producing results)
-    -u              (Makes sure the results only contain UNIQUE/DISTICT values)
-    -l[dbPath]      (Can specify an alternate litt database file)
-    -e[encoding]    (Output encoding for pipes and redirection. Default is utf8)
+    -d[DisplayMode]  Display mode. Default is column.
+    -h[on|off]       Header row on/off. Default is on.
+    -c[selColumns]   Override the default columns of the action.
+    -a[addColumns]   Include additional columns.
+    -o[colOrder]     Override sort order. By default sorts by used (-c or default) columns starting from left.
+    -w[whereCond]    Add a WHERE condition - will be AND:ed with the one specified by the action and arguments.
+                     If several -w options are included their values will be OR:ed together.
+    -s[colSizes]     Override the default column sizes.
+    -q               Use debug mode - dump the SQL query/command instead of executing it.
+    -u               Make sure the result only contain DISTINCT (UNIQUE) values.
+    -l[dbPath]       Specify litt/sqlite database file. Uses "litt.sqlite" by default. Either from the
+                     current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
+    -e[encoding]     Output encoding for pipes and redirection. Default is utf8.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
-                    Specifies column conditions for consecutive output row matching.
-                    If no explicit method is specified then matching is done by comparing against the
-                    same column value of the previous row. Can optionally specify the max number of characters
-                    to compare.
-                    The dlt/dgt diff matching is only supported for the "sec" column.)
+                     Specify column conditions for consecutive output row matching.
+                     If no explicit method is specified then matching is done by comparing against the
+                     same column value of the previous row. Can optionally specify the max number of characters
+                     to compare.
+                     The dlt/dgt diff matching is only supported for the "sec" column.
 
     --ansi[:off][:defC:<ansiC>][:colC:<col>:<ansiC>][:valC:<colVal>:<regExValue>:col{.col}:<ansiC>}
-                    Specifies ANSI colors for columns, rows and specific values. Only enabled in column display mode.
-                    * off  : Turn off ANSI coloring. Default is on when --ansi is specified.
-                    * defC : Specify default color for all values.
-                    * colC : Specify ANSI color for given column (either given as short name or full name).
-                    * valC : Specify ANSI color for the given columns when the value of the given value
-                             columns matches the included regex.
+                     Specify ANSI colors for columns, rows and specific values. Only enabled in column display mode.
+                     * off  : Turn off ANSI coloring. Default is on when --ansi option is included.
+                     * defC : Specify default color for all values.
+                     * colC : Specify ANSI color for given column (either given as short name or full name).
+                     * valC : Specify ANSI color for the given columns when the value of the given value
+                              columns matches the included regex.
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
 
@@ -2712,12 +2707,12 @@ ORDER BY Dupe DESC, B."Date read")");
 		else if (action == "sbc") {
 			listBookCounts(arg(0), true, "so.35", "soid"); // DR always included when SO is.
 		}
-		else if (action == "ybca" || action == "ybcg" || action == "ybcs") {
+		else if (action == "abcy" || action == "gbcy" || action == "sbcy") {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", GetSystemTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
-			switch (action[3]) {
+			switch (action[0]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
 				case 's': snSel = "so"; snGby = "soid"; break;
 			}
