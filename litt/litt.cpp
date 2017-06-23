@@ -145,6 +145,7 @@ Options:
     -u               Make sure the result only contain DISTINCT (UNIQUE) values.
     -l[dbPath]       Specify litt/sqlite database file. Uses "litt.sqlite" by default. Either from the
                      current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
+    -n               Print number of output rows at the end.
     -e[encoding]     Output encoding for pipes and redirection. Default is utf8.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
