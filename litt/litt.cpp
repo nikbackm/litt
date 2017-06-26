@@ -82,7 +82,7 @@ Changelog:
 void showHelp(bool showExtended = false)
 {
 	puts(
-		R"(Usage: LITT {options} <action with arguments> {options}
+R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
    h                              Show full help.
@@ -828,24 +828,24 @@ class Litt {
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3> m_conn;
 	Output m_output;
-public:
+
 	int const consoleCodePage = GetConsoleCP();
-	bool headerOn = true;
+	bool m_headerOn = true;
 	bool m_fitWidthOn = false;
 	bool m_fitWidthAuto = true;
 	int  m_fitWidthValue = 200;
-	bool selectDistinct = false;
-	bool showQuery = false;
-	bool explainQuery = false;
-	bool showNumberOfRows = false;
-	DisplayMode displayMode = DisplayMode::column;
-	std::string listSep = "|";
-	std::string colSep = "  ";
-	std::string dbPath; // Path to LITT db file
+	bool m_selectDistinct = false;
+	bool m_showQuery = false;
+	bool m_explainQuery = false;
+	bool m_showNumberOfRows = false;
+	DisplayMode m_displayMode = DisplayMode::column;
+	std::string m_listSep = "|";
+	std::string m_colSep = "  ";
+	std::string m_dbPath; // Path to LITT db file
 
-	Columns orderBy; // Overrides the default action order.
-	Columns selectedColumns; // Overrides the default action columns.
-	Columns additionalColumns; // Added to the action or overridden columns.
+	Columns m_orderBy; // Overrides the default action order.
+	Columns m_selectedColumns; // Overrides the default action columns.
+	Columns m_additionalColumns; // Added to the action or overridden columns.
 
 	mutable std::string m_whereCondition;
 	mutable std::string m_havingCondition;
@@ -888,6 +888,7 @@ public:
 		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label, true); 
 	}
 
+public:
 	Litt(int argc, char** argv)
 	{
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
@@ -943,15 +944,15 @@ public:
 				auto const val = std::string(argv[i][2] != '\0' ? &argv[i][2] : "");
 				switch (opt) {
 				case 'd':
-					if (val == "col" || val == "column") displayMode = DisplayMode::column;
-					else if (val == "html")    displayMode = DisplayMode::html;
-					else if (val == "htmldoc") displayMode = DisplayMode::htmldoc;
-					else if (val == "tabs")    displayMode = DisplayMode::tabs;
+					if (val == "col" || val == "column") m_displayMode = DisplayMode::column;
+					else if (val == "html")    m_displayMode = DisplayMode::html;
+					else if (val == "htmldoc") m_displayMode = DisplayMode::htmldoc;
+					else if (val == "tabs")    m_displayMode = DisplayMode::tabs;
 					else if (val.substr(0, 4) == "list") {
-						displayMode = DisplayMode::list;
+						m_displayMode = DisplayMode::list;
 						if (4 < val.length()) {
 							if (val[4] == ':' && 5 < val.length()) {
-								listSep = toUtf8(val.substr(5).c_str());
+								m_listSep = toUtf8(val.substr(5).c_str());
 							}
 							else {
 								goto invalidDisplayMode;
@@ -980,22 +981,22 @@ public:
 					break;
 				}
 				case 'h':
-					if (val == "on"  || val == "") headerOn = true;
-					else if (val == "off")         headerOn = false;
+					if (val == "on"  || val == "") m_headerOn = true;
+					else if (val == "off")         m_headerOn = false;
 					else throw std::invalid_argument("Invalid header value: " + val);
 					break;
 				case 'o':
-					orderBy = getColumns(val, ColumnsDataKind::sortOrder, true);
+					m_orderBy = getColumns(val, ColumnsDataKind::sortOrder, true);
 					break;
 				case 'c': 
-					selectedColumns = getColumns(val, ColumnsDataKind::width, true);
+					m_selectedColumns = getColumns(val, ColumnsDataKind::width, true);
 					break;
 				case 'l': 
-					dbPath = val;
+					m_dbPath = val;
 					break;
 				case 'a': {
 					auto a = getColumns(val, ColumnsDataKind::width, true);
-					additionalColumns.insert(additionalColumns.end(), a.begin(), a.end());
+					m_additionalColumns.insert(m_additionalColumns.end(), a.begin(), a.end());
 					}
 					break;
 				case 'w': 
@@ -1008,16 +1009,16 @@ public:
 					}
 					break;
 				case 'q':
-					showQuery = true;
+					m_showQuery = true;
 					break;
 				case 'u':
-					selectDistinct = true;
+					m_selectDistinct = true;
 					break;
 				case 'x': 
-					explainQuery = true;
+					m_explainQuery = true;
 					break;
 				case 'n': 
-					showNumberOfRows = true;
+					m_showNumberOfRows = true;
 					break;
 				case '-': { // Extended option 
 					OptionParser extVal(val, "extended option", OptExtDelim);
@@ -1126,21 +1127,21 @@ public:
 			throw std::invalid_argument("Action argument(s) missing");
 		}
 
-		if (dbPath.empty()) {
+		if (m_dbPath.empty()) {
 			char mydocs[MAX_PATH];
 			if (GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)) {
-				dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
+				m_dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
 			}
 			else {
-				dbPath = DefDbName;
+				m_dbPath = DefDbName;
 			}
 		}
-		if (GetFileAttributesA(dbPath.c_str()) == -1) {
-			throw std::invalid_argument("Cannot find: " + dbPath);
+		if (GetFileAttributesA(m_dbPath.c_str()) == -1) {
+			throw std::invalid_argument("Cannot find: " + m_dbPath);
 		}
 			
 		sqlite3* conn = nullptr;
-		int res = sqlite3_open(dbPath.c_str(), &conn); m_conn.reset(conn);
+		int res = sqlite3_open(m_dbPath.c_str(), &conn); m_conn.reset(conn);
 		if (res != SQLITE_OK) {
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 		}
@@ -1408,18 +1409,18 @@ public:
 
 		void initSelectBare(SelectOption selectOption = SelectOption::normal)
 		{
-			if (litt.explainQuery) {
+			if (litt.m_explainQuery) {
 				m_sstr << "EXPLAIN QUERY PLAN ";
 			}
 			m_sstr << "SELECT ";
-			if (litt.selectDistinct || selectOption == SelectOption::distinct) {
+			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
 				m_sstr << "DISTINCT ";
 			}
 		}
 
 		void initColumnWidths()
 		{
-			if (litt.explainQuery && litt.displayMode == DisplayMode::column) {
+			if (litt.m_explainQuery && litt.m_displayMode == DisplayMode::column) {
 				columnWidths = { 10, 10, 10, 100 }; 
 			} // else assumes columnWidths are properly set!
 		}
@@ -1436,15 +1437,15 @@ public:
 		{
 			initSelectBare(selectOption);
 
-			auto selCols = litt.selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.selectedColumns;
-			selCols.insert(selCols.end(), litt.additionalColumns.begin(), litt.additionalColumns.end());
+			auto selCols = litt.m_selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.m_selectedColumns;
+			selCols.insert(selCols.end(), litt.m_additionalColumns.begin(), litt.m_additionalColumns.end());
 			for (unsigned i = 0; i < selCols.size(); ++i) {
 				if (i != 0) {
 					m_sstr << ",";
 				}
 				auto ci = selCols[i].first;
 				addCol(ci);
-				if (litt.displayMode == DisplayMode::column) {
+				if (litt.m_displayMode == DisplayMode::column) {
 					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
 					_ASSERT(width >= 0);
 					columnWidths.push_back(width);
@@ -1456,11 +1457,11 @@ public:
 
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			auto asc = [](Columns cols) { for (auto& c : cols) { c.second = (int)ColumnSortOrder::Asc; } return cols; };
-			m_orderBy = litt.orderBy.empty()
-				? (litt.selectedColumns.empty()
+			m_orderBy = litt.m_orderBy.empty()
+				? (litt.m_selectedColumns.empty()
 					? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true)
-					: asc(litt.selectedColumns))
-				: litt.orderBy;
+					: asc(litt.m_selectedColumns))
+				: litt.m_orderBy;
 		}
 
 		void addWhere(int indentSize = 0)
@@ -1593,7 +1594,7 @@ public:
 
 	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
 	{
-		switch (displayMode) {
+		switch (m_displayMode) {
 		case DisplayMode::column:
 			if (m_ansiEnabled) ansiSetRowColors(isHeader, argc, argv);
 			break;
@@ -1605,17 +1606,17 @@ public:
 
 		for (int i = 0; i < argc; i++) {
 			auto val = rowValue(argv[i]);
-			switch (displayMode) {
+			switch (m_displayMode) {
 			case DisplayMode::column:
 				if (query.columnWidths[i] > 0) {
-					if (i != 0) m_output.write(colSep);
+					if (i != 0) m_output.write(m_colSep);
 					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
 					if (m_ansiEnabled && i == argc - 1) m_output.write(m_ansiDefColor);
 				}
 				break;
 			case DisplayMode::list:
-				if (i != 0) m_output.write(listSep);
+				if (i != 0) m_output.write(m_listSep);
 				m_output.write(val);
 				break;
 			case DisplayMode::tabs:
@@ -1632,7 +1633,7 @@ public:
 			}
 		}
 
-		switch (displayMode) {
+		switch (m_displayMode) {
 		case DisplayMode::htmldoc:
 		case DisplayMode::html:
 			m_output.write("</tr>");
@@ -1881,7 +1882,7 @@ public:
 		static bool wroteBom = false;
 		if (wroteBom) return;
 
-		if (displayMode == DisplayMode::column) {
+		if (m_displayMode == DisplayMode::column) {
 			// HACK: Write the UTF-8 BOM, seems V/VIEW needs it to properly 
 			// detect the utf-8 encoding depending on the actual output.
 			// Seems to interfere with V:s CSV mode though!
@@ -1890,21 +1891,24 @@ public:
 		}
 	}
 
-	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName) 
+	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName)
 	{
-		auto& query = *static_cast<OutputQuery*>(pArg);
-		auto& litt = query.litt;
-		auto& output = litt.m_output;
+		auto query = static_cast<OutputQuery*>(pArg);
+		return query->litt.outputQueryCallBack(*query, argc, argv, azColName);
+	}
+
+	int outputQueryCallBack(OutputQuery& query, int argc, char **argv, char **azColName) const
+	{
 		try {
-			if (litt.m_rowCount == 0) {
-				if (litt.displayMode == DisplayMode::column) {
+			if (m_rowCount == 0) {
+				if (m_displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(size_t{30},
 							std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
 					}
 
-					if (litt.m_fitWidthOn) {
-						size_t const target = litt.m_fitWidthValue;
+					if (m_fitWidthOn) {
+						size_t const target = m_fitWidthValue;
 						size_t current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
 						if (current != target) {
 							int const inc = (target > current) ? 1 : -1;
@@ -1928,54 +1932,54 @@ public:
 						}
 					}
 
-					if (litt.m_ansiEnabled) {
-						litt.ansiInit(argc, azColName);
+					if (m_ansiEnabled) {
+						ansiInit(argc, azColName);
 					}
 				}
 
-				litt.writeBomIfNeeded();
+				writeBomIfNeeded();
 
-				if (litt.displayMode == DisplayMode::htmldoc) {
+				if (m_displayMode == DisplayMode::htmldoc) {
 					auto docStart = 
 						"<!DOCTYPE html>\n" 
 						"<html>\n"
 						"<head>\n"
 						"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n"
-						"<title>" + litt.m_action + "</title>\n"
+						"<title>" + m_action + "</title>\n"
 						"</head>\n"
 						"<body>\n"
 						"<table>\n";
-					output.write(docStart);
+					m_output.write(docStart);
 				}
-				if (litt.headerOn) {
-					litt.outputRow(query, true, argc, azColName);
-					if (litt.displayMode == DisplayMode::column) {
+				if (m_headerOn) {
+					outputRow(query, true, argc, azColName);
+					if (m_displayMode == DisplayMode::column) {
 						for (int i = 0; i < argc; ++i) {
 							if (query.columnWidths[i] > 0) {
-								if (i != 0) output.write(litt.colSep);
+								if (i != 0) m_output.write(m_colSep);
 								std::string underLine(query.columnWidths[i], '-');
-								output.write(underLine);
+								m_output.write(underLine);
 							}
 						}
-						output.write('\n');
+						m_output.write('\n');
 					}
 				}
-				if (litt.consEnabled()) {
-					litt.consInit(argc, argv, azColName);
+				if (consEnabled()) {
+					consInit(argc, argv, azColName);
 				}
 			} // if (litt.m_rowCount == 0) {
 
-			if (litt.consEnabled()) {
-				litt.consProcessRow(query, argc, argv);
+			if (consEnabled()) {
+				consProcessRow(query, argc, argv);
 			}
 			else {
-				litt.outputRow(query, false, argc, argv);
+				outputRow(query, false, argc, argv);
 			}
-			++litt.m_rowCount;
+			++m_rowCount;
 			return 0;
 		}
 		catch (std::exception& ex) {
-			output.flushNoThrow();
+			m_output.flushNoThrow();
 			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
 			return 1;
 		}
@@ -1984,35 +1988,33 @@ public:
 	void runOutputQuery(OutputQuery& query)
 	{
 		std::string sql = query.getSql();
-		auto& litt = query.litt;
-		auto& output = litt.m_output;
 
-		if (litt.showQuery) {
-			output.write(sql); output.write('\n');
-			output.flush();
+		if (m_showQuery) {
+			m_output.write(sql); m_output.write('\n');
+			m_output.flush();
 			return;
 		}
 
-		litt.m_rowCount = 0;
-		int res = sqlite3_exec(litt.m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
+		m_rowCount = 0;
+		int res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
 		if (res == SQLITE_OK) {
-			if (litt.displayMode == DisplayMode::htmldoc) {
-				output.write("</table>\n</body>\n</html>\n");
+			if (m_displayMode == DisplayMode::htmldoc) {
+				m_output.write("</table>\n</body>\n</html>\n");
 			}
 			if (consEnabled()) {
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
 		}
-		if (m_ansiEnabled && litt.displayMode == DisplayMode::column && m_rowCount > 0) {
+		if (m_ansiEnabled && m_displayMode == DisplayMode::column && m_rowCount > 0) {
 			m_output.write(m_ansiDefColor);
 		}
-		output.flushNoThrow();
+		m_output.flushNoThrow();
 		if (res != SQLITE_OK) {
-			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(litt.m_conn.get())));
+			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
 		}
 
-		if (litt.showNumberOfRows) {
-			printf("\n# = %i\n", litt.m_rowCount);
+		if (m_showNumberOfRows) {
+			printf("\n# = %i\n", m_rowCount);
 		}
 	}
 
@@ -2346,7 +2348,7 @@ ORDER BY Dupe DESC, B."Date read")");
 	int executeSql(std::string const& userSql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr, bool enableShowQuery = true) const
 	{
 		auto encSql = encodeSqlFromInput(userSql);
-		if (enableShowQuery && showQuery) {
+		if (enableShowQuery && m_showQuery) {
 			m_output.write(encSql); m_output.write('\n'); m_output.flush();
 			return 0;
 		}
