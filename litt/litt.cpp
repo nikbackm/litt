@@ -204,11 +204,6 @@ Column short name values:
 	);
 }
 
-namespace std
-{
-	template<> struct default_delete<sqlite3> { void operator()(sqlite3* ptr) { sqlite3_close(ptr); } };
-}
-
 namespace Utils
 {
 	#define std_string_fmt_impl(fmtStr,resVar) \
@@ -824,9 +819,11 @@ public:
 	}
 };
 
+struct SqliteCloser { void operator()(sqlite3* p) const { sqlite3_close(p); } };
+
 class Litt {
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
-	std::unique_ptr<sqlite3> m_conn;
+	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
 	Output m_output;
 
 	int const consoleCodePage = GetConsoleCP();
