@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-28: Added "add-st" and "add-so". Harmonized and extended the simple add actions (a,g,s,so).
  * 2017-06-22: Re-organized and fixed the online help again. Action ybc* => *bcy to match *bc action.
  * 2017-06-22: Added length short names for rest of the text columns. Makes sure the needed tables are joined for length sns.
  * 2017-06-21: Re-organized the online help.
@@ -116,10 +117,12 @@ List number of books read for specific periods along with a total count. Can use
                                   - Generalization of brm/bry/brwd, can customize the period and its name.
 
 Adding and modifying data:
-   add-a                              Add a new author.
-   add-b                              Add a new book.
-   add-s                              Add a new series.
-   add-g                              Add a new genre.
+   add-a  [lastName] [firstName]      Add an author.
+   add-b                              Add a book.
+   add-st <BookID> <AuthorID> <Story> Add a story for a book.
+   add-s  [series]                    Add a series.
+   add-g  [genre]                     Add a genre.
+   add-so [source]                    Add a book source.
    
    set-dr <BookID> [C|D] [DateRead]   Add, Change or Delete 'date read' for a book. Must specify current DR for C and D.
    set-g  <BookID> [C|D] [GenreID]    Add, Change or Delete genre for a book. Must specify current GenreID for C and D.
@@ -1374,6 +1377,13 @@ public:
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
+	std::string argmi(unsigned index, const char* name) const 
+	{
+		return index < m_actionArgs.size()
+			? m_actionArgs[index]
+			: input(fmt("Enter %s", name).c_str());
+	}
+
 	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
 	std::string fromUtf8(std::string const & str) const { return Utils::fromUtf8(consoleCodePage, str); }
 
@@ -2409,32 +2419,24 @@ ORDER BY Dupe DESC, B."Date read")");
 	#define LIST_F(listCodeUsingStringArg) [&](std::string const & s) { resetWhere(); listCodeUsingStringArg; }
 	#define ESC_S(str) escSqlVal(str).c_str()
 
-	void addAuthor()
+	void addAuthor(std::string const & ln, std::string const & fn)
 	{
-		auto ln = input("Enter the last name"); if (ln.empty()) return;
-		auto fn = input("Enter the first name");
-		if (confirm(fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
-			executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)",
-				ESC_S(ln), ESC_S(fn)), "AuthorID");
-		}
+		executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)), "AuthorID");
 	}
 
-	void addGenre()
+	void addGenre(std::string const & name)
 	{
-		auto name = input("Enter genre name"); if (name.empty()) return;
-		if (confirm(fmt("Add genre '%s'", name.c_str()))) {
-			executeInsert(fmt("INSERT INTO Genres (Genre) VALUES(%s)", 
-				ESC_S(name)), "GenreID");
-		}
+		executeInsert(fmt("INSERT INTO Genres (Genre) VALUES(%s)", ESC_S(name)), "GenreID");
 	}
 
-	void addSeries()
+	void addSeries(std::string const & name)
 	{
-		auto name = input("Enter series name"); if (name.empty()) return;
-		if (confirm(fmt("Add series '%s'", name.c_str()))) {
-			executeInsert(fmt("INSERT INTO Series (Series) VALUES(%s)", 
-				ESC_S(name)), "SeriesID");
-		}
+		executeInsert(fmt("INSERT INTO Series (Series) VALUES(%s)",  ESC_S(name)), "SeriesID");
+	}
+
+	void addSource(std::string const & name)
+	{
+		executeInsert(fmt("INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name)), "SourceID");
 	}
 
 	void addBook()
@@ -2559,6 +2561,18 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
+	void addStory(IdValue bookId, IdValue authorId, std::string const & story)
+	{
+		if (confirm(fmt("Add story '%s' to '%s [%llu]' for author %s [%llu]", 
+			story.c_str(), selTitle(bookId).c_str(), bookId, selAuthor(authorId).c_str(), authorId))) {
+			auto sql = fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%llu);", 
+				authorId, bookId);
+			sql.append(fmt("INSERT INTO Stories (StoryID,AuthorID,BookID,Story) VALUES(NULL,%llu,%llu,%s)",
+				authorId, bookId, ESC_S(story)));
+			executeInsert(sql, "StoryID");
+		}
+	}
+
 	void addBookToSeries(IdValue bookId, IdValue seriesId, std::string const & part)
 	{
 		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
@@ -2656,6 +2670,14 @@ ORDER BY Dupe DESC, B."Date read")");
 			int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
 				bookId, ESC_S(originalTitle)));
 			printf("Updated %i rows\n", changes);
+		}
+	}
+
+	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
+	{
+		auto arg = argmi(argIndex, name);
+		if (!arg.empty() && confirm(fmt("Add %s '%s'", name, arg.c_str()))) {
+			(this->*addMethod)(arg);
 		}
 	}
 
@@ -2757,16 +2779,29 @@ ORDER BY Dupe DESC, B."Date read")");
 			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
 		}
 		else if (action == "add-a" || action == "adda") {
-			addAuthor();
+			auto lastName = argmi(0, "last name"); if (lastName.empty()) return;
+			auto firstName = argmi(1, "first name");
+			if (confirm(fmt("Add author '%s, %s'", lastName.c_str(), firstName.c_str()))) {
+				addAuthor(lastName, firstName);
+			}
 		}
 		else if (action == "add-g" || action == "addg") {
-			addGenre();
+			executeSimpleAddAction("genre", &Litt::addGenre);
 		}
 		else if (action == "add-s" || action == "adds") {
-			addSeries();
+			executeSimpleAddAction("series", &Litt::addSeries);
+		}
+		else if (action == "add-so" || action == "addso") {
+			executeSimpleAddAction("book source", &Litt::addSource);
 		}
 		else if (action == "add-b" || action == "addb") {
 			addBook();
+		}
+		else if (action == "add-st" || action == "addst") {
+			auto bid  = idarg(0, "bookId");
+			auto aid  = idarg(1, "authorId");
+			auto story = argm(2, "story");
+			addStory(bid, aid, story);
 		}
 		else if (action == "b2s" || action == "btos") {
 			auto bid  = idarg(0, "bookId");
