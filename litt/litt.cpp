@@ -119,7 +119,7 @@ List number of books read for specific periods along with a total count. Can use
 Adding and modifying data:
    add-a  [lastName] [firstName]      Add an author.
    add-b                              Add a book.
-   add-st <BookID> <AuthorID> <Story> Add a story for a book.
+   add-st [BookID] [AuthorID] [Story] Add a story for a book.
    add-s  [series]                    Add a series.
    add-g  [genre]                     Add a genre.
    add-so [source]                    Add a book source.
@@ -488,38 +488,41 @@ namespace Input
 		}
 	}
 
-	std::string input(const char* prompt)
+	std::string input(const char* prompt, InputOptions options = optional)
 	{
+	retry:
 		printf("%s: ", prompt);
-		return readLine();
+		auto value = readLine();
+		if (value.empty() && (required & (unsigned)options)) {
+			goto retry;
+		}
+		return value;
 	}
 
 	void input(std::string& value, const char* prompt, InputOptions options = none, const char* regex = nullptr)
 	{
 		if (!value.empty()) { prefillInput(value); }
 	retry:
-		value = input(prompt);
-		if (value.empty() && (required & (unsigned)options)) {
+		value = input(prompt, options);
+		if (!value.empty() && regex && !std::regex_match(value, std::regex(regex))) {
+			prefillInput(value);
 			goto retry;
 		}
-		if (!value.empty() && regex != nullptr) {
-			if (!std::regex_match(value, std::regex(regex))) {
-				prefillInput(value);
-				goto retry;
-			}
-		}
 	}
+
+	using InputCheckIdFunction = std::function<void(IdValue)>;
+	using InputListFunction = std::function<void(std::string const &)>;
 
 	void input(
 		IdValue& value, 
 		const char* prompt,
-		std::function<std::string(IdValue)> checkId,
+		InputCheckIdFunction const& checkId,
 		InputOptions options = none, 
-		std::function<void(std::string const &)> onInvalidInput = nullptr)
+		InputListFunction const& onInvalidInput = nullptr)
 	{
 		if (value != EmptyId) { prefillInput(std::to_string(value)); }
 	retry:
-		auto str = input(prompt);
+		auto str = input(prompt, options);
 		value = EmptyId;
 		if (!str.empty()) {
 			toIdValue(str, value);
@@ -1353,6 +1356,17 @@ public:
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
+	IdValue idargi(unsigned index, const char* name, 
+		InputCheckIdFunction const& checkFunc,
+		InputOptions iopt = Input::required,
+		InputListFunction const& listFunc = nullptr) const
+	{
+		if (index < m_actionArgs.size()) return idarg(index, name);
+		IdValue val = EmptyId;
+		input(val, fmt("Enter %s", name).c_str(), checkFunc, iopt, listFunc);
+		return val;
+	}
+
 	int intarg(unsigned index, const char* name) const 
 	{
 		int val;
@@ -1377,11 +1391,11 @@ public:
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
-	std::string argmi(unsigned index, const char* name) const 
+	std::string argmi(unsigned index, const char* name, Input::InputOptions iopt = Input::optional) const 
 	{
 		return index < m_actionArgs.size()
 			? m_actionArgs[index]
-			: input(fmt("Enter %s", name).c_str());
+			: input(fmt("Enter %s", name).c_str(), iopt);
 	}
 
 	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
@@ -2058,10 +2072,10 @@ public:
 		}
 	}
 
-	void listBooks()
+	void listBooks(std::string const & action, std::string const & title)
 	{
-		addActionWhereCondition("bt", 0);
-		if (m_action == "b") {
+		addActionWhereCondition("bt", title);
+		if (action == "b") {
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
@@ -2409,14 +2423,25 @@ ORDER BY Dupe DESC, B."Date read")");
 	{
 		return fromUtf8(selectSingleValue(sql, idName)); // Convert to console code page, it will be displayed there.
 	}
-	std::string selTitle(IdValue id) { return selDV(fmt("SELECT Title FROM Books WHERE BookID=%llu", id), "BookID"); }
-	std::string selSeries(IdValue id) { return selDV(fmt("SELECT Series FROM Series WHERE SeriesID=%llu", id), "SeriesID"); }
-	std::string selSource(IdValue id) { return selDV(fmt("SELECT Source FROM Sources WHERE SourceID=%llu", id), "SourceID"); }
-	std::string selGenre(IdValue id) { return selDV(fmt("SELECT Genre FROM Genres WHERE GenreID=%llu", id), "GenreID"); }
-	std::string selAuthor(IdValue id) { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
+	std::string selTitle(IdValue id) const { return selDV(fmt("SELECT Title FROM Books WHERE BookID=%llu", id), "BookID"); }
+	std::string selSeries(IdValue id) const { return selDV(fmt("SELECT Series FROM Series WHERE SeriesID=%llu", id), "SeriesID"); }
+	std::string selSource(IdValue id) const { return selDV(fmt("SELECT Source FROM Sources WHERE SourceID=%llu", id), "SourceID"); }
+	std::string selGenre(IdValue id) const { return selDV(fmt("SELECT Genre FROM Genres WHERE GenreID=%llu", id), "GenreID"); }
+	std::string selAuthor(IdValue id) const { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
 
-	#define SEL_F(selFunc) [&](IdValue id) { return selFunc(id); }
-	#define LIST_F(listCodeUsingStringArg) [&](std::string const & s) { resetWhere(); listCodeUsingStringArg; }
+	InputCheckIdFunction cf(std::string (Litt::*selMethod)(IdValue id) const) const
+	{
+		return [=](IdValue id) { (this->*selMethod)(id); };
+	}
+
+	#define LIST_F(listCode) [&](std::string const & s) { resetWhere(); listCode; }
+	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS));       }
+	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, ""));   }
+	InputListFunction getListSource() { return LIST_F(listSources("so", WcS + s + WcS)); }
+	InputListFunction getListGenre()  { return LIST_F(listGenres ("g",  WcS + s + WcS)); }
+	InputListFunction getListSeries() { return LIST_F(listSeries ("s",  WcS + s + WcS)); }
+	#undef LIST_F
+
 	#define ESC_S(str) escSqlVal(str).c_str()
 
 	void addAuthor(std::string const & ln, std::string const & fn)
@@ -2456,7 +2481,7 @@ ORDER BY Dupe DESC, B."Date read")");
 	enterBook:
 		for (size_t i = 0;;) {
 			auto aid = (i < authors.size()) ? std::get<0>(authors[i]) : EmptyId;
-			input(aid, "AuthorID",  SEL_F(selAuthor), optional, LIST_F(listAuthors("a", s + WcS, "")));
+			input(aid, "AuthorID", cf(&Litt::selAuthor), optional, getListAuthor());
 			if (aid == EmptyId) {
 				if (i < authors.size()) { authors.erase(authors.begin() + i); }
 				if (i < authors.size() || (i == 0 && !title.empty())) continue; else break;
@@ -2471,13 +2496,13 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		input(title, "Book title", required);
 		input(dateRead, "Date read", required, R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)");
-		input(sourceId, "Book SourceID", SEL_F(selSource), required, LIST_F(listSources("so", WcS + s + WcS))); 
-		input(genreId, "Book GenreID", SEL_F(selGenre), required, LIST_F(listGenres("g", WcS + s + WcS))); 
+		input(sourceId, "Book SourceID", cf(&Litt::selSource), required, getListSource());
+		input(genreId, "Book GenreID", cf(&Litt::selGenre), required, getListGenre());
 		input(origtitle, "Original title (optional)", optional);
 		ask("es", "Language", lang);
 		ask("yn", "Own book", owns);
 		ask("yn", "Bought ebook", boughtEbook);
-		input(seriesId, "SeriesID (optional)", SEL_F(selSeries), optional, LIST_F(listSeries("s", WcS + s + WcS))); 
+		input(seriesId, "SeriesID (optional)", cf(&Litt::selSeries), optional, getListSeries());
 		if (seriesId != EmptyId) {
 			input(seriesPart, "Part in series", required);
 		}
@@ -2591,7 +2616,7 @@ ORDER BY Dupe DESC, B."Date read")");
 
 		if (cmd == "a" || cmd == "c") {
 			IdValue newGenreId = EmptyId;
-			input(newGenreId, "New GenreID", SEL_F(selGenre), optional, LIST_F(listGenres("g", WcS + s + WcS)));
+			input(newGenreId, "New GenreID", cf(&Litt::selGenre), optional, getListGenre());
 			if (newGenreId == EmptyId) return;
 			auto const newG = selGenre(newGenreId);
 			if (cmd == "c") {
@@ -2642,7 +2667,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			}
 			else { // add
 				IdValue newSourceId = EmptyId;
-				input(newSourceId, "SourceID", SEL_F(selSource), required, LIST_F(listSources("so", WcS + s + WcS)));
+				input(newSourceId, "SourceID", cf(&Litt::selSource), required, getListSource());
 				auto source = selSource(newSourceId);
 				if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", newDr.c_str(), source.c_str(), bt.c_str()))) {
 					changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)",
@@ -2691,7 +2716,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			listAuthors(action, arg(0), arg(1));
 		}
 		else if (action == "b" || action == "bb") {
-			listBooks();
+			listBooks(action, arg(0));
 		}
 		else if (action == "s" || action == "ss") {
 			listSeries(action, arg(0));
@@ -2780,7 +2805,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		else if (action == "add-a" || action == "adda") {
 			auto lastName = argmi(0, "last name"); if (lastName.empty()) return;
-			auto firstName = argmi(1, "first name");
+			auto firstName = argmi(1, "first name", Input::optional);
 			if (confirm(fmt("Add author '%s, %s'", lastName.c_str(), firstName.c_str()))) {
 				addAuthor(lastName, firstName);
 			}
@@ -2798,10 +2823,11 @@ ORDER BY Dupe DESC, B."Date read")");
 			addBook();
 		}
 		else if (action == "add-st" || action == "addst") {
-			auto bid  = idarg(0, "bookId");
-			auto aid  = idarg(1, "authorId");
-			auto story = argm(2, "story");
-			addStory(bid, aid, story);
+			if (auto bid = idargi(0, "bookId", cf(&Litt::selTitle), Input::optional, getListBook())) {
+				auto aid = idargi(1, "authorId", cf(&Litt::selAuthor), Input::required, getListAuthor());
+				auto story = argmi(2, "story", Input::required);
+				addStory(bid, aid, story);
+			}
 		}
 		else if (action == "b2s" || action == "btos") {
 			auto bid  = idarg(0, "bookId");
