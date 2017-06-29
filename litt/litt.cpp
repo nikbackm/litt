@@ -1408,7 +1408,7 @@ public:
 			: throw std::invalid_argument(fmt("%s argument missing!", name));
 	}
 
-	std::string argmi(unsigned index, const char* name, InputOptions iopt = Input::required) const 
+	std::string argi(unsigned index, const char* name, InputOptions iopt = Input::required) const 
 	{
 		return index < m_actionArgs.size()
 			? m_actionArgs[index]
@@ -2676,7 +2676,7 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
 	{
-		auto arg = argmi(argIndex, name, optional);
+		auto arg = argi(argIndex, name, optional);
 		if (!arg.empty() && confirm(fmt("Add %s '%s'", name, arg.c_str()))) {
 			(this->*addMethod)(arg);
 		}
@@ -2785,8 +2785,8 @@ ORDER BY Dupe DESC, B."Date read")");
 			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
 		}
 		else if (action == "add-a" || action == "adda") {
-			auto lastName = argmi(0, "last name", optional); if (lastName.empty()) return;
-			auto firstName = argmi(1, "first name", optional); // May be empty.
+			auto lastName = argi(0, "last name", optional); if (lastName.empty()) return;
+			auto firstName = argi(1, "first name", optional); // May be empty.
 			if (confirm(fmt("Add author '%s, %s'", lastName.c_str(), firstName.c_str()))) {
 				addAuthor(lastName, firstName);
 			}
@@ -2806,14 +2806,14 @@ ORDER BY Dupe DESC, B."Date read")");
 		else if (action == "add-st" || action == "addst") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
 				auto aid = idargi(1, "AuthorId", cf(&Litt::selAuthor), getListAuthor());
-				auto story = argmi(2, "Story");
+				auto story = argi(2, "Story");
 				addStory(bid, aid, story);
 			}
 		}
 		else if (action == "b2s" || action == "btos") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
 				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
-				auto part = argmi(2, "Part");
+				auto part = argi(2, "Part");
 				addBookToSeries(bid, sid, part);
 			}
 		}
@@ -2829,24 +2829,24 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		else if (action == "add-dr") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto dateRead = argmi(1, "Date read");
+				auto dateRead = argi(1, "Date read");
 				auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
 				addDateRead(bid, dateRead, sourceId);
 			}
 		}
 		else if (action == "set-dr" || action == "setdr") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto dr = argmi(1, "Current date read");
+				auto dr = argi(1, "Current date read");
 				// Check that dr exists for book.
 				selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bid, ESC_S(dr)), 
 					fmt("date read %s for bookId %llu", dr.c_str(), bid).c_str());
-				auto newDr = argmi(2, "New date read or 'delete' to remove");
+				auto newDr = argi(2, "New date read or 'delete' to remove");
 				setBookDateRead(bid, dr, newDr);
 			}
 		}
 		else if (action == "set-ot" || action == "setot") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto ot = argmi(1, "Original title");
+				auto ot = argi(1, "Original title");
 				setOriginalTitle(bid, ot);
 			}
 		}
