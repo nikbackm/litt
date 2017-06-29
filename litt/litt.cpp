@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-29: add-b now allows for more flexible input (DR mainly). Will also ask before discarding edits.
  * 2017-06-28: Added "add-st" and "add-so". Harmonized and extended the simple add actions (a,g,s,so).
  * 2017-06-22: Re-organized and fixed the online help again. Action ybc* => *bcy to match *bc action.
  * 2017-06-22: Added length short names for rest of the text columns. Makes sure the needed tables are joined for length sns.
@@ -118,7 +119,7 @@ List number of books read for specific periods along with a total count. Can use
 
 Adding and modifying data:
    add-a  [lastName] [firstName]      Add an author.
-   add-b                              Add a book.
+   add[f]-b                           Add a book. The addf-b variant allows more flexible input values.
    add-st [BookID] [AuthorID] [Story] Add a story for a book.
    add-s  [series]                    Add a series.
    add-g  [genre]                     Add a genre.
@@ -2472,7 +2473,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		executeInsert(fmt("INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name)), "SourceID");
 	}
 
-	void addBook()
+	void addBook(const char* drRegEx)
 	{
 		auto st = GetSystemTime();
 		auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
@@ -2503,7 +2504,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			return;
 		}
 		input(title, "Book title");
-		input(dateRead, "Date read", R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)");
+		input(dateRead, "Date read", drRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
 		input(genreId, "Book GenreID", cf(&Litt::selGenre), getListGenre());
 		input(origtitle, "Original title (optional)", optional);
@@ -2545,7 +2546,7 @@ ORDER BY Dupe DESC, B."Date read")");
 
 		switch (ask("yne", "Add book")) {
 			case 'y': break;
-			case 'n': return;
+			case 'n': if (confirm("Discard entered values")) return; else goto enterBook;
 			case 'e': default: goto enterBook;
 		}
 		// Add it!
@@ -2714,6 +2715,11 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
+	static const char* getDateReadRegEx(bool flexible)
+	{
+		return flexible ? R"(\d\d\d\d-.*)" : R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)";
+	}
+
 	void executeAction() 
 	{
 		auto const& action = m_action;
@@ -2827,8 +2833,8 @@ ORDER BY Dupe DESC, B."Date read")");
 		else if (action == "add-so" || action == "addso") {
 			executeSimpleAddAction("book source", &Litt::addSource);
 		}
-		else if (action == "add-b" || action == "addb") {
-			addBook();
+		else if (action == "add-b" || action == "addf-b" || action == "addb") {
+			addBook(getDateReadRegEx(action == "addf-b"));
 		}
 		else if (action == "add-st" || action == "addst") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
