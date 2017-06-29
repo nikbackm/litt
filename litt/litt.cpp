@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-29: Added "add-dr", removed "add" from set-dr and set-g and "delete" from set-g.
  * 2017-06-29: add-b now allows for more flexible input (DR mainly). Will also ask before discarding edits.
  * 2017-06-28: Added "add-st" and "add-so". Harmonized and extended the simple add actions (a,g,s,so).
  * 2017-06-22: Re-organized and fixed the online help again. Action ybc* => *bcy to match *bc action.
@@ -118,17 +119,18 @@ List number of books read for specific periods along with a total count. Can use
                                   - Generalization of brm/bry/brwd, can customize the period and its name.
 
 Adding and modifying data:
-   add-a  [lastName] [firstName]      Add an author.
-   add[f]-b                           Add a book. The addf-b variant allows more flexible input values.
-   add-st [BookID] [AuthorID] [Story] Add a story for a book.
-   add-s  [series]                    Add a series.
-   add-g  [genre]                     Add a genre.
-   add-so [source]                    Add a book source.
+   add-a  [lastName] [firstName]       Add an author.
+   add[f]-b                            Add a book. The addf-b variant allows more flexible input values.
+   add-st [BookID] [AuthorID] [story]  Add a story for a book.
+   add-s  [series]                     Add a series.
+   add-g  [genre]                      Add a genre.
+   add-so [source]                     Add a book source.
+   add-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
    
-   set-dr <BookID> [C|D] [DateRead]   Add, Change or Delete 'date read' for a book. Must specify current DR for C and D.
-   set-g  <BookID> [C|D] [GenreID]    Add, Change or Delete genre for a book. Must specify current GenreID for C and D.
-   set-ot <BookID> <origTitle>        Set the original title for a book. Will update current if already set.
-   b2s    <BookID> <SeriesID> <part>  Add a book to a series, will update current if already set.
+   set-dr [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
+   set-g  [BookID] [GenreID] [newGID]  Change genre for a book.
+   set-ot [BookID] [origTitle]         Set the original title for a book. Will update current one if already set.
+   b2s    [BookID] [SeriesID] [part]   Add a book to a series, will update current part if already set.
 )"
 	); if (showExtended) puts(
 R"(
@@ -2610,97 +2612,62 @@ ORDER BY Dupe DESC, B."Date read")");
 	void addBookToSeries(IdValue bookId, IdValue seriesId, std::string const & part)
 	{
 		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
-				selTitle(bookId).c_str(), bookId, 
-				selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
+			selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
 			executeInsert(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
 				bookId, seriesId, escSqlVal(part, true).c_str()), "BookSeries");
 		}
 	}
 
-	void setBookGenre(IdValue bookId, std::string const& cmd, IdValue genreId)
+	void setBookGenre(IdValue bookId, IdValue genreId, IdValue newGenreId)
 	{
-		auto const bt = selTitle(bookId);
-		auto const genre = (cmd == "c" || cmd == "d") ? selGenre(genreId) : "";
-		int changes = -1;
-
-		if (cmd == "a" || cmd == "c") {
-			IdValue newGenreId = EmptyId;
-			input(newGenreId, "New GenreID", cf(&Litt::selGenre), getListGenre(), optional);
-			if (newGenreId == EmptyId) return;
-			auto const newG = selGenre(newGenreId);
-			if (cmd == "c") {
-				if (confirm(fmt("Change '%s' => '%s' for '%s'", genre.c_str(), newG.c_str(), bt.c_str()))) {
-					changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
-						newGenreId, bookId, genreId));
-				}
-			}
-			else {
-				if (confirm(fmt("Add '%s' to '%s'", newG.c_str(), bt.c_str()))) {
-					changes = executeSql(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu)",
-						bookId, newGenreId));
-				}
-			}
-		}
-		else if (cmd == "d") {
-			if (confirm(fmt("Remove '%s' from '%s'", genre.c_str(), bt.c_str()))) {
-				changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
-					bookId, genreId));
+		if (newGenreId != EmptyId) {
+			if (confirm(fmt("Change '%s' => '%s' for '%s'", 
+				selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
+					newGenreId, bookId, genreId));
+				printf("Updated %i rows\n", changes);
 			}
 		}
 		else {
-			throw std::invalid_argument("Invalid genre-cmd: " + cmd);
+			if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+					bookId, genreId));
+				printf("Deleted %i rows\n", changes);
+			}
 		}
-
-		if (changes != -1) { printf("Updated %i rows\n", changes); }
 	}
 
-	void setBookDateRead(IdValue bookId, std::string const& cmd, std::string const& dr)
+	void addDateRead(IdValue bookId, std::string const& dr, IdValue sourceId)
 	{
-		auto const bt = selTitle(bookId);
-		int changes = -1;
-
-		if (cmd == "c" || cmd == "d") { // Check that is exists.
-			selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", 
-				bookId, ESC_S(dr)), fmt("date read %s for bookId %llu", dr.c_str(), bookId).c_str());
+		if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
+			dr.c_str(), selSource(sourceId).c_str(), selTitle(bookId).c_str()))) {
+			int changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", 
+				bookId, ESC_S(dr), sourceId));
+			printf("Added %i rows\n", changes);
 		}
+	}
 
-		if (cmd == "a" || cmd == "c") {
-			std::string newDr;
-			input(newDr, "New date read", optional); // Don't check regex here, might want to add old date.
-			if (newDr.empty()) return;
-			if (cmd == "c") {
-				if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), bt.c_str()))) {
-					changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
-						ESC_S(newDr), bookId, ESC_S(dr)));
-				}
-			}
-			else { // add
-				IdValue newSourceId = EmptyId;
-				input(newSourceId, "SourceID", cf(&Litt::selSource), getListSource());
-				auto source = selSource(newSourceId);
-				if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", newDr.c_str(), source.c_str(), bt.c_str()))) {
-					changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)",
-						bookId, ESC_S(newDr), newSourceId));
-				}
-			}
-		}
-		else if (cmd == "d") {
-			if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), bt.c_str()))) {
-				changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
-					bookId, ESC_S(dr)));
+	void setBookDateRead(IdValue bookId, std::string const& dr, std::string const& newDr)
+	{
+		if (newDr != "delete") {
+			if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
+					ESC_S(newDr), bookId, ESC_S(dr)));
+				printf("Updated %i rows\n", changes);
 			}
 		}
 		else {
-			throw std::invalid_argument("Invalid dateRead-cmd: " + cmd);
+			if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
+					bookId, ESC_S(dr)));
+				printf("Deleted %i rows\n", changes);
+			}
 		}
-
-		if (changes != -1) { printf("Updated %i rows\n", changes); }
 	}
 
 	void setOriginalTitle(IdValue bookId, std::string const & originalTitle)
 	{
-		auto const bt = selTitle(bookId);
-		if (confirm(fmt("Set original title of '%s' => '%s'", bt.c_str(), originalTitle.c_str()))) {
+		if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
 			int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
 				bookId, ESC_S(originalTitle)));
 			printf("Updated %i rows\n", changes);
@@ -2844,27 +2811,44 @@ ORDER BY Dupe DESC, B."Date read")");
 			}
 		}
 		else if (action == "b2s" || action == "btos") {
-			auto bid  = idarg(0, "bookId");
-			auto sid  = idarg(1, "seriesId");
-			auto part = argm(2, "part");
-			addBookToSeries(bid, sid, part);
+			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
+				auto part = argmi(2, "Part");
+				addBookToSeries(bid, sid, part);
+			}
 		}
 		else if (action == "set-g" || action == "setg") {
-			auto bid = idarg(0, "bookId");
-			auto cmd = arg(1, "a");
-			auto gid = (cmd == "a" ? EmptyId : idarg(2, "genreId"));
-			setBookGenre(bid, cmd, gid);
+			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+				auto genreId = idargi(1, "GenreId", cf(&Litt::selGenre), getListGenre());
+				// Check that genreId exists for book.
+				selectSingleValue(fmt("SELECT GenreId FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
+					fmt("GenreId %llu for bookId %llu", genreId, bid).c_str());
+				auto newGenreId = idargi(2, "New GenreId", cf(&Litt::selGenre), getListGenre());
+				setBookGenre(bid, genreId, newGenreId);
+			}
+		}
+		else if (action == "add-dr") {
+			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+				auto dateRead = argmi(1, "Date read");
+				auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
+				addDateRead(bid, dateRead, sourceId);
+			}
 		}
 		else if (action == "set-dr" || action == "setdr") {
-			auto bid = idarg(0, "bookId");
-			auto cmd = arg(1, "a");
-			auto dr = (cmd == "a" ? "" : argm(2, "dateRead"));
-			setBookDateRead(bid, cmd, dr);
+			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+				auto dr = argmi(1, "Current date read");
+				// Check that dr exists for book.
+				selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bid, ESC_S(dr)), 
+					fmt("date read %s for bookId %llu", dr.c_str(), bid).c_str());
+				auto newDr = argmi(2, "New date read or 'delete' to remove");
+				setBookDateRead(bid, dr, newDr);
+			}
 		}
 		else if (action == "set-ot" || action == "setot") {
-			auto bid = idarg(0, "bookId");
-			auto ot = argm(1, "originalTitle");
-			setOriginalTitle(bid, ot);
+			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+				auto ot = argmi(1, "Original title");
+				setOriginalTitle(bid, ot);
+			}
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
