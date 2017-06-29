@@ -226,6 +226,13 @@ namespace Utils
 		return res;
 	}
 
+	template <typename T>
+	void appendTo(std::vector<T>& a, const std::vector<T>& b)
+	{
+	    a.reserve(a.size() + b.size());
+	    a.insert(a.end(), b.begin(), b.end());
+	}
+
 	bool toInt(std::string const & str, int& value)
 	{
 		char* endPtr;
@@ -1001,10 +1008,8 @@ public:
 				case 'l': 
 					m_dbPath = val;
 					break;
-				case 'a': {
-					auto a = getColumns(val, ColumnsDataKind::width, true);
-					m_additionalColumns.insert(m_additionalColumns.end(), a.begin(), a.end());
-					}
+				case 'a': 
+					appendTo(m_additionalColumns, getColumns(val, ColumnsDataKind::width, true));
 					break;
 				case 'w': 
 					appendToWhereCondition(LogOp_OR, getWhereCondition(val));
@@ -1463,7 +1468,7 @@ public:
 			initSelectBare(selectOption);
 
 			auto selCols = litt.m_selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.m_selectedColumns;
-			selCols.insert(selCols.end(), litt.m_additionalColumns.begin(), litt.m_additionalColumns.end());
+			appendTo(selCols, litt.m_additionalColumns);
 			for (unsigned i = 0; i < selCols.size(); ++i) {
 				if (i != 0) {
 					m_sstr << ",";
@@ -1740,7 +1745,7 @@ public:
 
 	}
 
-	void ansiSetRowColors(bool isHeader, int argc, char** argv) const
+	void ansiSetRowColors(bool /*isHeader*/, int argc, char** argv) const
 	{
 		for (int i = 0; i < argc; ++i) {
 			m_ansiRowColors[i] = m_ansiColColorsIndexed[i];
