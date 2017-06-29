@@ -1566,17 +1566,15 @@ public:
 		void addAuxTables(AuxTableOptions opt = IJF_DefaultsOnly, unsigned indentSize = 0)
 		{
 			std::string indent(indentSize, ' ');
-
-			std::string serJoin = (opt & IJF_Series)    ? "INNER" : "LEFT OUTER";
-			std::string stoJoin = (opt & IJF_Stories)   ? "INNER" : "LEFT OUTER";
-			std::string ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
-			
-			#define ngSqlSelect "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)"
-			#define dgSqlSelect "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)"
+			auto serJoin = (opt & IJF_Series)    ? "INNER" : "LEFT OUTER";
+			auto stoJoin = (opt & IJF_Stories)   ? "INNER" : "LEFT OUTER";
+			auto ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
+			auto ng = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
+			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
-			addIfColumns("ng",                       indent + "INNER JOIN " ngSqlSelect " USING(BookID)");
-			addIfColumns("dg",                       indent + "INNER JOIN " dgSqlSelect " USING(BookID)");
+			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
+			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
 			addIfColumns("ai.fn.ln.nn.st.stid",      indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
@@ -1588,9 +1586,6 @@ public:
 			addIfColumns("so",                       indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
 			addIfColumns("gi.ge",                    indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
 			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
-
-			#undef ngSqlSelect
-			#undef dgSqlSelect
 		}
 
 		void addOrderBy()
@@ -2263,14 +2258,14 @@ ORDER BY Dupe DESC, B."Date read")");
 		if (countCond.empty()) countCond = "2";
 
 		// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
-		#define calcDRTimeWindow "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end"
+		std::string calcDRTimeWindow = "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end";
 
 		OutputQuery query(*this);
 		query.initSelect("dr.bt.nn", "Books", "dr.bt"); 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		query.addAuxTables();
-		query.add("WHERE " calcDRTimeWindow " IN");
-		query.add(" (SELECT CalcDR FROM (SELECT " calcDRTimeWindow " as CalcDR FROM DatesRead)");
+		query.add("WHERE " + calcDRTimeWindow + " IN");
+		query.add(" (SELECT CalcDR FROM (SELECT " + calcDRTimeWindow + " as CalcDR FROM DatesRead)");
 		query.add("  GROUP BY CalcDR");
 		query.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
 		if (!m_whereCondition.empty()) {
@@ -2278,8 +2273,6 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		query.addOrderBy();
 		runOutputQuery(query);
-
-		#undef calcDRTimeWindow
 	}
 
 	struct PeriodColumn {
