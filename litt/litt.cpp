@@ -119,18 +119,18 @@ List number of books read for specific periods along with a total count. Can use
                                   - Generalization of brm/bry/brwd, can customize the period and its name.
 
 Adding and modifying data:
-   add-a  [lastName] [firstName]       Add an author.
-   add[f]-b                            Add a book. The addf-b variant allows more flexible input values.
-   add-st [BookID] [AuthorID] [story]  Add a story for a book.
-   add-s  [series]                     Add a series.
-   add-g  [genre]                      Add a genre.
-   add-so [source]                     Add a book source.
-   add-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
+   add-a     [lastName] [firstName]       Add an author.
+   add[f]-b                               Add a book. (addf-b variant allows less strict date values)
+   add-st    [BookID] [AuthorID] [story]  Add a story for a book.
+   add-s     [series]                     Add a series.
+   add-g     [genre]                      Add a genre.
+   add-so    [source]                     Add a book source.
+   add[f]-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
    
-   set-dr [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
-   set-g  [BookID] [GenreID] [newGID]  Change genre for a book.
-   set-ot [BookID] [origTitle]         Set the original title for a book. Will update current one if already set.
-   b2s    [BookID] [SeriesID] [part]   Add a book to a series, will update current part if already set.
+   set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
+   set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
+   set-ot    [BookID] [origTitle]         Set the original title for a book. Will update current one if already set.
+   b2s       [BookID] [SeriesID] [part]   Add a book to a series, will update current part if already set.
 )"
 	); if (showExtended) puts(
 R"(
@@ -509,6 +509,16 @@ namespace Input
 		printf("%s: ", prompt);
 		auto value = readLine();
 		if (value.empty() && (required & (unsigned)options)) {
+			goto retry;
+		}
+		return value;
+	}
+
+	std::string input(const char* prompt, const char* regEx, InputOptions options = required)
+	{
+	retry:
+		auto value = input(prompt, options);
+		if (!value.empty() && !std::regex_match(value, std::regex(regEx))) {
 			goto retry;
 		}
 		return value;
@@ -1413,6 +1423,15 @@ public:
 		return index < m_actionArgs.size()
 			? m_actionArgs[index]
 			: input(fmt("Enter %s", name).c_str(), iopt);
+	}
+
+	std::string argi(unsigned index, const char* name, const char* regEx, InputOptions iopt = Input::required) const
+	{
+		return index < m_actionArgs.size()
+			? (std::regex_match(m_actionArgs[index], std::regex(regEx)) 
+				? m_actionArgs[index] 
+				: throw std::invalid_argument("Invalid date value: " + m_actionArgs[index]))
+			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
 	}
 
 	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
@@ -2827,9 +2846,9 @@ ORDER BY Dupe DESC, B."Date read")");
 				setBookGenre(bid, genreId, newGenreId);
 			}
 		}
-		else if (action == "add-dr") {
+		else if (action == "add-dr" || action == "addf-dr") {
 			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto dateRead = argi(1, "Date read");
+				auto dateRead = argi(1, "Date read", getDateReadRegEx(action == "addf-dr"));
 				auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
 				addDateRead(bid, dateRead, sourceId);
 			}
