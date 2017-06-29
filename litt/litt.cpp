@@ -89,13 +89,13 @@ R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
    h                              Show full help.
-   a/aa   [lastName] [firstName]  List authors - without/with books.
-   b/bb   [title]                 List books - with minimum/full details.
+   a|aa   [lastName] [firstName]  List authors - without/with books.
+   b|bb   [title]                 List books - with minimum/full details.
    ot     [origTitle]             List original titles for books.
    st     [story]                 List (anthology) stories for books.
-   s/ss   [series]                List series - without/with books.
-   g/gg   [genre]                 List genre - without/with books.
-   so/soo [source]                List book sources where a certain book "read" was gotten - without/with books.
+   s|ss   [series]                List series - without/with books.
+   g|gg   [genre]                 List genre - without/with books.
+   so|soo [source]                List book sources where a certain book "read" was gotten - without/with books.
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
    sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
@@ -104,19 +104,19 @@ Basic list actions:
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
 List number of books read for author, genre and source. Can use virtual column "bc":
-   abc/gbc        [bookCountCond] [bRRs]             For author and genre. bRRs=1 => include re-reads.
+   abc|gbc        [bookCountCond] [bRRs]             For author and genre. bRRs=1 => include re-reads.
    sbc            [bookCountCond]                    For source. Re-reads are always included.
-   abcy/gbcy/sbcy [rowCount] [firstYear] [lastYear]  Yearly book counts for author, genre and source.
+   abcy|gbcy|sbcy [rowCount] [firstYear] [lastYear]  Yearly book counts for author, genre and source.
 
 List number of books read for specific periods along with a total count. Can use virtual column "prc":
    brmy [firstYear] [lastYear]    Total over month/year.
    brym [yearCondition]           Total over year/month.
 
-   brm/bry/brwd [periodCondition] {<columnWhereCond> <columnName>}
+   brm|bry|brwd [periodCondition] {<columnWhereCond> <columnName>}
                                   - Total over year-months, years and weekdays with optional extra columns.
 
    brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
-                                  - Generalization of brm/bry/brwd, can customize the period and its name.
+                                  - Generalization of brm,bry,brwd, can customize the period and its name.
 
 Adding and modifying data:
    add-a     [lastName] [firstName]       Add an author.
@@ -149,7 +149,7 @@ Options:
     -s[colSizes]      Override the default column sizes.
     -q                Use debug mode - dump the SQL query/command instead of executing it.
     -u                Make sure the result only contain DISTINCT (UNIQUE) values.
-    -l[dbPath]        Specify litt/sqlite database file. Uses "litt.sqlite" by default. Either from the
+    -l[dbPath]        Specify litt-sqlite database file. Uses "litt.sqlite" by default. Either from the
                       current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
     -n                Print number of output rows at the end.
     -e[encoding]      Output encoding for pipes and redirection. Default is utf8.
@@ -190,7 +190,7 @@ bookCountCond and booksReadCond formats:
     range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
 
 DisplayMode values:
-    col/column  Left-aligned columns (Specified or default widths are used)
+    col|column  Left-aligned columns (Specified or default widths are used)
     html        HTML table code
     htmldoc     Full HTML document
     list[:sep]  Values delimited by separator string, default is "|"
