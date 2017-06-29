@@ -136,20 +136,23 @@ NOTE: As wildcards in most match arguments and options "*" (any string) and "_" 
       string, while b* will only list books starting with it instead.
       
 Options:
-    -d[DisplayMode]  Display mode. Default is column.
-    -h[on|off]       Header row on/off. Default is on.
-    -c[selColumns]   Override the default columns of the action.
-    -a[addColumns]   Include additional columns.
-    -o[colOrder]     Override sort order. By default sorts by used (-c or default) columns starting from left.
-    -w[whereCond]    Add a WHERE condition - will be AND:ed with the one specified by the action and arguments.
-                     If several -w options are included their values will be OR:ed together.
-    -s[colSizes]     Override the default column sizes.
-    -q               Use debug mode - dump the SQL query/command instead of executing it.
-    -u               Make sure the result only contain DISTINCT (UNIQUE) values.
-    -l[dbPath]       Specify litt/sqlite database file. Uses "litt.sqlite" by default. Either from the
-                     current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
-    -n               Print number of output rows at the end.
-    -e[encoding]     Output encoding for pipes and redirection. Default is utf8.
+    -d[DisplayMode]   Display mode. Default is column.
+    -h[on|off]        Header row on/off. Default is on.
+    -c[selColumns]    Override the default columns of the action.
+    -a[addColumns]    Include additional columns.
+    -o[colOrder]      Override sort order. By default sorts by used (-c or default) columns starting from left.
+    -w[whereCond]     Add a WHERE condition - will be AND:ed with the one specified by the action and arguments.
+                      If several -w options are included their values will be OR:ed together.
+    -s[colSizes]      Override the default column sizes.
+    -q                Use debug mode - dump the SQL query/command instead of executing it.
+    -u                Make sure the result only contain DISTINCT (UNIQUE) values.
+    -l[dbPath]        Specify litt/sqlite database file. Uses "litt.sqlite" by default. Either from the
+                      current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
+    -n                Print number of output rows at the end.
+    -e[encoding]      Output encoding for pipes and redirection. Default is utf8.
+    -f[on|off|auto|w] Fit width mode. Default is auto; used where most fitting. Specifying
+                      an explicit width value implies mode "on". If no value is specified then the width
+                      of the console is used. If there is no console then a hard-coded value is used.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                      Specify column conditions for consecutive output row matching.
@@ -167,6 +170,8 @@ Options:
                               columns matches the included regex.
 
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
+    Note that if an option is included several times, then the last one will normally be the effective one.
+    Some options like -a and -w are additive though and all option instances of those will be used.
 
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
@@ -1934,6 +1939,7 @@ public:
 
 					if (m_fitWidthOn) {
 						size_t const target = m_fitWidthValue;
+						for (auto& w : query.columnWidths) { if (w > target) w = target; } // Guard against HUGE sizes, can be slow to inc!
 						size_t current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
 						if (current != target) {
 							int const inc = (target > current) ? 1 : -1;
@@ -1944,7 +1950,7 @@ public:
 									// Don't touch columns with smallish widths (IDs, dates)
 									// Also don't make arbitrarily small and large. 
 									// Currently widest value in any column (not ng!) is 59.
-									if (10 < w && w < 60) {
+									if (10 < w && (inc < 0 || w < 60)) {
 										w += inc;
 										changed += abs(inc);
 										if (changed >= diff) goto done;
