@@ -2706,6 +2706,11 @@ ORDER BY Dupe DESC, B."Date read")");
 		return flexible ? R"(\d\d\d\d-.*)" : R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)";
 	}
 
+	IdValue bidargi(int index, const char* name = "BookID", InputOptions iopt = optional)
+	{
+		return idargi(index, name, cf(&Litt::selTitle), getListBook(), iopt);
+	}
+
 	void executeAction() 
 	{
 		auto const& action = m_action;
@@ -2823,38 +2828,38 @@ ORDER BY Dupe DESC, B."Date read")");
 			addBook(getDateReadRegEx(action == "addf-b"));
 		}
 		else if (action == "add-st" || action == "addst") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto aid = idargi(1, "AuthorId", cf(&Litt::selAuthor), getListAuthor());
+			if (auto bid = bidargi(0)) {
+				auto aid = idargi(1, "AuthorID", cf(&Litt::selAuthor), getListAuthor());
 				auto story = argi(2, "Story");
 				addStory(bid, aid, story);
 			}
 		}
 		else if (action == "b2s" || action == "btos") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+			if (auto bid = bidargi(0)) {
 				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
 				auto part = argi(2, "Part");
 				addBookToSeries(bid, sid, part);
 			}
 		}
 		else if (action == "set-g" || action == "setg") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
-				auto genreId = idargi(1, "GenreId", cf(&Litt::selGenre), getListGenre());
+			if (auto bid = bidargi(0)) {
+				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
 				// Check that genreId exists for book.
-				selectSingleValue(fmt("SELECT GenreId FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
+				selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
 					fmt("GenreId %llu for bookId %llu", genreId, bid).c_str());
-				auto newGenreId = idargi(2, "New GenreId", cf(&Litt::selGenre), getListGenre());
+				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
 				setBookGenre(bid, genreId, newGenreId);
 			}
 		}
 		else if (action == "add-dr" || action == "addf-dr") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+			if (auto bid = bidargi(0)) {
 				auto dateRead = argi(1, "Date read", getDateReadRegEx(action == "addf-dr"));
 				auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
 				addDateRead(bid, dateRead, sourceId);
 			}
 		}
 		else if (action == "set-dr" || action == "setdr") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+			if (auto bid = bidargi(0)) {
 				auto dr = argi(1, "Current date read");
 				// Check that dr exists for book.
 				selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bid, ESC_S(dr)), 
@@ -2864,7 +2869,7 @@ ORDER BY Dupe DESC, B."Date read")");
 			}
 		}
 		else if (action == "set-ot" || action == "setot") {
-			if (auto bid = idargi(0, "BookId", cf(&Litt::selTitle), getListBook(), optional)) {
+			if (auto bid = bidargi(0)) {
 				auto ot = argi(1, "Original title");
 				setOriginalTitle(bid, ot);
 			}
