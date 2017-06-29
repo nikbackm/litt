@@ -2846,7 +2846,7 @@ ORDER BY Dupe DESC, B."Date read")");
 				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
 				// Check that genreId exists for book.
 				selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
-					fmt("GenreId %llu for bookId %llu", genreId, bid).c_str());
+					fmt("GenreID %llu for BookID %llu", genreId, bid).c_str());
 				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
 				setBookGenre(bid, genreId, newGenreId);
 			}
@@ -2863,7 +2863,7 @@ ORDER BY Dupe DESC, B."Date read")");
 				auto dr = argi(1, "Current date read");
 				// Check that dr exists for book.
 				selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bid, ESC_S(dr)), 
-					fmt("date read %s for bookId %llu", dr.c_str(), bid).c_str());
+					fmt("date read %s for BookID %llu", dr.c_str(), bid).c_str());
 				auto newDr = argi(2, "New date read or 'delete' to remove");
 				setBookDateRead(bid, dr, newDr);
 			}
