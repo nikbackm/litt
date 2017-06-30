@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-30: Added "execute" SQL.
  * 2017-06-30: Added -y option.
  * 2017-06-30: set-ot can now delete too.
  * 2017-06-30: b2s => set-s, added option to remove a book from a series too.
@@ -134,6 +135,8 @@ Adding and modifying data:
    set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
    set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
    set-s     [BookID] [SID] [part|delete] Set or delete series for a book.
+
+   execute   [sqlString]                  Execute the given SQL string. Use with CAUTION!
 )"
 	); if (showExtended) puts(
 R"(
@@ -1673,6 +1676,12 @@ public:
 			auto val = rowValue(argv[i]);
 			switch (m_displayMode) {
 			case DisplayMode::column:
+				if ((size_t)i == query.columnWidths.size()) {
+					// This will happen if "execute" is used to execute two (or more) different SQL 
+					// queries where the latter one contains more columns that the former. 
+					// Just add a suitable value to avoid crash. No need to support this use case further.
+					query.columnWidths.push_back(30);
+				}
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(m_colSep);
 					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
@@ -2733,6 +2742,21 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
+	void executeUserSql(std::string const& sql)
+	{
+		m_fitWidthOn = m_fitWidthAuto;
+		if (confirm("Execute SQL")) {
+			OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
+			q.a(sql);
+			runOutputQuery(q); 
+			int changes = sqlite3_changes(m_conn.get());
+			if (changes != 0) {
+				if (m_rowCount > 0) { printf("\n"); }
+				printf("Modified %i rows\n", changes);
+			}
+		}
+	}
+
 	static const char* getDateReadRegEx(bool flexible)
 	{
 		return flexible ? R"(\d\d\d\d-.*)" : R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)";
@@ -2905,6 +2929,10 @@ ORDER BY Dupe DESC, B."Date read")");
 				auto ot = argi(1, "Original title or 'delete' to remove");
 				setOriginalTitle(bid, ot);
 			}
+		}
+		else if (action == "execute") {
+			auto sql = argi(0, "sql", optional); if (sql.empty()) return;
+			executeUserSql(sql);
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
