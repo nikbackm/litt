@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-30: b2s => set-s, added option to remove a book from a series too.
  * 2017-06-29: Added "add-dr", removed "add" from set-dr and set-g and "delete" from set-g.
  * 2017-06-29: add-b now allows for more flexible input (DR mainly). Will also ask before discarding edits.
  * 2017-06-28: Added "add-st" and "add-so". Harmonized and extended the simple add actions (a,g,s,so).
@@ -2628,12 +2629,23 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
-	void addBookToSeries(IdValue bookId, IdValue seriesId, std::string const & part)
+	void setBookSeries(IdValue bookId, IdValue seriesId, std::string const & part)
 	{
-		if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
-			selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
-			executeInsert(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
-				bookId, seriesId, escSqlVal(part, true).c_str()), "BookSeries");
+		if (part != "delete") {
+			if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
+				selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
+				int changes = executeSql(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
+					bookId, seriesId, escSqlVal(part, true).c_str()));
+				printf("Added/Updated %i rows\n", changes);
+			}
+		}
+		else {
+			if (confirm(fmt("Remove '%s [%llu]' from '%s [%llu]'", 
+				selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId))) {
+				int changes = executeSql(fmt("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu",
+					bookId, seriesId));
+				printf("Deleted %i rows\n", changes);
+			}
 		}
 	}
 
@@ -2834,11 +2846,11 @@ ORDER BY Dupe DESC, B."Date read")");
 				addStory(bid, aid, story);
 			}
 		}
-		else if (action == "b2s" || action == "btos") {
+		else if (action == "set-s" || action == "sets") {
 			if (auto bid = bidargi(0)) {
 				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
-				auto part = argi(2, "Part");
-				addBookToSeries(bid, sid, part);
+				auto part = argi(2, "Part or 'delete' to remove");
+				setBookSeries(bid, sid, part);
 			}
 		}
 		else if (action == "set-g" || action == "setg") {
