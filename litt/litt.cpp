@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-30: Added -y option.
  * 2017-06-30: set-ot can now delete too.
  * 2017-06-30: b2s => set-s, added option to remove a book from a series too.
  * 2017-06-29: Added "add-dr", removed "add" from set-dr and set-g and "delete" from set-g.
@@ -158,6 +159,7 @@ Options:
     -f[on|off|auto|w] Fit width mode. Default is auto; used where most fitting. Specifying
                       an explicit width value implies mode "on". If no value is specified then the width
                       of the console is used. If there is no console then a hard-coded value is used.
+    -y[on|off]        Automatic YES to all confirm prompts. Default is off.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                      Specify column conditions for consecutive output row matching.
@@ -611,8 +613,11 @@ namespace Input
 		int def = 0; return ask(validAnswers, question, def);
 	}
 
+	bool confirmEnabled = true;
+
 	bool confirm(std::string const & question)
 	{
+		if (!confirmEnabled) return true;
 		int def = 0; return 'y' == ask("yn", question, def);
 	}
 }
@@ -1051,6 +1056,11 @@ public:
 					break;
 				case 'n': 
 					m_showNumberOfRows = true;
+					break;
+				case 'y':
+					if (val == "on"  || val == "") Input::confirmEnabled = false;
+					else if (val == "off")         Input::confirmEnabled = true;
+					else throw std::invalid_argument("Invalid yes value: " + val);
 					break;
 				case '-': { // Extended option 
 					OptionParser extVal(val, "extended option", OptExtDelim);
