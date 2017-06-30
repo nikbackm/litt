@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-06-30: set-ot can now delete too.
  * 2017-06-30: b2s => set-s, added option to remove a book from a series too.
  * 2017-06-29: Added "add-dr", removed "add" from set-dr and set-g and "delete" from set-g.
  * 2017-06-29: add-b now allows for more flexible input (DR mainly). Will also ask before discarding edits.
@@ -2698,10 +2699,18 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void setOriginalTitle(IdValue bookId, std::string const & originalTitle)
 	{
-		if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
-			int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
-				bookId, ESC_S(originalTitle)));
-			printf("Updated %i rows\n", changes);
+		if (originalTitle != "delete") {
+			if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
+				int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
+					bookId, ESC_S(originalTitle)));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+		else {
+			if (confirm(fmt("Remove original title of '%s'", selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId));
+				printf("Deleted %i rows\n", changes);
+			}
 		}
 	}
 
