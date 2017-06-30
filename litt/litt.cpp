@@ -122,18 +122,18 @@ List number of books read for specific periods along with a total count. Can use
                                   - Generalization of brm,bry,brwd, can customize the period and its name.
 
 Adding and modifying data:
-   add-a     [lastName] [firstName]       Add an author.
    add[f]-b                               Add a book. (addf-b variant allows less strict date values)
-   add-st    [BookID] [AuthorID] [story]  Add a story for a book.
+   add[f]-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
+   add-a     [lastName] [firstName]       Add an author.
    add-s     [series]                     Add a series.
    add-g     [genre]                      Add a genre.
    add-so    [source]                     Add a book source.
-   add[f]-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
+   add-st    [BookID] [AuthorID] [story]  Add a story for a book.
    
    set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
    set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
-   set-ot    [BookID] [origTitle]         Set the original title for a book. Will update current one if already set.
-   b2s       [BookID] [SeriesID] [part]   Add a book to a series, will update current part if already set.
+   set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
+   set-s     [BookID] [SID] [part|delete] Set or delete series for a book.
 )"
 	); if (showExtended) puts(
 R"(
@@ -523,6 +523,7 @@ namespace Input
 	retry:
 		auto value = input(prompt, options);
 		if (!value.empty() && !std::regex_match(value, std::regex(regEx))) {
+			prefillInput(value);
 			goto retry;
 		}
 		return value;
@@ -2901,7 +2902,7 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		else if (action == "set-ot" || action == "setot") {
 			if (auto bid = bidargi(0)) {
-				auto ot = argi(1, "Original title");
+				auto ot = argi(1, "Original title or 'delete' to remove");
 				setOriginalTitle(bid, ot);
 			}
 		}
