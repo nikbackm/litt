@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-02: Added "gg" virtual column for aggregated genres.
  * 2017-07-02: Added "add-bg" for adding a genre to a book.
  * 2017-06-30: Added "execute" SQL.
  * 2017-06-30: Added -y option.
@@ -209,7 +210,7 @@ Column short name values:
     bt, bi, ot      - Book title, BookID, Original title
     ln, fn, ai      - Author last and first name, AuthorID
     nn, ng          - Author full name, Aggregated full name(s) per book.
-    ge, gi          - Genre, GenreID
+    ge, gi, gg      - Genre, GenreID, Aggregated genres per book.
     dr, dg          - Date read, Aggregated dates
     dw, dwl         - Day of week numeral and Day of week string for Date read
     ti, sec         - Time of day and TotalSeconds for Date read
@@ -945,6 +946,7 @@ public:
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
 		addColumnTextWithLength("ge", "Genre", 30);
+		addColumnTextWithLength("gg", "\"Genre(s)\"", 35);
 		addColumnNumeric("gi", "GenreID", 8);
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
@@ -1616,10 +1618,12 @@ public:
 			auto ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
 			auto ng = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
+			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
 
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
+			addIfColumns("gg",                       indent + "INNER JOIN " + gg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
 			addIfColumns("ai.fn.ln.nn.st.stid",      indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
