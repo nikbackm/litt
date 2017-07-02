@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-02: Added "add-bg" for adding a genre to a book.
  * 2017-06-30: Added "execute" SQL.
  * 2017-06-30: Added -y option.
  * 2017-06-30: set-ot can now delete too.
@@ -130,6 +131,7 @@ Adding and modifying data:
    add-g     [genre]                      Add a genre.
    add-so    [source]                     Add a book source.
    add-st    [BookID] [AuthorID] [story]  Add a story for a book.
+   add-bg    [BookID] [GenreID]           Add a genre to a book.
    
    set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
    set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
@@ -2670,6 +2672,16 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
+	void addBookGenre(IdValue bookId, IdValue genreId)
+	{
+		if (confirm(fmt("Add '%s' => '%s'",
+			selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
+			int changes = executeSql(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)",
+				bookId, genreId));
+			printf("Added %i rows\n", changes);
+		}
+	}
+
 	void setBookGenre(IdValue bookId, IdValue genreId, IdValue newGenreId)
 	{
 		if (newGenreId != EmptyId) {
@@ -2895,6 +2907,12 @@ ORDER BY Dupe DESC, B."Date read")");
 				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
 				auto part = argi(2, "Part or 'delete' to remove");
 				setBookSeries(bid, sid, part);
+			}
+		}
+		else if (action == "add-bg") {
+			if (auto bid = bidargi(0)) {
+				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				addBookGenre(bid, genreId);
 			}
 		}
 		else if (action == "set-g" || action == "setg") {
