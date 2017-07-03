@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-03: Bug fix in "ng" virtual column definition, ltrim must be done before group_concat!
  * 2017-07-02: Added "gg" virtual column for aggregated genres.
  * 2017-07-02: Added "add-bg" for adding a genre to a book.
  * 2017-06-30: Added "execute" SQL.
@@ -1616,7 +1617,7 @@ public:
 			auto serJoin = (opt & IJF_Series)    ? "INNER" : "LEFT OUTER";
 			auto stoJoin = (opt & IJF_Stories)   ? "INNER" : "LEFT OUTER";
 			auto ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
-			auto ng = "(SELECT BookID, ltrim(group_concat(\"First Name\"||' '||\"Last Name\",', ')) AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
+			auto ng = "(SELECT BookID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
 
