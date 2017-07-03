@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-03: Added virtual columns "ast" and "btast" for showing author's stories (bookwise) and title combined with stories.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "gg" instead of "ge".
  * 2017-07-03: Bug fix in "ng" virtual column definition, ltrim must be done before group_concat!
  * 2017-07-02: Added "gg" virtual column for aggregated genres.
@@ -218,6 +219,7 @@ Column short name values:
     ti, sec         - Time of day and TotalSeconds for Date read
     own, la, beb    - Owned, Language, Bought Ebook
     st, stid        - Story, StoryID
+    ast, btast, bst - Stories for author, Title and stories for author, Stories for book
     se, si, sp      - Series, SeriesID, Part in Series
     so, soid        - Source, SourceID
  
@@ -961,6 +963,8 @@ public:
 		addColumnText("sp", "\"Part in Series\"", 4);
 		addColumnTextWithLength("st", "Story", 45);
 		addColumnNumeric("stid", "StoryID", 7);
+		addColumnTextWithLength("ast", "Stories", 45);
+		addColumnTextWithLength("btast", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", 8);
 
@@ -1621,12 +1625,13 @@ public:
 			auto ng = "(SELECT BookID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
+			auto ast = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories GROUP BY AuthorID, BookID)";
 
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.st.stid",      indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("ai.fn.ln.nn.st.stid.ast.btast", indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 			if ((opt & Skip_Stories) == 0)
@@ -1637,6 +1642,7 @@ public:
 			addIfColumns("gi.ge",                    indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
 			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
 			addIfColumns("gg",                       indent +  "LEFT OUTER JOIN " + gg + " USING(BookID)");
+			addIfColumns("ast.btast",                indent +  "LEFT OUTER JOIN " + ast + " USING(AuthorID,BookID)");
 		}
 
 		void addOrderBy()
