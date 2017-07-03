@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "gg" instead of "ge".
  * 2017-07-03: Bug fix in "ng" virtual column definition, ltrim must be done before group_concat!
  * 2017-07-02: Added "gg" virtual column for aggregated genres.
  * 2017-07-02: Added "add-bg" for adding a genre to a book.
@@ -947,7 +948,7 @@ public:
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
 		addColumnTextWithLength("ge", "Genre", 30);
-		addColumnTextWithLength("gg", "\"Genre(s)\"", 35);
+		addColumnTextWithLength("gg", "\"Genre(s)\"", 30);
 		addColumnNumeric("gi", "GenreID", 8);
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
@@ -1624,7 +1625,6 @@ public:
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
-			addIfColumns("gg",                       indent + "INNER JOIN " + gg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
 			addIfColumns("ai.fn.ln.nn.st.stid",      indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
@@ -1636,6 +1636,7 @@ public:
 			addIfColumns("so",                       indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
 			addIfColumns("gi.ge",                    indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
 			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
+			addIfColumns("gg",                       indent +  "LEFT OUTER JOIN " + gg + " USING(BookID)");
 		}
 
 		void addOrderBy()
@@ -2129,7 +2130,7 @@ public:
 			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.nn.bt.dr.so.ge", "ai.dr.bi");
+			runListData("bi.nn.bt.dr.so.gg", "ai.dr.bi");
 		}
 	}
 
@@ -2140,7 +2141,7 @@ public:
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
-			runListData("bi.nn.bt.dr.so.ge", "dr.bi.ln.fn");
+			runListData("bi.nn.bt.dr.so.gg", "dr.bi.ln.fn");
 		}
 	}
 
