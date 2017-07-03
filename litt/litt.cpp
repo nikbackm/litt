@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "btast" instead of "bt".
  * 2017-07-03: Added virtual columns "ast" and "btast" for showing author's stories (bookwise) and title combined with stories.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "gg" instead of "ge".
  * 2017-07-03: Bug fix in "ng" virtual column definition, ltrim must be done before group_concat!
@@ -2136,7 +2137,7 @@ public:
 			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.nn.bt.dr.so.gg", "ai.dr.bi");
+			runListData("bi.nn.btast.dr.so.gg", "ai.dr.bi");
 		}
 	}
 
@@ -2147,7 +2148,7 @@ public:
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
-			runListData("bi.nn.bt.dr.so.gg", "dr.bi.ln.fn");
+			runListData("bi.nn.btast.45.dr.so.gg", "dr.bi.ln.fn");
 		}
 	}
 
