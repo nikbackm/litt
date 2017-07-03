@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-03: Added virtual column "bst" for showing stories a book.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "btast" instead of "bt".
  * 2017-07-03: Added virtual columns "ast" and "btast" for showing author's stories (bookwise) and title combined with stories.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "gg" instead of "ge".
@@ -966,6 +967,7 @@ public:
 		addColumnNumeric("stid", "StoryID", 7);
 		addColumnTextWithLength("ast", "Stories", 45);
 		addColumnTextWithLength("btast", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
+		addColumnTextWithLength("bst", "\"Book Stories\"", 100);
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", 8);
 
@@ -1627,6 +1629,7 @@ public:
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
 			auto ast = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories GROUP BY AuthorID, BookID)";
+			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories GROUP BY BookID)";
 
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
@@ -1644,6 +1647,7 @@ public:
 			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
 			addIfColumns("gg",                       indent +  "LEFT OUTER JOIN " + gg + " USING(BookID)");
 			addIfColumns("ast.btast",                indent +  "LEFT OUTER JOIN " + ast + " USING(AuthorID,BookID)");
+			addIfColumns("bst",                      indent +  "LEFT OUTER JOIN " + bst + " USING(BookID)");
 		}
 
 		void addOrderBy()
