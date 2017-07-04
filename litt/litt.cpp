@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-04: Added "and" & "or" operators to where conditions to more conveniently match multiple values for a column.
  * 2017-07-03: Added virtual column "bst" for showing stories a book.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "btast" instead of "bt".
  * 2017-07-03: Added virtual columns "ast" and "btast" for showing author's stories (bookwise) and title combined with stories.
@@ -195,6 +196,7 @@ selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
           cmpOper: lt,gt,eq,nq,isnull,isempty,range ("LIKE" if none is given, isnull & isempty take no cmpArg, range takes two)
+          cmpOper: and,or - These will consume the rest of the whereCond to either AND or OR the rest of the terms for the sn.
 colSizes format: Same as selColumns format
 
 bookCountCond and booksReadCond formats:
@@ -225,8 +227,8 @@ Column short name values:
     se, si, sp      - Series, SeriesID, Part in Series
     so, soid        - Source, SourceID
  
-    To get the length of column values "l" can be appended to the short name for:
-     - bt, ot, ln, fn, nn, ng, ge, dr, dg, st, se, so   
+    To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
+    E.g. "btl" will provide the lengths of the "bt" column values.
 )"
 	);
 }
@@ -1304,11 +1306,13 @@ public:
 
 			auto val = opts.getNext(); // Either a value or an operation for the value coming up.
 			std::string oper;
-			if (val == "lt") oper = "<";
+			if      (val == "lt") oper = "<";
 			else if (val == "gt") oper = ">";
 			else if (val == "eq") oper = "=";
 			else if (val == "nq" || val == "ne") oper = "notlike";
-			else if (val == "isnull" || val == "isempty" || val == "range") oper = val;
+			else if (val == "isnull" || val == "isempty" || val == "range" || val == "and" || val == "or") {
+				oper = val;
+			}
 
 			if (oper.empty()) {
 				oper = "LIKE";
@@ -1328,7 +1332,19 @@ public:
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
 			else if (oper == "isempty") snCond = colName + " = ''";
 			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext());
-			else                        snCond = colName + " " + oper + " " + val;
+			else if (oper == "and" || oper == "or") {
+				snCond = "(";
+				for (;;) {
+					snCond.append(colName + (val[0] == '\'' ? " LIKE " : " = ") + val);
+					if (!opts.getNext(val)) break;
+					snCond.append(oper == "and" ? LogOp_AND : LogOp_OR);
+					val = col->getLikeArg(val);
+				}
+				snCond.append(")");
+			}
+			else {
+				snCond = colName + " " + oper + " " + val;
+			}
 
 			auto appendSnCondTo = [&](std::string& c) { c = ((c.empty()) ? snCond : c + LogOp_AND + snCond); };
 			appendSnCondTo(col->isGroupAggregate ? hcond : wcond);
