@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-05: Action "bb" now uses "btast" for where condition instead of "bt".
  * 2017-07-04: Added "and" & "or" operators to where conditions to more conveniently match multiple values for a column.
  * 2017-07-03: Added virtual column "bst" for showing stories a book.
  * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "btast" instead of "bt".
@@ -2163,11 +2164,12 @@ public:
 
 	void listBooks(std::string const & action, std::string const & title)
 	{
-		addActionWhereCondition("bt", title);
 		if (action == "b") {
+			addActionWhereCondition("bt", title);
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
+			addActionWhereCondition("btast", title);
 			runListData("bi.nn.btast.45.dr.so.gg", "dr.bi.ln.fn");
 		}
 	}
