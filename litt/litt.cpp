@@ -2794,6 +2794,9 @@ ORDER BY Dupe DESC, B."Date read")");
 		m_fitWidthOn = m_fitWidthAuto;
 		if (confirm("Execute SQL")) {
 			OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
+			// Set first few columns to width 30, better than letting label and/or first value determine it.
+			// (Don't include too many columns, then fitWidth will shrink them!)
+			q.columnWidths.assign(5, 30);
 			q.a(sql);
 			runOutputQuery(q); 
 			int changes = sqlite3_changes(m_conn.get());
