@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-08: Split Stories table into Stories and BookStories tables.
+               - Added virtual column "stng".
+               - Changed story (st) default order.
  * 2017-07-05: Action "bb" now uses "btast" for where condition instead of "bt".
  * 2017-07-04: Added "and" & "or" operators to where conditions to more conveniently match multiple values for a column.
  * 2017-07-03: Added virtual column "bst" for showing stories a book.
@@ -225,6 +228,7 @@ Column short name values:
     own, la, beb    - Owned, Language, Bought Ebook
     st, stid        - Story, StoryID
     ast, btast, bst - Stories for author, Title and stories for author, Stories for book
+    stng            - Aggregated authors per story (and per book).
     se, si, sp      - Series, SeriesID, Part in Series
     so, soid        - Source, SourceID
  
@@ -579,7 +583,7 @@ namespace Input
 				listValues(str);
 				goto retry;
 			}
-			else try { checkId(value); } catch (std::exception&) {
+			else if (checkId) try { checkId(value); } catch (std::exception&) {
 				printf("Invalid ID for this column, please try again.\n");
 				goto retry;
 			}
@@ -882,6 +886,7 @@ struct SqliteCloser { void operator()(sqlite3* p) const { sqlite3_close(p); } };
 class Litt {
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
+	bool m_hasBookStories = false; // To keep backwards compatibility with older litt-db:s (LDIFF!).
 	Output m_output;
 
 	int const consoleCodePage = GetConsoleCP();
@@ -971,6 +976,7 @@ public:
 		addColumnTextWithLength("ast", "Stories", 45);
 		addColumnTextWithLength("btast", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
 		addColumnTextWithLength("bst", "\"Book Stories\"", 100);
+		addColumnTextWithLength("stng", "\"Story author(s)\"", 50);
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", 8);
 
@@ -1208,6 +1214,7 @@ public:
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 		}
 		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
+		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
 	}
 
 	ColumnInfo const* getColumn(std::string const & sn) const
@@ -1645,18 +1652,28 @@ public:
 			auto ng = "(SELECT BookID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
-			auto ast = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories GROUP BY AuthorID, BookID)";
-			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories GROUP BY BookID)";
+			std::string storyTables = litt.m_hasBookStories ? "Stories INNER JOIN BookStories USING(StoryID)" : "Stories";
+			auto ast = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
+			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
+			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
 			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.st.stid.ast.btast", indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast", indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
-			if ((opt & Skip_Stories) == 0)
+			if ((opt & Skip_Stories) == 0) {
+			if (litt.m_hasBookStories) {
+			addIfColumns("stid.st.stng",             indent +  stoJoin + " JOIN BookStories USING(AuthorID, BookID)");
+			addIfColumns("st",                       indent +  stoJoin + " JOIN Stories USING(StoryID)");
+			}
+			else { // old story table
 			addIfColumns("stid.st",                  indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+			}
+			}
+			addIfColumns("stng",                     indent +  "LEFT OUTER JOIN " + stng + " USING(BookID, StoryID)");
 			addIfColumns("si.sp.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
 			addIfColumns("so",                       indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
@@ -2205,7 +2222,13 @@ public:
 	void listStories()
 	{
 		addActionWhereCondition("st", 0);
-		runListData("bi.bt.st.nn.dr", "bt.bi.st.ln.fn", IJF_Stories);
+		if (m_hasBookStories) {
+			m_selectDistinct = true;
+			runListData("bi.bt.dr.stid.st.stng", "dr.bi.stid", IJF_Stories);
+		}
+		else {
+			runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", IJF_Stories);
+		}
 	}
 
 	void listSources(std::string const & action, std::string const & sourceName)
@@ -2247,14 +2270,13 @@ public:
 	{
 		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
-		const char* from = 
-			"(SELECT DISTINCT S1.* FROM Stories AS S1 JOIN Stories as S2"
-			" WHERE S1.Story = S2.Story AND S1.StoryID <> S2.StoryID AND S1.BookID <> S2.BookID)";
-		query.initSelect("st.nn.bi.bt.dr.so", from, "st.nn.dr");
+		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
+		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
+		query.addIf(m_hasBookStories, "INNER JOIN BookStories USING(StoryID)");
 		query.add("INNER JOIN Books USING(BookID)");
 		query.addAuxTables(AuxTableOptions(
-			Skip_AuthorBooks | // Already have AuthorID from S1 so skip to avoid need for SELECT DISTINCT.
-			Skip_Stories));    // Already have Stories content from S1 so skip to avoid ambigous column error.
+			Skip_AuthorBooks | // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
+			Skip_Stories));    // Already have Stories content from above so skip to avoid ambigous column error.
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -2267,26 +2289,26 @@ public:
 		query.columnWidths = { 6,4,20,10,15,20,8,15,20,10,15 };
 		query.initColumnWidths();
 		query.initSelectBare();
-		query.a(
-R"(B.BookID as BookID, case when B.AuthorID = S.AuthorID then 'YES' else '-' end as Dupe, B.Title as Title, 
-B."Date read" as 'Book read', B.Source as 'Book source', 
-case when B.AuthorID <> S.AuthorID then B."First Name" || ' ' || B."Last Name" else '* see story *' end as 'Book Author',
-S.BookID as 'S BookID', S."First Name" || ' ' || S."Last Name" as 'Story Author', S.Title as 'Story book title',  
-S."Date read" as 'Story read', S.Source as 'Story source'
+		query.a(fmt(
+R"(B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
+B."Date read" AS 'Book read', B.Source AS 'Book source', 
+CASE WHEN B.AuthorID <> S.AuthorID THEN B."First Name" || ' ' || B."Last Name" ELSE '* see story *' END AS 'Book Author',
+S.BookID AS 'S BookID', S."First Name" || ' ' || S."Last Name" AS 'Story Author', S.Title AS 'Story book title',  
+S."Date read" AS 'Story read', S.Source AS 'Story source'
 FROM (Books
 	INNER JOIN AuthorBooks USING(BookID)
 	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
 ) AS B
-JOIN (Stories
+JOIN (Stories%s
 	INNER JOIN Books USING(BookID)
 	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story
-ORDER BY Dupe DESC, B."Date read")");
+ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories USING(StoryID)" : "").c_str());
 		runOutputQuery(query);
 	}
 
@@ -2499,6 +2521,12 @@ ORDER BY Dupe DESC, B."Date read")");
 		return res;
 	}
 
+	bool hasRowValue(std::string const& userSql)
+	{
+		auto res = selectRowValue(userSql);
+		return !res.empty();
+	}
+
 	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
 	{
 		auto res = selectRowValue(userSql);
@@ -2555,8 +2583,9 @@ ORDER BY Dupe DESC, B."Date read")");
 
 	void addBook(const char* drRegEx)
 	{
+		struct AData { IdValue authorId; std::string story; IdValue storyId; };
 		auto st = GetSystemTime();
-		auto authors     = std::vector<std::tuple<IdValue, std::string>>(); // AuthorId + Story
+		auto authors     = std::vector<AData>();
 		auto title       = std::string();
 		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
 		auto sourceId    = EmptyId;
@@ -2568,17 +2597,30 @@ ORDER BY Dupe DESC, B."Date read")");
 		auto seriesId    = EmptyId;
 		auto seriesPart  = std::string();
 	enterBook:
+		auto nextStoryId = getNextStoryId();
 		for (size_t i = 0;;) {
-			auto aid = (i < authors.size()) ? std::get<0>(authors[i]) : EmptyId;
+			auto aid = (i < authors.size()) ? authors[i].authorId : EmptyId;
 			input(aid, "AuthorID", cf(&Litt::selAuthor), getListAuthor(), optional);
 			if (aid == EmptyId) {
 				if (i < authors.size()) { authors.erase(authors.begin() + i); }
 				if (i < authors.size() || (i == 0 && !title.empty())) continue; else break;
 			}
-			auto story = (i < authors.size()) ? std::get<1>(authors[i]) : std::string();
+			auto story = (i < authors.size()) ? authors[i].story : std::string();
+			auto storyId = (i < authors.size()) ? authors[i].storyId : EmptyId;
 			input(story, "Story name (optional)", optional);
+			if (!story.empty()) {
+				int same = 'y';
+				if (i > 0 && story == authors[i-1].story && ask("yn", "Same as previous", same) == 'y') {
+					storyId = authors[i - 1].storyId;
+				}
+				else {
+					if (!getStoryId(storyId, story)) { 
+						storyId = nextStoryId++;
+					}
+				}
+			}
 			if (authors.size() <= i) { authors.reserve((i+1)*2); authors.resize(i + 1); }
-			authors[i++] = std::make_tuple(aid, story);
+			authors[i++] = { aid, story, storyId };
 		}
 		if (authors.empty() && title.empty()) {
 			return;
@@ -2603,11 +2645,12 @@ ORDER BY Dupe DESC, B."Date read")");
 		printf("\n");
 		bool hasWidth = false; size_t width = 0; again:
 		for (auto const& a : authors) {
-			auto const& aid = std::get<0>(a);
-			auto const& story = std::get<1>(a);
-			auto name = selAuthor(aid);
+			auto name = selAuthor(a.authorId);
 			width = std::max(width, name.length());
-			if (hasWidth) printf("%-4llu - %-*s%s%s\n", aid, width, name.c_str(), (story.empty() ?  "" : "  :  "), story.c_str());
+			if (hasWidth) {
+				printf("%-4llu - %-*s%s\n", a.authorId, width, name.c_str(), (a.story.empty()
+					? "" : fmt("  :  %s [%llu]", a.story.c_str(), a.storyId).c_str()));
+			}
 		}
 		if (!hasWidth) { hasWidth = true; goto again; }
 		printf("\n");
@@ -2631,7 +2674,6 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 		// Add it!
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
-		auto addedAuthorBooks = std::set<std::string>();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
 		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\") VALUES(%s,%s,'%s',%i,%i);\n",
@@ -2640,16 +2682,12 @@ ORDER BY Dupe DESC, B."Date read")");
 			bid, ESC_S(dateRead), sourceId));
 		sql.append(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, genreId));
 		for (auto const& a : authors) {
-			auto const aid = std::get<0>(a);
-			auto abKey = std::to_string(aid) + "_" + bookId;
-			if (addedAuthorBooks.find(abKey) == addedAuthorBooks.end()) {
-				addedAuthorBooks.insert(abKey);
-				sql.append(fmt("INSERT INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%s);\n", aid, bid));
-			}
-			auto const& story = std::get<1>(a);
-			if (!story.empty()) {
-				sql.append(fmt("INSERT INTO Stories (StoryID,AuthorID,BookID,Story) VALUES(NULL,%llu,%s,%s);\n",
-					aid, bid, ESC_S(story)));
+			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%s);\n", a.authorId, bid));
+			if (!a.story.empty()) {
+				sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story) VALUES(%llu,%s);\n",
+					a.storyId, ESC_S(a.story)));
+				sql.append(fmt("INSERT INTO BookStories (AuthorID,BookID,StoryID) VALUES(%llu,%s,%llu);\n",
+					a.authorId, bid, a.storyId));
 			}
 		}
 		if (!origtitle.empty()) {
@@ -2675,15 +2713,51 @@ ORDER BY Dupe DESC, B."Date read")");
 		}
 	}
 
+	IdValue getNextStoryId()
+	{
+		auto idStr = selectSingleValue("SELECT max(StoryId) + 1 FROM Stories", "StoryId"); 
+		IdValue id=0; toIdValue(idStr, id); return id;
+	}
+
+	bool getStoryId(IdValue& storyId, std::string const & story)
+	{
+		if (hasRowValue(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESC_S(story)))) {
+			auto idValid = [&]() { return storyId == EmptyId || hasRowValue(fmt(
+				"SELECT 1 FROM Stories WHERE StoryID=%llu AND Story=%s", storyId, ESC_S(story)));
+			};
+			for (;;) {
+				printf("\nStory name already exists, select a storyID to use from the ones listed or leave empty to add new.\n\n");
+				OutputQuery q(*this);
+				q.columnWidths.assign({ 7, 30, 25, 30 });
+				q.a(fmt("SELECT StoryID, Story, \"Last Name\"||' '||\"First Name\" AS Author, Title"
+					" FROM Stories INNER JOIN BookStories USING(StoryID) INNER JOIN Books USING(BookID) INNER JOIN Authors USING(AuthorID)"
+					" WHERE Story=%s", ESC_S(story)));
+				runOutputQuery(q);
+				printf("\n");
+				if (!idValid()) { storyId = EmptyId; }
+				input(storyId, "StoryID", nullptr, nullptr, optional);
+				if (idValid()) { return storyId != EmptyId; }
+			}
+		}
+		return false;
+	}
+
 	void addStory(IdValue bookId, IdValue authorId, std::string const & story)
 	{
-		if (confirm(fmt("Add story '%s' to '%s [%llu]' for author %s [%llu]", 
-			story.c_str(), selTitle(bookId).c_str(), bookId, selAuthor(authorId).c_str(), authorId))) {
-			auto sql = fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%llu);", 
-				authorId, bookId);
-			sql.append(fmt("INSERT INTO Stories (StoryID,AuthorID,BookID,Story) VALUES(NULL,%llu,%llu,%s)",
-				authorId, bookId, ESC_S(story)));
-			executeInsert(sql, "StoryID");
+		IdValue storyId = EmptyId; getStoryId(storyId, story);
+
+		if (confirm(fmt("Add story '%s' [%llu] to '%s [%llu]' for author %s [%llu]", 
+			story.c_str(), storyId, selTitle(bookId).c_str(), bookId, selAuthor(authorId).c_str(), authorId))) {
+			std::string sql = "BEGIN;";
+			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%llu);", authorId, bookId));
+			if (storyId == EmptyId) {
+				storyId = getNextStoryId();
+				sql.append(fmt("INSERT INTO Stories (StoryID,Story) VALUES(%llu,%s);", storyId, ESC_S(story)));
+			}
+			sql.append(fmt("INSERT INTO BookStories (AuthorID,BookID,StoryID) VALUES(%llu,%llu,%llu);", authorId, bookId, storyId));
+			sql.append("COMMIT");
+			executeSql(sql);
+			printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
 		}
 	}
 
