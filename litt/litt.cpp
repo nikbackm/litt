@@ -2376,7 +2376,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		std::string calcDRTimeWindow = "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end";
 
 		OutputQuery query(*this);
-		query.initSelect("dr.bt.nn", "Books", "dr.bt"); 
+		query.initSelect("dr.bt.nn", "Books", "dr.bt.nn"); 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		query.addAuxTables();
 		query.add("WHERE " + calcDRTimeWindow + " IN");
