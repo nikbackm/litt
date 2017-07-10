@@ -2292,14 +2292,14 @@ public:
 	{
 		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
-		query.columnWidths = { 6,4,20,10,15,20,8,15,20,10,15 };
+		query.columnWidths = { 6,4,20,10,15,20,10,15,20,10,15 };
 		query.initColumnWidths();
 		query.initSelectBare();
 		query.a(fmt(
 R"(B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
 B."Date read" AS 'Book read', B.Source AS 'Book source', 
 CASE WHEN B.AuthorID <> S.AuthorID THEN B."First Name" || ' ' || B."Last Name" ELSE '* see story *' END AS 'Book Author',
-S.BookID AS 'S BookID', S."First Name" || ' ' || S."Last Name" AS 'Story Author', S.Title AS 'Story book title',  
+S.BookID||'/'||S.StoryID AS 'B/StoryID', ltrim(S."First Name"||' '||S."Last Name") AS 'Story Author', S.Title AS 'Story book title',  
 S."Date read" AS 'Story read', S.Source AS 'Story source'
 FROM (Books
 	INNER JOIN AuthorBooks USING(BookID)
