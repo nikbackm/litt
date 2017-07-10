@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-10: "execute" now supports -x option.
  * 2017-07-08: Split Stories table into Stories and BookStories tables.
                - Added virtual column "stng".
                - Changed story (st) default order.
@@ -1517,11 +1518,16 @@ public:
 			: litt(litt) 
 		{}
 
-		void initSelectBare(SelectOption selectOption = SelectOption::normal)
+		void init()
 		{
 			if (litt.m_explainQuery) {
 				m_sstr << "EXPLAIN QUERY PLAN ";
 			}
+		}
+
+		void initSelectBare(SelectOption selectOption = SelectOption::normal)
+		{
+			init();
 			m_sstr << "SELECT ";
 			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
 				m_sstr << "DISTINCT ";
@@ -2871,6 +2877,8 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 			// Set first few columns to width 30, better than letting label and/or first value determine it.
 			// (Don't include too many columns, then fitWidth will shrink them!)
 			q.columnWidths.assign(5, 30);
+			q.initColumnWidths();
+			q.init();
 			q.a(sql);
 			runOutputQuery(q); 
 			int changes = sqlite3_changes(m_conn.get());
