@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-10: Switched (AuthorID,BookID) in AuthorBooks and BookStories to (BookID,AuthorID). This works better
+               for the queries since they mostly start joining from BookID. Fixed performance issue with titlestory
+               when using WITHOUT ROWID tables where appropriate.
  * 2017-07-10: "execute" now supports -x option.
  * 2017-07-08: Split Stories table into Stories and BookStories tables.
                - Added virtual column "stng".
@@ -1672,7 +1675,7 @@ public:
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 			if ((opt & Skip_Stories) == 0) {
 			if (litt.m_hasBookStories) {
-			addIfColumns("stid.st.stng",             indent +  stoJoin + " JOIN BookStories USING(AuthorID, BookID)");
+			addIfColumns("stid.st.stng",             indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
 			addIfColumns("st",                       indent +  stoJoin + " JOIN Stories USING(StoryID)");
 			}
 			else { // old story table
@@ -2688,12 +2691,12 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 			bid, ESC_S(dateRead), sourceId));
 		sql.append(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, genreId));
 		for (auto const& a : authors) {
-			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%s);\n", a.authorId, bid));
+			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%s,%llu);\n", bid, a.authorId));
 			if (!a.story.empty()) {
 				sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story) VALUES(%llu,%s);\n",
 					a.storyId, ESC_S(a.story)));
-				sql.append(fmt("INSERT INTO BookStories (AuthorID,BookID,StoryID) VALUES(%llu,%s,%llu);\n",
-					a.authorId, bid, a.storyId));
+				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%s,%llu,%llu);\n",
+					bid, a.authorId, a.storyId));
 			}
 		}
 		if (!origtitle.empty()) {
@@ -2755,12 +2758,12 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		if (confirm(fmt("Add story '%s' [%llu] to '%s [%llu]' for author %s [%llu]", 
 			story.c_str(), storyId, selTitle(bookId).c_str(), bookId, selAuthor(authorId).c_str(), authorId))) {
 			std::string sql = "BEGIN;";
-			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (AuthorID,BookID) VALUES(%llu,%llu);", authorId, bookId));
+			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bookId,authorId));
 			if (storyId == EmptyId) {
 				storyId = getNextStoryId();
 				sql.append(fmt("INSERT INTO Stories (StoryID,Story) VALUES(%llu,%s);", storyId, ESC_S(story)));
 			}
-			sql.append(fmt("INSERT INTO BookStories (AuthorID,BookID,StoryID) VALUES(%llu,%llu,%llu);", authorId, bookId, storyId));
+			sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bookId, authorId, storyId));
 			sql.append("COMMIT");
 			executeSql(sql);
 			printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
