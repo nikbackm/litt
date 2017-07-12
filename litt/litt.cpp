@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-12: Added "nand" & "nor" operators to where conditions as well.
  * 2017-07-10: Switched (AuthorID,BookID) in AuthorBooks and BookStories to (BookID,AuthorID). This works better
                for the queries since they mostly start joining from BookID. Fixed performance issue with titlestory
                when using WITHOUT ROWID tables where appropriate.
@@ -204,7 +205,7 @@ selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
           cmpOper: lt,gt,eq,nq,isnull,isempty,range ("LIKE" if none is given, isnull & isempty take no cmpArg, range takes two)
-          cmpOper: and,or - These will consume the rest of the whereCond to either AND or OR the rest of the terms for the sn.
+          cmpOper: and,or,nand,nor - These will consume the rest of the whereCond terms and AND/OR/NAND/NOR them using LIKE/=.
 colSizes format: Same as selColumns format
 
 bookCountCond and booksReadCond formats:
@@ -1322,9 +1323,8 @@ public:
 			else if (val == "gt") oper = ">";
 			else if (val == "eq") oper = "=";
 			else if (val == "nq" || val == "ne") oper = "notlike";
-			else if (val == "isnull" || val == "isempty" || val == "range" || val == "and" || val == "or") {
-				oper = val;
-			}
+			else if (val == "isnull" || val == "isempty" || val == "range") oper = val; 
+			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
 
 			if (oper.empty()) {
 				oper = "LIKE";
@@ -1344,12 +1344,15 @@ public:
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
 			else if (oper == "isempty") snCond = colName + " = ''";
 			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext());
-			else if (oper == "and" || oper == "or") {
+			else if (oper == "and" || oper == "or" || oper == "nand" || oper == "nor") {
 				snCond = "(";
+				bool not = (oper[0] == 'n');
 				for (;;) {
-					snCond.append(colName + (val[0] == '\'' ? " LIKE " : " = ") + val);
+					snCond.append("ifnull(" + colName + ", '')"
+						+ (val[0] == '\'' ? (not ? " NOT LIKE " : " LIKE ") : (not ? " <> " : " = "))
+						+ val);
 					if (!opts.getNext(val)) break;
-					snCond.append(oper == "and" ? LogOp_AND : LogOp_OR);
+					snCond.append(oper.back() == 'd' ? LogOp_AND : LogOp_OR);
 					val = col->getLikeArg(val);
 				}
 				snCond.append(")");
