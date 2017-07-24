@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-07-24: rereads: Order by "bi" instead of "brc". listGenre: use "gg" and "btast" instead of "ge" and "bt".
  * 2017-07-12: Added "nand" & "nor" operators to where conditions as well.
  * 2017-07-10: Switched (AuthorID,BookID) in AuthorBooks and BookStories to (BookID,AuthorID). This works better
                for the queries since they mostly start joining from BookID. Fixed performance issue with titlestory
@@ -2221,7 +2222,7 @@ public:
 			runSingleTableOutputCmd("gi.ge.50", "Genres", "ge");
 		}
 		else {
-			runListData("ge.bi.bt.dr.nn", "ge.dr.bi.ln.fn");
+			runListData("gg.bi.btast.dr.nn", "gg.dr.bi.ln.fn");
 		}
 	}
 
@@ -2258,7 +2259,7 @@ public:
 	{
 		OutputQuery query(*this);
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-		query.initSelect("brc.bt.dr.ng", from, "brc.desc.ln.bt.dr");
+		query.initSelect("brc.bt.bi.dr.ng", from, "bi.ln.dr");
 		query.add("INNER JOIN Books USING(BookID)");
 		query.addAuxTables();
 		query.addWhere();
