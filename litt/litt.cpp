@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-08-07: Uses GetLocalTime instead of GetSystemTime.
  * 2017-07-24: rereads: Order by "bi" instead of "brc". listGenre: use "gg" and "btast" instead of "ge" and "bt".
  * 2017-07-12: Added "nand" & "nor" operators to where conditions as well.
  * 2017-07-10: Switched (AuthorID,BookID) in AuthorBooks and BookStories to (BookID,AuthorID). This works better
@@ -396,9 +397,9 @@ namespace Utils
 		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // TODO: Only do this on supported Windows 10 editions?
 	}
 
-	SYSTEMTIME GetSystemTime()
+	SYSTEMTIME getLocalTime()
 	{
-		SYSTEMTIME st{}; ::GetSystemTime(&st);
+		SYSTEMTIME st{}; ::GetLocalTime(&st);
 		return st;
 	}
 } // Utils
@@ -2597,7 +2598,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 	void addBook(const char* drRegEx)
 	{
 		struct AData { IdValue authorId; std::string story; IdValue storyId; };
-		auto st = GetSystemTime();
+		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
 		auto title       = std::string();
 		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
@@ -2956,7 +2957,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		}
 		else if (action == "abcy" || action == "gbcy" || action == "sbcy") {
 			auto count = intarg(0, "count", 10);
-			auto firstYear = intarg(1, "firstYear", GetSystemTime().wYear - 4);
+			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
 			switch (action[0]) {
@@ -2992,7 +2993,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
 		}
 		else if (action == "brmy") {
-			auto st = GetSystemTime();
+			auto st = getLocalTime();
 			auto firstYear = intarg(0, "firstYear", st.wYear);
 			auto lastYear  = intarg(1, "lastYear", st.wYear);
 			std::vector<PeriodColumn> yearColumns;
