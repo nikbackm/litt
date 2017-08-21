@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-08-21: Added "nrange" operator for -w options.
  * 2017-08-07: Uses GetLocalTime instead of GetSystemTime.
  * 2017-07-24: rereads: Order by "bi" instead of "brc". listGenre: use "gg" and "btast" instead of "ge" and "bt".
  * 2017-07-12: Added "nand" & "nor" operators to where conditions as well.
@@ -206,7 +207,8 @@ Options:
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
-          cmpOper: lt,gt,eq,nq,isnull,isempty,range ("LIKE" if none is given, isnull & isempty take no cmpArg, range takes two)
+          cmpOper: lt,gt,eq,nq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
+          cmpOper: range,nrange - These take two cmpArgs, for start and stop of range (both inclusive)
           cmpOper: and,or,nand,nor - These will consume the rest of the whereCond terms and AND/OR/NAND/NOR them using LIKE/=.
 colSizes format: Same as selColumns format
 
@@ -1325,7 +1327,7 @@ public:
 			else if (val == "gt") oper = ">";
 			else if (val == "eq") oper = "=";
 			else if (val == "nq" || val == "ne") oper = "notlike";
-			else if (val == "isnull" || val == "isempty" || val == "range") oper = val; 
+			else if (val == "isnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
 			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
 
 			if (oper.empty()) {
@@ -1346,6 +1348,7 @@ public:
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
 			else if (oper == "isempty") snCond = colName + " = ''";
 			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext());
+			else if (oper == "nrange")  snCond = "NOT (" + val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext()) + ")";
 			else if (oper == "and" || oper == "or" || oper == "nand" || oper == "nor") {
 				snCond = "(";
 				bool not = (oper[0] == 'n');
