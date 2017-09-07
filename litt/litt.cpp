@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-09-07: Can now specify ORDER BY columns (with -o) by actual column name in addition to the short name.
  * 2017-08-21: Added "nrange" operator for -w options.
  * 2017-08-07: Uses GetLocalTime instead of GetSystemTime.
  * 2017-07-24: rereads: Order by "bi" instead of "brc". listGenre: use "gg" and "btast" instead of "ge" and "bt".
@@ -205,7 +206,7 @@ Options:
     Some options like -a and -w are additive though and all option instances of those will be used.
 
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
-colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
+colOrder format: <shortName|actualName>[.asc|desc]{.<shortName|actualName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
           cmpOper: lt,gt,eq,nq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
           cmpOper: range,nrange - These take two cmpArgs, for start and stop of range (both inclusive)
@@ -1060,7 +1061,7 @@ public:
 					else throw std::invalid_argument("Invalid header value: " + val);
 					break;
 				case 'o':
-					m_orderBy = getColumns(val, ColumnsDataKind::sortOrder, true);
+					m_orderBy = getColumns(val, ColumnsDataKind::sortOrder, true, true);
 					break;
 				case 'c': 
 					m_selectedColumns = getColumns(val, ColumnsDataKind::width, true);
@@ -1226,16 +1227,21 @@ public:
 		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
 	}
 
-	ColumnInfo const* getColumn(std::string const & sn) const
+	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
 	{
 		auto it = m_columnInfos.find(sn);
 		if (it == m_columnInfos.end()) {
+			if (allowActualName) {
+				static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
+				cols.push_back(ColumnInfo{quote(sn), (int)sn.length(), ColumnType::numeric, sn, false, nullptr});
+				return &cols.back();
+			}
 			throw std::invalid_argument("Invalid short column name: " + sn);
 		}
 		return &it->second;
 	}
 
-	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery) const
+	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery, bool allowActualName = false) const
 	{
 		Columns res;
 		OptionParser opts(sns);
@@ -1246,7 +1252,7 @@ public:
 					break;
 				}
 			}
-			auto column = getColumn(sn);
+			auto column = getColumn(sn, allowActualName);
 			if (usedInQuery) {
 				column->usedInQuery = true;
 			}
@@ -1583,10 +1589,15 @@ public:
 			m_sstr << "\nFROM " << from;
 
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
+			initOrderBy(defOrderBy);
+		}
+
+		void initOrderBy(const char* defOrderBy, bool allowActualNames = false)
+		{
 			auto asc = [](Columns cols) { for (auto& c : cols) { c.second = (int)ColumnSortOrder::Asc; } return cols; };
 			m_orderBy = litt.m_orderBy.empty()
 				? (litt.m_selectedColumns.empty()
-					? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true)
+					? litt.getColumns(defOrderBy, ColumnsDataKind::sortOrder, true, allowActualNames)
 					: asc(litt.m_selectedColumns))
 				: litt.m_orderBy;
 		}
@@ -2460,7 +2471,9 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		else if (periodDef == "%Y-%m") periodFunc = "substr(\"Date Read\",1,7)";
 		else                           periodFunc = fmt("strftime('%s', \"Date Read\")", periodDef.c_str());
 
-		q.initSelectBare(); q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
+		q.initSelectBare(); 
+		q.initOrderBy(period.c_str(), true);
+		q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
 		q.add("   (SELECT BookID, " + periodFunc + " AS " + period);
 		q.add("    FROM Books");
@@ -2490,7 +2503,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		if (!cond.empty() && cond != WcS) {
 		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WcS));
 		}
-		q.add(" ORDER BY " + period);
+		q.addOrderBy();
 		runOutputQuery(q);
 	}
 
