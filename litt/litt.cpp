@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-10-30: Removed extra, unneeded ANSI output (caused extra line with Y).
  * 2017-09-07: Can now specify ORDER BY columns (with -o) by actual column name in addition to the short name.
  * 2017-08-21: Added "nrange" operator for -w options.
  * 2017-08-07: Uses GetLocalTime instead of GetSystemTime.
@@ -2160,9 +2161,6 @@ public:
 			if (consEnabled()) {
 				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
-		}
-		if (m_ansiEnabled && m_displayMode == DisplayMode::column && m_rowCount > 0) {
-			m_output.write(m_ansiDefColor);
 		}
 		m_output.flushNoThrow();
 		if (res != SQLITE_OK) {
