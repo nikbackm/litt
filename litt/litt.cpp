@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2017-11-28: Changed input color to Cyan to fit with black background. 
+               Added optional environment variable LITT_INPUT_COLOR to specify input color.
  * 2017-10-30: Removed extra, unneeded ANSI output (caused extra line with Y).
  * 2017-09-07: Can now specify ORDER BY columns (with -o) by actual column name in addition to the short name.
  * 2017-08-21: Added "nrange" operator for -w options.
@@ -511,8 +513,22 @@ namespace Input
 		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
 		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
 		std::string str;
-		// Set text color to blue, keep background.
-		SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
+
+		WORD textColor = 0;
+		auto strColor = getenv("LITT_INPUT_COLOR");
+		if (strColor != nullptr) {
+			auto color = atoi(strColor);
+			if (0 < color && color <= 0xFFFF) {
+				textColor = (WORD)color;
+			}
+		}
+
+		if (textColor != 0) {
+			SetConsoleTextAttribute(hOut, textColor);
+		}
+		else { // Set text color to cyan, keep background.
+			SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_GREEN | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
+		}
 		std::getline(std::cin, str);
 		// Restore the previous text color.
 		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
