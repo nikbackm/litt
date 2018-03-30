@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-03-30: Added virtual column "dm" for month of date read.
  * 2017-11-28: Changed input color to Cyan to fit with black background. 
                Added optional environment variable LITT_INPUT_COLOR to specify input color.
  * 2017-10-30: Removed extra, unneeded ANSI output (caused extra line with Y).
@@ -237,6 +238,7 @@ Column short name values:
     ge, gi, gg      - Genre, GenreID, Aggregated genres per book.
     dr, dg          - Date read, Aggregated dates
     dw, dwl         - Day of week numeral and Day of week string for Date read
+    dm              - Month for Date read
     ti, sec         - Time of day and TotalSeconds for Date read
     own, la, beb    - Owned, Language, Bought Ebook
     st, stid        - Story, StoryID
@@ -1012,6 +1014,7 @@ public:
 		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE '' END",
 					  5, "DoW");
+		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", 3, "Month");
 		addColumnText("ti", "time(\"Date Read\")", 5, "Time");
 		addColumnNumeric("sec", "CAST(strftime('%s',\"Date Read\") AS INTEGER)", 11, "Timestamp");
 
