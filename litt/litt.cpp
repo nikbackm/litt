@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-04: Added rating column to Books.
  * 2018-03-30: Added virtual column "dm" for month of date read.
  * 2017-11-28: Changed input color to Cyan to fit with black background. 
                Added optional environment variable LITT_INPUT_COLOR to specify input color.
@@ -232,20 +233,20 @@ DisplayMode values:
     tabs        Tab-separated values
 
 Column short name values:
-    bt, bi, ot      - Book title, BookID, Original title
-    ln, fn, ai      - Author last and first name, AuthorID
-    nn, ng          - Author full name, Aggregated full name(s) per book.
-    ge, gi, gg      - Genre, GenreID, Aggregated genres per book.
-    dr, dg          - Date read, Aggregated dates
-    dw, dwl         - Day of week numeral and Day of week string for Date read
-    dm              - Month for Date read
-    ti, sec         - Time of day and TotalSeconds for Date read
-    own, la, beb    - Owned, Language, Bought Ebook
-    st, stid        - Story, StoryID
-    ast, btast, bst - Stories for author, Title and stories for author, Stories for book
-    stng            - Aggregated authors per story (and per book).
-    se, si, sp      - Series, SeriesID, Part in Series
-    so, soid        - Source, SourceID
+    bt, bi, ot       - Book title, BookID, Original title
+    ln, fn, ai       - Author last and first name, AuthorID
+    nn, ng           - Author full name, Aggregated full name(s) per book.
+    ge, gi, gg       - Genre, GenreID, Aggregated genres per book.
+    dr, dg           - Date read, Aggregated dates
+    dw, dwl          - Day of week numeral and Day of week string for Date read
+    dm               - Month for Date read
+    ti, sec          - Time of day and TotalSeconds for Date read
+    ra, own, la, beb - Rating, Owned, Language, Bought Ebook
+    st, stid         - Story, StoryID
+    ast, btast, bst  - Stories for author, Title and stories for author, Stories for book
+    stng             - Aggregated authors per story (and per book).
+    se, si, sp       - Series, SeriesID, Part in Series
+    so, soid         - Source, SourceID
  
     To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
     E.g. "btl" will provide the lengths of the "bt" column values.
@@ -443,6 +444,7 @@ namespace LittDefs
 	const char*   LogOp_OR = " OR ";
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
+	const char*   RatingRegEx = R"raw([+-]?((\d+(\.\d*)?)|(\.\d+)))raw";
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
 	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
@@ -995,6 +997,7 @@ public:
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
 		addColumnTextWithLength("nn", "ltrim(\"First Name\"||' '||\"Last Name\")", 25, "Author");
 		addColumnText("la", "Language", 4);
+		addColumnNumeric("ra", "Rating", 3);
 		addColumnNumeric("own", "Owned", 3);
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
@@ -2638,6 +2641,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		auto sourceId    = EmptyId;
 		auto genreId     = EmptyId;
 		auto origtitle   = std::string(); 
+		auto rating      = std::string();
 		auto lang        = int('e');
 		auto owns        = int('n');
 		auto boughtEbook = int('n');
@@ -2674,6 +2678,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		}
 		input(title, "Book title");
 		input(dateRead, "Date read", drRegEx);
+		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
 		input(genreId, "Book GenreID", cf(&Litt::selGenre), getListGenre());
 		input(origtitle, "Original title (optional)", optional);
@@ -2703,6 +2708,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		printf("\n");
 		printf("Title          : %s\n", title.c_str());
 		printf("Date read      : %s\n", dateRead.c_str());
+		printf("Rating         : %s\n", rating.c_str());
 		printf("Genre          : %s\n", selGenre(genreId).c_str());
 		printf("Source         : %s\n", selSource(sourceId).c_str());
 		printf("Language       : %s\n", langStr(lang));
@@ -2723,8 +2729,8 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
-		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\") VALUES(%s,%s,'%s',%i,%i);\n",
-			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook)));
+		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating) VALUES(%s,%s,'%s',%i,%i,%s);\n",
+			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str()));
 		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
 		sql.append(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, genreId));
