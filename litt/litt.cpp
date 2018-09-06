@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-06: addAuxTables: "stng" required AuthorBooks to be included.
  * 2018-09-04: Added rating column to Books.
  * 2018-03-30: Added virtual column "dm" for month of date read.
  * 2017-11-28: Changed input color to Cyan to fit with black background. 
@@ -1712,7 +1713,7 @@ public:
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast", indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast.stng", indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 			if ((opt & Skip_Stories) == 0) {
