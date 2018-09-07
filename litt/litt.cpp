@@ -1,6 +1,10 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-07: Added "set-r" for setting the rating of a book.
+               Use fputs instead of puts for online help to avoid extra newlines.
+			   Include rating in some default listings.
+			   Improved ANSI; now always resets to default at the end of a column. But only if column uses custom values.
  * 2018-09-06: addAuxTables: "stng" required AuthorBooks to be included.
  * 2018-09-04: Added rating column to Books.
  * 2018-03-30: Added virtual column "dm" for month of date read.
@@ -115,7 +119,7 @@ Changelog:
 
 void showHelp(bool showExtended = false)
 {
-	puts(
+	fputs(
 R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
@@ -159,6 +163,7 @@ Adding and modifying data:
    add-st    [BookID] [AuthorID] [story]  Add a story for a book.
    add-bg    [BookID] [GenreID]           Add a genre to a book.
    
+   set-r     [BookID] [rating]            Set rating for a book.
    set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
    set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
    set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
@@ -166,7 +171,7 @@ Adding and modifying data:
 
    execute   [sqlString]                  Execute the given SQL string. Use with CAUTION!
 )"
-	); if (showExtended) puts(
+	,stdout); if (showExtended) fputs(
 R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
       around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
@@ -252,7 +257,7 @@ Column short name values:
     To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
     E.g. "btl" will provide the lengths of the "bt" column values.
 )"
-	);
+	,stdout);
 }
 
 namespace Utils
@@ -1525,7 +1530,7 @@ public:
 		return index < m_actionArgs.size()
 			? (std::regex_match(m_actionArgs[index], std::regex(regEx)) 
 				? m_actionArgs[index] 
-				: throw std::invalid_argument("Invalid date value: " + m_actionArgs[index]))
+				: throw std::invalid_argument(fmt("Invalid %s value: %s", name, m_actionArgs[index].c_str())))
 			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
 	}
 
@@ -1789,9 +1794,9 @@ public:
 				}
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(m_colSep);
-					if (m_ansiEnabled) m_output.write(m_ansiRowColors[i].get());
+					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiRowColors[i].get());
 					m_output.writeUtf8Width(val, query.columnWidths[i]);
-					if (m_ansiEnabled && i == argc - 1) m_output.write(m_ansiDefColor);
+					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiDefColor);
 				}
 				break;
 			case DisplayMode::list:
@@ -1854,6 +1859,7 @@ public:
 	void ansiInit(int argc, char **azColName) const
 	{
 		enableVTMode();
+		m_output.write(m_ansiDefColor);
 
 		for (int i = 0; i < argc; ++i) { 
 			m_ansiRowColors.emplace_back(m_ansiDefColor); // Just to init the size, will need to reset for each row.
@@ -1891,7 +1897,6 @@ public:
 				}
 			}
 		}
-
 	}
 
 	void ansiSetRowColors(bool /*isHeader*/, int argc, char** argv) const
@@ -2080,6 +2085,8 @@ public:
 	{
 		try {
 			if (m_rowCount == 0) {
+				writeBomIfNeeded();
+
 				if (m_displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(size_t{30},
@@ -2116,8 +2123,6 @@ public:
 						ansiInit(argc, azColName);
 					}
 				}
-
-				writeBomIfNeeded();
 
 				if (m_displayMode == DisplayMode::htmldoc) {
 					auto docStart = 
@@ -2224,7 +2229,7 @@ public:
 			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.nn.btast.dr.so.gg", "ai.dr.bi");
+			runListData("bi.nn.ra.btast.dr.so.gg", "ai.dr.bi");
 		}
 	}
 
@@ -2236,7 +2241,7 @@ public:
 		}
 		else {
 			addActionWhereCondition("btast", title);
-			runListData("bi.nn.btast.45.dr.so.gg", "dr.bi.ln.fn");
+			runListData("bi.nn.ra.btast.45.dr.so.gg", "dr.bi.ln.fn");
 		}
 	}
 
@@ -2247,7 +2252,7 @@ public:
 			runSingleTableOutputCmd("si.se.70", "Series", "si");
 		}
 		else {
-			runListData("se.sp.bt.dr.bi.nn", "se.sp.dr.bi.ln.fn", IJF_Series);
+			runListData("se.ra.sp.bt.dr.bi.nn", "se.sp.dr.bi.ln.fn", IJF_Series);
 		}
 	}
 
@@ -2258,7 +2263,7 @@ public:
 			runSingleTableOutputCmd("gi.ge.50", "Genres", "ge");
 		}
 		else {
-			runListData("gg.bi.btast.dr.nn", "gg.dr.bi.ln.fn");
+			runListData("gg.bi.ra.btast.dr.nn", "gg.dr.bi.ln.fn");
 		}
 	}
 
@@ -2909,6 +2914,15 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		}
 	}
 
+	void setRating(IdValue bookId, std::string const & rating) // We assume rating is checked for valid rating values.
+	{
+		if (confirm(fmt("Set rating of '%s' => %s", selTitle(bookId).c_str(), rating.c_str()))) {
+			int changes = executeSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
+				rating.c_str(), bookId));
+			printf("Updated %i rows\n", changes);
+		}
+	}
+
 	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
 	{
 		auto arg = argi(argIndex, name, optional);
@@ -3114,6 +3128,12 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 			if (auto bid = bidargi(0)) {
 				auto ot = argi(1, "Original title or 'delete' to remove");
 				setOriginalTitle(bid, ot);
+			}
+		}
+		else if (action == "set-r") {
+			if (auto bid = bidargi(0)) {
+				auto rating = argi(1, "Rating", RatingRegEx);
+				setRating(bid, rating);
 			}
 		}
 		else if (action == "execute") {
