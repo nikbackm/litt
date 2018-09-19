@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-19: Fixed column definition for "brym" so it does not matches the days as well! (In case of trailing -PO after day).
  * 2018-09-07: Added "set-r" for setting the rating of a book.
                Use fputs instead of puts for online help to avoid extra newlines.
 			   Include rating in some default listings.
@@ -3041,7 +3042,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 			std::vector<PeriodColumn> monthColumns;
 			for (int m = 1; m <= 12; ++m) {
-				char def[10]; sprintf_s(def, "dr.*-%02d-*", m);
+				char def[20]; sprintf_s(def, "dr.____-%02d-*", m);
 				monthColumns.push_back({ std::string(def), std::string(months[m-1]) });
 			}
 			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
