@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-19: Improved virtual columns "sec" and "ti" so they can tolerate (some!) imperfect date values without returning NULL.
  * 2018-09-19: Fixed column definition for "brym" so it does not matches the days as well! (In case of trailing -PO after day).
  * 2018-09-07: Added "set-r" for setting the rating of a book.
                Use fputs instead of puts for online help to avoid extra newlines.
@@ -1025,8 +1026,8 @@ public:
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE '' END",
 					  5, "DoW");
 		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", 3, "Month");
-		addColumnText("ti", "time(\"Date Read\")", 5, "Time");
-		addColumnNumeric("sec", "CAST(strftime('%s',\"Date Read\") AS INTEGER)", 11, "Timestamp");
+		addColumnText("ti", "CASE WHEN time(\"Date Read\") IS NULL THEN time(substr(\"Date Read\",1,10)) ELSE time(\"Date Read\") END", 5, "Time");
+		addColumnNumeric("sec", "CAST(CASE WHEN strftime('%s',\"Date Read\") IS NULL THEN strftime('%s',substr(\"Date Read\",1,10)) ELSE strftime('%s',\"Date Read\") END AS INTEGER)", 11, "Timestamp");
 
 		// Special-purpose "virtual" columns, these are not generally usable:
 		// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
