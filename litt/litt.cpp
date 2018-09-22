@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-22: Decrease BookID width from 6 to 4.
  * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
  * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
                as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
@@ -1024,7 +1025,7 @@ public:
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 		addColumnNumeric("ai", "AuthorID", -8);
 		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
-		addColumnNumeric("bi", "BookID", -6);
+		addColumnNumeric("bi", "BookID", -4);
 		addColumnTextWithLength("bt", "Title", 45);
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
