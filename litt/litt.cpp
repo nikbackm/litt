@@ -1,6 +1,14 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
+               as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
+			   used in the SELECT.
+ * 2018-09-22: Added some columns based on window functions for nicer stats.
+ * 2018-09-22: Renamed short name for series part "sp" to "spa" to make room for window function column.
+ * 2018-09-22: Verifies (also in Release build) that no duplicate short columns are added.
+ * 2018-09-22: Documented -x option, added -x2 for just EXPLAIN, disabled fit width when -x is used.
+ * 2018-09-22: dwl now returns NULL on invalid dates to be consistent with dw and dm.
  * 2018-09-19: Improved virtual columns "sec" and "ti" so they can tolerate (some!) imperfect date values without returning NULL.
  * 2018-09-19: Fixed column definition for "brym" so it does not matches the days as well! (In case of trailing -PO after day).
  * 2018-09-07: Added "set-r" for setting the rating of a book.
@@ -198,6 +206,7 @@ Options:
                       an explicit width value implies mode "on". If no value is specified then the width
                       of the console is used. If there is no console then a hard-coded value is used.
     -y[on|off]        Automatic YES to all confirm prompts. Default is off.
+    -x[2]             Explains the query plan. x2 will show virtual machine code.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                      Specify column conditions for consecutive output row matching.
@@ -243,8 +252,8 @@ DisplayMode values:
 Column short name values:
     bt, bi, ot       - Book title, BookID, Original title
     ln, fn, ai       - Author last and first name, AuthorID
-    nn, ng           - Author full name, Aggregated full name(s) per book.
-    ge, gi, gg       - Genre, GenreID, Aggregated genres per book.
+    nn, ng           - Author full name, Aggregated full name(s) per book
+    ge, gi, gg       - Genre, GenreID, Aggregated genres per book
     dr, dg           - Date read, Aggregated dates
     dw, dwl          - Day of week numeral and Day of week string for Date read
     dm               - Month for Date read
@@ -252,12 +261,19 @@ Column short name values:
     ra, own, la, beb - Rating, Owned, Language, Bought Ebook
     st, stid         - Story, StoryID
     ast, btast, bst  - Stories for author, Title and stories for author, Stories for book
-    stng             - Aggregated authors per story (and per book).
-    se, si, sp       - Series, SeriesID, Part in Series
+    stng             - Aggregated authors per story (and per book)
+    se, si, spa      - Series, SeriesID, Part in Series
     so, soid         - Source, SourceID
- 
+
     To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
     E.g. "btl" will provide the lengths of the "bt" column values.
+
+Window function columns:
+    lag, lagi        - Lag in days (real and int) from the previous book
+    dind, mind, yind - Index/ordinal of book for day, month and year
+    ap, al, ac       - Period, lag and count for author
+    gp, gl, gc       - Same for genre
+    sp, sl, sc       - Same for source
 )"
 	,stdout);
 }
@@ -490,6 +506,7 @@ namespace LittDefs
 		// These values are set at runtime. Stored here for convenience.
 		mutable int  overriddenWidth;
 		mutable bool usedInQuery;
+		mutable bool usedInResult; 
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
@@ -935,7 +952,7 @@ class Litt {
 	int  m_fitWidthValue = 200;
 	bool m_selectDistinct = false;
 	bool m_showQuery = false;
-	bool m_explainQuery = false;
+	int  m_explainQuery = 0; // 1 == EXPLAIN QUERY PLAN, >1 == EXPLAIN
 	bool m_showNumberOfRows = false;
 	DisplayMode m_displayMode = DisplayMode::column;
 	std::string m_listSep = "|";
@@ -958,8 +975,12 @@ class Litt {
 
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
 	{
-		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, defWidth, type, label, isGroupAgg })); _ASSERT(res.second);
+		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, defWidth, type, label, isGroupAgg }));
+		if (!res.second) {
+			throw std::logic_error("Duplicate short name: " + sn);
+		}
 		res.first->second.overriddenWidth = -1;
+		res.first->second.usedInQuery = false;
 		return res.first->second;
 	}
 
@@ -1010,7 +1031,7 @@ public:
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", 8);
-		addColumnText("sp", "\"Part in Series\"", 4);
+		addColumnText("spa", "\"Part in Series\"", 4);
 		addColumnTextWithLength("st", "Story", 45);
 		addColumnNumeric("stid", "StoryID", 7);
 		addColumnTextWithLength("ast", "Stories", 45);
@@ -1020,15 +1041,56 @@ public:
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", 8);
 
+#define DR_FIXED "substr(\"Date Read\",1,10)"
+#define DR_SECS "CAST(ifnull(strftime('%s',\"Date Read\"), strftime('%s'," DR_FIXED ")) AS INTEGER)"
+
 		// Columns for more formats of Date Read:
 		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", 3, "DOW");
 		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
-					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE '' END",
+					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
 					  5, "DoW");
 		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", 3, "Month");
-		addColumnText("ti", "CASE WHEN time(\"Date Read\") IS NULL THEN time(substr(\"Date Read\",1,10)) ELSE time(\"Date Read\") END", 5, "Time");
-		addColumnNumeric("sec", "CAST(CASE WHEN strftime('%s',\"Date Read\") IS NULL THEN strftime('%s',substr(\"Date Read\",1,10)) ELSE strftime('%s',\"Date Read\") END AS INTEGER)", 11, "Timestamp");
+		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
+		addColumnNumeric("sec", DR_SECS, 11, "Timestamp");
 
+		// Some window function columns: 
+		// Note: Cannot be used in WHERE!
+		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
+#define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
+
+#define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
+		addColumnNumeric("lag", "round(" LAG ", 1)", 5, "Lag");
+		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  4, "Lag");
+#undef LAG
+
+#define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
+		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          4, "DInd");
+		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   4, "MInd");
+		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), 4, "YInd");
+#undef XIND
+
+#define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
+#define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
+#define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
+		addColumnNumeric("ap", XPERIOD("AuthorID"),7, "APeriod");
+		addColumnNumeric("al", XLAG("AuthorID"),   5, "ALag");
+		addColumnNumeric("ac", XCOUNT("AuthorID"), 4, "ACnt");
+
+		addColumnNumeric("gp", XPERIOD("GenreID"), 7, "GPeriod");
+		addColumnNumeric("gl", XLAG("GenreID"),    5, "GLag");
+		addColumnNumeric("gc", XCOUNT("GenreID"),  4, "GCnt");
+
+		addColumnNumeric("sp", XPERIOD("SourceID"),7, "SPeriod");
+		addColumnNumeric("sl", XLAG("SourceID"),   5, "SLag");
+		addColumnNumeric("sc", XCOUNT("SourceID"), 4, "SCnt");
+#undef XCOUNT
+#undef XLAG
+#undef XPERIOD
+
+#undef ROUND_TO_INT
+#undef DR_SECS
+#undef DR_FIXED
+		
 		// Special-purpose "virtual" columns, these are not generally usable:
 		// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 		addColumnNumericAggregate("prc", "Count(BookID)", 0);
@@ -1118,8 +1180,9 @@ public:
 				case 'u':
 					m_selectDistinct = true;
 					break;
-				case 'x': 
-					m_explainQuery = true;
+				case 'x':
+					m_explainQuery = (val == "2") ? 2 : 1;
+					m_fitWidthOn = m_fitWidthAuto = false;
 					break;
 				case 'n': 
 					m_showNumberOfRows = true;
@@ -1568,8 +1631,9 @@ public:
 
 		void init()
 		{
-			if (litt.m_explainQuery) {
-				m_sstr << "EXPLAIN QUERY PLAN ";
+			if (litt.m_explainQuery > 0) {
+				m_sstr << "EXPLAIN ";
+				if (litt.m_explainQuery == 1) m_sstr << "QUERY PLAN ";
 			}
 		}
 
@@ -1584,13 +1648,15 @@ public:
 
 		void initColumnWidths()
 		{
-			if (litt.m_explainQuery && litt.m_displayMode == DisplayMode::column) {
-				columnWidths = { 10, 10, 10, 100 }; 
+			if (litt.m_explainQuery > 0 && litt.m_displayMode == DisplayMode::column) {
+				if (litt.m_explainQuery == 1) columnWidths = { 10, 10, 10, 100 }; 
+				else                          columnWidths = { 5, 20, 6, 6, 6, 20, 6, 15 };
 			} // else assumes columnWidths are properly set!
 		}
 
 		void addCol(ColumnInfo const * ci)
 		{
+			ci->usedInResult = true;
 			m_sstr << ci->nameDef;
 			if (!ci->label.empty()) {
 				m_sstr << " AS " << ci->label;
@@ -1716,12 +1782,12 @@ public:
 			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
 			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
-			addIfColumns("dr.dw.dwl.ti.sec.soid.so", indent + "INNER JOIN DatesRead USING(BookID)");
-			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
-			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
+			addIfColumns("dr.dw.dwl.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("ng", indent + "INNER JOIN " + ng + " USING(BookID)");
+			addIfColumns("dg", indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast.stng", indent + "INNER JOIN AuthorBooks USING(BookID)");
-			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
+			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast.stng.ap.al.ac", indent + "INNER JOIN AuthorBooks USING(BookID)");
+			addIfColumns("fn.ln.nn",                                    indent + "INNER JOIN Authors USING(AuthorID)");
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 			if ((opt & Skip_Stories) == 0) {
 			if (litt.m_hasBookStories) {
@@ -1733,10 +1799,10 @@ public:
 			}
 			}
 			addIfColumns("stng",                     indent +  "LEFT OUTER JOIN " + stng + " USING(BookID, StoryID)");
-			addIfColumns("si.sp.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns("si.spa.se",                indent +  serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
-			addIfColumns("so",                       indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
-			addIfColumns("gi.ge",                    indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
+			addIfColumns("so.sp.sl.sc",              indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
+			addIfColumns("gi.ge.gp.gl.gc",           indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
 			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
 			addIfColumns("gg",                       indent +  "LEFT OUTER JOIN " + gg + " USING(BookID)");
 			addIfColumns("ast.btast",                indent +  "LEFT OUTER JOIN " + ast + " USING(AuthorID,BookID)");
@@ -1753,7 +1819,10 @@ public:
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
-					m_sstr << ci->nameDef;
+					// Use label if column is used in result(select), otherwise, have to use the name/def.
+					// For window function based columns the latter may cause an out of memory error for some reason!
+					// But only if the column is also included in the result, if the column is only used in order by it works!
+					m_sstr << (ci->usedInResult ? ci->labelName() : ci->nameDef);
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
@@ -2254,7 +2323,7 @@ public:
 			runSingleTableOutputCmd("si.se.70", "Series", "si");
 		}
 		else {
-			runListData("se.ra.sp.bt.dr.bi.nn", "se.sp.dr.bi.ln.fn", IJF_Series);
+			runListData("se.ra.spa.bt.dr.bi.nn", "se.spa.dr.bi.ln.fn", IJF_Series);
 		}
 	}
 
