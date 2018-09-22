@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
  * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
                as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
 			   used in the SELECT.
@@ -501,6 +502,7 @@ namespace LittDefs
 		ColumnType  const type;
 		std::string const label; // optional, used when name does not refer to a direct table column.
 		bool        const isGroupAggregate;
+		bool        const justifyRight;
 		ColumnInfo const* lengthColumn; // Will be set only if the column has a length column added.
 
 		// These values are set at runtime. Stored here for convenience.
@@ -829,9 +831,17 @@ public:
 		write(str, strlen(str));
 	}
 
-	void writeUtf8Width(const char* str, unsigned width) const
+	void writeUtf8Width(const char* str, int width, bool justifyRight) const
 	{ // PRE: str contains only complete utf-8 code points.
-		unsigned writtenChars = 0;
+		int writtenChars = 0;
+
+		if (justifyRight) { // OBS! Does not work for utf-8 strings with multibyte chars! Mainly with numeric columns for now!
+			for (int i = strlen(str); i < width; ++i)
+			{
+				write(' ');
+				++writtenChars;
+			}
+		}
 
 		for (int i = 0; str[i] != '\0' && writtenChars < width; /*inc in body*/) {
 			if ((str[i] & 0x80) == 0) { // 0xxx xxxx - Single utf8 byte
@@ -975,7 +985,7 @@ class Litt {
 
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
 	{
-		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, defWidth, type, label, isGroupAgg }));
+		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, defWidth<0 }));
 		if (!res.second) {
 			throw std::logic_error("Duplicate short name: " + sn);
 		}
@@ -1012,16 +1022,16 @@ public:
 	Litt(int argc, char** argv)
 	{
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
-		addColumnNumeric("ai", "AuthorID", 8);
+		addColumnNumeric("ai", "AuthorID", -8);
 		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
-		addColumnNumeric("bi", "BookID", 6);
+		addColumnNumeric("bi", "BookID", -6);
 		addColumnTextWithLength("bt", "Title", 45);
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
 		addColumnTextWithLength("ge", "Genre", 30);
 		addColumnTextWithLength("gg", "\"Genre(s)\"", 30);
-		addColumnNumeric("gi", "GenreID", 8);
+		addColumnNumeric("gi", "GenreID", -8);
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
 		addColumnTextWithLength("nn", "ltrim(\"First Name\"||' '||\"Last Name\")", 25, "Author");
@@ -1030,28 +1040,28 @@ public:
 		addColumnNumeric("own", "Owned", 3);
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
-		addColumnNumeric("si", "SeriesID", 8);
+		addColumnNumeric("si", "SeriesID", -8);
 		addColumnText("spa", "\"Part in Series\"", 4);
 		addColumnTextWithLength("st", "Story", 45);
-		addColumnNumeric("stid", "StoryID", 7);
+		addColumnNumeric("stid", "StoryID", -7);
 		addColumnTextWithLength("ast", "Stories", 45);
 		addColumnTextWithLength("btast", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
 		addColumnTextWithLength("bst", "\"Book Stories\"", 100);
 		addColumnTextWithLength("stng", "\"Story author(s)\"", 50);
 		addColumnTextWithLength("so", "Source", 35);
-		addColumnNumeric("soid", "SourceID", 8);
+		addColumnNumeric("soid", "SourceID", -8);
 
 #define DR_FIXED "substr(\"Date Read\",1,10)"
 #define DR_SECS "CAST(ifnull(strftime('%s',\"Date Read\"), strftime('%s'," DR_FIXED ")) AS INTEGER)"
 
 		// Columns for more formats of Date Read:
-		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", 3, "DOW");
+		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, "DOW");
 		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
 					  5, "DoW");
-		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", 3, "Month");
+		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, "Month");
 		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
-		addColumnNumeric("sec", DR_SECS, 11, "Timestamp");
+		addColumnNumeric("sec", DR_SECS, -11, "Timestamp");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
@@ -1059,30 +1069,30 @@ public:
 #define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
 
 #define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
-		addColumnNumeric("lag", "round(" LAG ", 1)", 5, "Lag");
-		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  4, "Lag");
+		addColumnNumeric("lag", "round(" LAG ", 1)", -5, "Lag");
+		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  -4, "Lag");
 #undef LAG
 
 #define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
-		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          4, "DInd");
-		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   4, "MInd");
-		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), 4, "YInd");
+		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          -4, "DInd");
+		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   -4, "MInd");
+		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, "YInd");
 #undef XIND
 
 #define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
 #define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
 #define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
-		addColumnNumeric("ap", XPERIOD("AuthorID"),7, "APeriod");
-		addColumnNumeric("al", XLAG("AuthorID"),   5, "ALag");
-		addColumnNumeric("ac", XCOUNT("AuthorID"), 4, "ACnt");
+		addColumnNumeric("ap", XPERIOD("AuthorID"),-7, "APeriod");
+		addColumnNumeric("al", XLAG("AuthorID"),   -5, "ALag");
+		addColumnNumeric("ac", XCOUNT("AuthorID"), -4, "ACnt");
 
-		addColumnNumeric("gp", XPERIOD("GenreID"), 7, "GPeriod");
-		addColumnNumeric("gl", XLAG("GenreID"),    5, "GLag");
-		addColumnNumeric("gc", XCOUNT("GenreID"),  4, "GCnt");
+		addColumnNumeric("gp", XPERIOD("GenreID"), -7, "GPeriod");
+		addColumnNumeric("gl", XLAG("GenreID"),    -5, "GLag");
+		addColumnNumeric("gc", XCOUNT("GenreID"),  -4, "GCnt");
 
-		addColumnNumeric("sp", XPERIOD("SourceID"),7, "SPeriod");
-		addColumnNumeric("sl", XLAG("SourceID"),   5, "SLag");
-		addColumnNumeric("sc", XCOUNT("SourceID"), 4, "SCnt");
+		addColumnNumeric("sp", XPERIOD("SourceID"),-7, "SPeriod");
+		addColumnNumeric("sl", XLAG("SourceID"),   -5, "SLag");
+		addColumnNumeric("sc", XCOUNT("SourceID"), -4, "SCnt");
 #undef XCOUNT
 #undef XLAG
 #undef XPERIOD
@@ -1095,11 +1105,11 @@ public:
 		// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
 		addColumnNumericAggregate("prc", "Count(BookID)", 0);
 		// Intended for use in listSametitle
-		addColumnNumeric("btc", "TitleCount", 11, "\"Title count\"");
+		addColumnNumeric("btc", "TitleCount", -5, "Count");
 		// Intended for use in listRereads
-		addColumnNumeric("brc", "ReadCount", 10, "\"Read count\"");
+		addColumnNumeric("brc", "ReadCount", -5, "Reads");
 		// This is for the "number of books" column in list*BookCounts.
-		addColumnNumericAggregate("bc",  "COUNT(Books.BookID)", 6, "Books");
+		addColumnNumericAggregate("bc",  "COUNT(Books.BookID)", -6, "Books");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1623,7 +1633,8 @@ public:
 		Columns m_orderBy;
 	public:
 		Litt const & litt;
-		std::vector<unsigned> columnWidths; // Only set for column mode.
+		std::vector<int> columnWidths; // Only set for column mode.
+		std::vector<bool> columnRight; // Only set for column mode.
 
 		OutputQuery(Litt const & litt) 
 			: litt(litt) 
@@ -1651,6 +1662,7 @@ public:
 			if (litt.m_explainQuery > 0 && litt.m_displayMode == DisplayMode::column) {
 				if (litt.m_explainQuery == 1) columnWidths = { 10, 10, 10, 100 }; 
 				else                          columnWidths = { 5, 20, 6, 6, 6, 20, 6, 15 };
+				columnRight.clear();
 			} // else assumes columnWidths are properly set!
 		}
 
@@ -1679,6 +1691,7 @@ public:
 					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
 					_ASSERT(width >= 0);
 					columnWidths.push_back(width);
+					columnRight.push_back(ci->justifyRight);
 				}
 			}
 			initColumnWidths();
@@ -1862,11 +1875,12 @@ public:
 					// queries where the latter one contains more columns that the former. 
 					// Just add a suitable value to avoid crash. No need to support this use case further.
 					query.columnWidths.push_back(30);
+					query.columnRight.push_back(false);
 				}
 				if (query.columnWidths[i] > 0) {
 					if (i != 0) m_output.write(m_colSep);
 					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiRowColors[i].get());
-					m_output.writeUtf8Width(val, query.columnWidths[i]);
+					m_output.writeUtf8Width(val, query.columnWidths[i], query.columnRight[i]);
 					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiDefColor);
 				}
 				break;
@@ -2160,19 +2174,21 @@ public:
 
 				if (m_displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
-						query.columnWidths.push_back(std::min(size_t{30},
-							std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
+						query.columnWidths.push_back(std::min(size_t{30}, std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
+					}
+					for (int i = query.columnRight.size(); i < argc; ++i) {
+						query.columnRight.push_back(false);
 					}
 
 					if (m_fitWidthOn) {
-						size_t const target = m_fitWidthValue;
+						int const target = m_fitWidthValue;
 						for (auto& w : query.columnWidths) { if (w > target) w = target; } // Guard against HUGE sizes, can be slow to inc!
-						size_t current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
+						int current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
 						if (current != target) {
 							int const inc = (target > current) ? 1 : -1;
-							size_t diff = abs((long)(target - current));
+							int diff = abs(target - current);
 							for (;;) {
-								size_t changed = 0;
+								int changed = 0;
 								for (auto& w : query.columnWidths) {
 									// Don't touch columns with smallish widths (IDs, dates)
 									// Also don't make arbitrarily small and large. 
@@ -2540,7 +2556,7 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		if (!res.empty()) {
 			writeBomIfNeeded();
 			for (auto const & pc : res) {
-				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width);
+				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width, false);
 				m_output.write(" : ");
 				m_output.write(toUtf8(pc.definition));
 				m_output.write("\n");
@@ -2559,7 +2575,8 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 		period = quote(period);
 		OutputQuery q(*this);
 		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
-		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); }
+		q.columnRight.push_back(false);             q.columnRight.push_back(true);
+		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); q.columnRight.push_back(true); }
 		q.initColumnWidths();
 		getColumn("dr")->usedInQuery = true; // Need to JOIN with DatesRead also when not used in WHERE.
 		std::string periodFunc;
