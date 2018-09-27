@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-09-27: EXPLAIN QUERY PLAN (-x) output now uses the newer Sqlite eqp format.
  * 2018-09-22: Decrease BookID width from 6 to 4.
  * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
  * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
@@ -1660,9 +1661,8 @@ public:
 
 		void initColumnWidths()
 		{
-			if (litt.m_explainQuery > 0 && litt.m_displayMode == DisplayMode::column) {
-				if (litt.m_explainQuery == 1) columnWidths = { 10, 10, 10, 100 }; 
-				else                          columnWidths = { 5, 20, 6, 6, 6, 20, 6, 15 };
+			if (litt.m_explainQuery == 2 && litt.m_displayMode == DisplayMode::column) {
+				columnWidths = { 5, 20, 6, 6, 6, 30, 6, 20 };
 				columnRight.clear();
 			} // else assumes columnWidths are properly set!
 		}
@@ -2023,7 +2023,7 @@ public:
 	mutable std::vector<std::vector<std::string>> m_consRowBuffer;
 	mutable int m_consMatched = 0;
 
-	bool consEnabled() const { return m_consRowMinCount > 0; }
+	bool consEnabled() const { return m_explainQuery == 0 && m_consRowMinCount > 0; }
 
 	void consInit(int argc, char **argv, char **azColName) const
 	{ _ASSERT(consEnabled());
@@ -2147,6 +2147,63 @@ public:
 		}
 	}
 
+	struct EQPGraphRow {
+		int iEqpId;        /* ID for this row */
+		int iParentId;     /* ID of the parent row */
+		std::string text;  /* Text to display for this row */
+	};
+
+	class EQPGraph {
+		Output const& m_output;
+		std::vector<EQPGraphRow> rows;
+		std::string prefix;
+
+		bool indexValid(int index) const { return 0 <= index && index < (int)rows.size(); }
+
+		int nextRowIndex(int iEqpId, int oldIndex)
+		{
+			int row = indexValid(oldIndex) ? (oldIndex + 1) : 0;
+			while (indexValid(row) && rows[row].iParentId != iEqpId)
+				++row;
+			return row;
+		}
+
+		void renderLevel(int iEqpId) {
+			int next = -1;
+			for (int row = nextRowIndex(iEqpId, -1); indexValid(row); row = next) {
+				next = nextRowIndex(iEqpId, row);
+				m_output.write(prefix);
+				m_output.write(indexValid(next) ? "|--" : "`--");
+				m_output.write(rows[row].text);
+				m_output.write("\n");
+				prefix += (indexValid(next) ? "|  " : "   "); // len = 3
+				renderLevel(rows[row].iEqpId);
+				prefix.resize(prefix.size() - 3);
+			}
+		}
+	public:
+		EQPGraph(Output const& output) :m_output(output) {}
+
+		void appendRow(int iEqpId, int p2, const char *zText)
+		{
+			EQPGraphRow row;
+			row.iEqpId = iEqpId;
+			row.iParentId = p2;
+			row.text = zText;
+			rows.push_back(std::move(row));
+		}
+
+		void render() 
+		{
+			if (rows.empty()) return;
+			m_output.write("QUERY PLAN\n");
+			prefix.clear();
+			renderLevel(0);
+		}
+	};
+
+	mutable std::unique_ptr<EQPGraph> m_eqpGraph;
+
 	void writeBomIfNeeded() const
 	{
 		static bool wroteBom = false;
@@ -2173,7 +2230,10 @@ public:
 			if (m_rowCount == 0) {
 				writeBomIfNeeded();
 
-				if (m_displayMode == DisplayMode::column) {
+				if (m_explainQuery == 1) {
+					m_eqpGraph = std::make_unique<EQPGraph>(m_output);
+				}
+				else if (m_displayMode == DisplayMode::column) {
 					for (int i = query.columnWidths.size(); i < argc; ++i) {
 						query.columnWidths.push_back(std::min(size_t{30}, std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
 					}
@@ -2211,8 +2271,7 @@ public:
 						ansiInit(argc, azColName);
 					}
 				}
-
-				if (m_displayMode == DisplayMode::htmldoc) {
+				else if (m_displayMode == DisplayMode::htmldoc) {
 					auto docStart = 
 						"<!DOCTYPE html>\n" 
 						"<html>\n"
@@ -2224,29 +2283,37 @@ public:
 						"<table>\n";
 					m_output.write(docStart);
 				}
-				if (m_headerOn) {
-					outputRow(query, true, argc, azColName);
-					if (m_displayMode == DisplayMode::column) {
-						for (int i = 0; i < argc; ++i) {
-							if (query.columnWidths[i] > 0) {
-								if (i != 0) m_output.write(m_colSep);
-								std::string underLine(query.columnWidths[i], '-');
-								m_output.write(underLine);
+
+				if (!m_eqpGraph) {
+					if (m_headerOn) {
+						outputRow(query, true, argc, azColName);
+						if (m_displayMode == DisplayMode::column) {
+							for (int i = 0; i < argc; ++i) {
+								if (query.columnWidths[i] > 0) {
+									if (i != 0) m_output.write(m_colSep);
+									std::string underLine(query.columnWidths[i], '-');
+									m_output.write(underLine);
+								}
 							}
+							m_output.write('\n');
 						}
-						m_output.write('\n');
 					}
-				}
-				if (consEnabled()) {
-					consInit(argc, argv, azColName);
+					if (consEnabled()) {
+						consInit(argc, argv, azColName);
+					}
 				}
 			} // if (litt.m_rowCount == 0) {
 
-			if (consEnabled()) {
-				consProcessRow(query, argc, argv);
+			if (m_eqpGraph && argc == 4) {
+				m_eqpGraph->appendRow(atoi(argv[0]), atoi(argv[1]), argv[3]);
 			}
 			else {
-				outputRow(query, false, argc, argv);
+				if (consEnabled()) {
+					consProcessRow(query, argc, argv);
+				}
+				else {
+					outputRow(query, false, argc, argv);
+				}
 			}
 			++m_rowCount;
 			return 0;
@@ -2271,11 +2338,17 @@ public:
 		m_rowCount = 0;
 		int res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
 		if (res == SQLITE_OK) {
-			if (m_displayMode == DisplayMode::htmldoc) {
-				m_output.write("</table>\n</body>\n</html>\n");
+			if (m_eqpGraph) {
+				m_eqpGraph->render();
+				m_eqpGraph.reset();
 			}
-			if (consEnabled()) {
-				consOutputMatchedCount(); // In case matching was still ongoing at the last row.
+			else {
+				if (m_displayMode == DisplayMode::htmldoc) {
+					m_output.write("</table>\n</body>\n</html>\n");
+				}
+				if (consEnabled()) {
+					consOutputMatchedCount(); // In case matching was still ongoing at the last row.
+				}
 			}
 		}
 		m_output.flushNoThrow();
