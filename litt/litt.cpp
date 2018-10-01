@@ -1,7 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2018-09-27: EXPLAIN QUERY PLAN (-x) output now uses the newer Sqlite eqp format.
+ * 2018-10-01: Added "dym" and "dymd" for yyyy-mm and yyyy-mm-dd of Date read.
+ * 2018-10-01: Added "dy" for Year of Date read. ("dm" now used in addAuxTables as well for DatesRead!)
+ * 2018-09-27: EXPLAIN QUERY PLAN (-x) output now uses the newer SQLite eqp format.
  * 2018-09-22: Decrease BookID width from 6 to 4.
  * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
  * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
@@ -259,7 +261,7 @@ Column short name values:
     ge, gi, gg       - Genre, GenreID, Aggregated genres per book
     dr, dg           - Date read, Aggregated dates
     dw, dwl          - Day of week numeral and Day of week string for Date read
-    dm               - Month for Date read
+    dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
     ra, own, la, beb - Rating, Owned, Language, Bought Ebook
     st, stid         - Story, StoryID
@@ -1062,6 +1064,9 @@ public:
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
 					  5, "DoW");
 		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, "Month");
+		addColumnNumeric("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, "Year");
+		addColumnText("dym", "substr(\"Date Read\",1,7)", 7, "YMonth");
+		addColumnText("dymd", "substr(\"Date Read\",1,10)", 10, "YMDay");
 		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
 		addColumnNumeric("sec", DR_SECS, -11, "Timestamp");
 
@@ -1796,7 +1801,7 @@ public:
 			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
 			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
-			addIfColumns("dr.dw.dwl.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", indent + "INNER JOIN DatesRead USING(BookID)");
+			addIfColumns("dr.dw.dwl.dm.dy.dym.dymd.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", indent + "INNER JOIN DatesRead USING(BookID)");
 			addIfColumns("ng", indent + "INNER JOIN " + ng + " USING(BookID)");
 			addIfColumns("dg", indent + "INNER JOIN " + dg + " USING(BookID)");
 			if ((opt & Skip_AuthorBooks) == 0)
