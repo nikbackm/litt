@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-03: Renamed short name for series part from "spa" to "pa".
  * 2018-10-01: Added "dym" and "dymd" for yyyy-mm and yyyy-mm-dd of Date read.
  * 2018-10-01: Added "dy" for Year of Date read. ("dm" now used in addAuxTables as well for DatesRead!)
  * 2018-09-27: EXPLAIN QUERY PLAN (-x) output now uses the newer SQLite eqp format.
@@ -10,7 +11,7 @@ Changelog:
                as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
 			   used in the SELECT.
  * 2018-09-22: Added some columns based on window functions for nicer stats.
- * 2018-09-22: Renamed short name for series part "sp" to "spa" to make room for window function column.
+ * 2018-09-22: Renamed short name for series part from "sp" to "spa" to make room for window function column.
  * 2018-09-22: Verifies (also in Release build) that no duplicate short columns are added.
  * 2018-09-22: Documented -x option, added -x2 for just EXPLAIN, disabled fit width when -x is used.
  * 2018-09-22: dwl now returns NULL on invalid dates to be consistent with dw and dm.
@@ -267,7 +268,7 @@ Column short name values:
     st, stid         - Story, StoryID
     ast, btast, bst  - Stories for author, Title and stories for author, Stories for book
     stng             - Aggregated authors per story (and per book)
-    se, si, spa      - Series, SeriesID, Part in Series
+    se, si, pa       - Series, SeriesID, Part in Series
     so, soid         - Source, SourceID
 
     To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
@@ -1045,7 +1046,7 @@ public:
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", -8);
-		addColumnText("spa", "\"Part in Series\"", 4);
+		addColumnText("pa", "\"Part in Series\"", 4);
 		addColumnTextWithLength("st", "Story", 45);
 		addColumnNumeric("stid", "StoryID", -7);
 		addColumnTextWithLength("ast", "Stories", 45);
@@ -1818,7 +1819,7 @@ public:
 			}
 			}
 			addIfColumns("stng",                     indent +  "LEFT OUTER JOIN " + stng + " USING(BookID, StoryID)");
-			addIfColumns("si.spa.se",                indent +  serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns("si.pa.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
 			addIfColumns("so.sp.sl.sc",              indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
 			addIfColumns("gi.ge.gp.gl.gc",           indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
@@ -2418,7 +2419,7 @@ public:
 			runSingleTableOutputCmd("si.se.70", "Series", "si");
 		}
 		else {
-			runListData("se.ra.spa.bt.dr.bi.nn", "se.spa.dr.bi.ln.fn", IJF_Series);
+			runListData("se.ra.pa.bt.dr.bi.nn", "se.pa.dr.bi.ln.fn", IJF_Series);
 		}
 	}
 
