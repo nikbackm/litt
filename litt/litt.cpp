@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-05: Changed from LEFT to INNER joins for source and genre as every book will always have these.
  * 2018-10-03: Renamed short name for series part from "spa" to "pa".
  * 2018-10-01: Added "dym" and "dymd" for yyyy-mm and yyyy-mm-dd of Date read.
  * 2018-10-01: Added "dy" for Year of Date read. ("dm" now used in addAuxTables as well for DatesRead!)
@@ -1803,30 +1804,36 @@ public:
 			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
 			addIfColumns("dr.dw.dwl.dm.dy.dym.dymd.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", indent + "INNER JOIN DatesRead USING(BookID)");
-			addIfColumns("ng", indent + "INNER JOIN " + ng + " USING(BookID)");
-			addIfColumns("dg", indent + "INNER JOIN " + dg + " USING(BookID)");
+			addIfColumns("dg",                                                                                         indent + "INNER JOIN " + dg + " USING(BookID)");
+
 			if ((opt & Skip_AuthorBooks) == 0)
 			addIfColumns("ai.fn.ln.nn.stid.st.ast.btast.stng.ap.al.ac", indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                                    indent + "INNER JOIN Authors USING(AuthorID)");
+			addIfColumns("ng",                                          indent + "INNER JOIN " + ng + " USING(BookID)");
+
+			addIfColumns("so.sp.sl.sc",              indent +  "INNER JOIN Sources USING(SourceID)");
+
+			addIfColumns("gi.ge.gp.gl.gc",           indent +  "INNER JOIN BookGenres USING(BookID)");
+			addIfColumns("ge",                       indent +  "INNER JOIN Genres USING(GenreID)");
+			addIfColumns("gg",                       indent +  "INNER JOIN " + gg + " USING(BookID)");
+
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
-			if ((opt & Skip_Stories) == 0) {
-			if (litt.m_hasBookStories) {
-			addIfColumns("stid.st.stng",             indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
-			addIfColumns("st",                       indent +  stoJoin + " JOIN Stories USING(StoryID)");
-			}
-			else { // old story table
-			addIfColumns("stid.st",                  indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
-			}
-			}
-			addIfColumns("stng",                     indent +  "LEFT OUTER JOIN " + stng + " USING(BookID, StoryID)");
+
 			addIfColumns("si.pa.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
-			addIfColumns("so.sp.sl.sc",              indent +  "LEFT OUTER JOIN Sources USING(SourceID)");
-			addIfColumns("gi.ge.gp.gl.gc",           indent +  "LEFT OUTER JOIN BookGenres USING(BookID)");
-			addIfColumns("ge",                       indent +  "LEFT OUTER JOIN Genres USING(GenreID)");
-			addIfColumns("gg",                       indent +  "LEFT OUTER JOIN " + gg + " USING(BookID)");
-			addIfColumns("ast.btast",                indent +  "LEFT OUTER JOIN " + ast + " USING(AuthorID,BookID)");
-			addIfColumns("bst",                      indent +  "LEFT OUTER JOIN " + bst + " USING(BookID)");
+
+			if ((opt & Skip_Stories) == 0) {
+				if (litt.m_hasBookStories) {
+					addIfColumns("stid.st.stng",     indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
+					addIfColumns("st",               indent +  stoJoin + " JOIN Stories USING(StoryID)");
+				}
+				else { // old story table
+					addIfColumns("stid.st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+				}
+			}
+			addIfColumns("stng",                     indent +  "LEFT OUTER JOIN " + stng + " USING(BookID,StoryID)");
+			addIfColumns("ast.btast",                indent +  "LEFT OUTER JOIN " + ast  + " USING(AuthorID,BookID)");
+			addIfColumns("bst",                      indent +  "LEFT OUTER JOIN " + bst  + " USING(BookID)");
 		}
 
 		void addOrderBy()
