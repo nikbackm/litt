@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
  * 2018-10-06: Renamed ast, btast, bst => astg, btastg, bstg
  * 2018-10-06: Added rating and genre to Stories.
                New actions: add-stg
@@ -1067,9 +1068,9 @@ public:
 		addColumnTextWithLength("stge", "GStory.Genre", 30, "SGenre");
 		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30);
 		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, "\"Title [Story]\"");
-		addColumnNumeric("bsra", "ifnull(Stories.Rating,Books.Rating)", 3, "Rating");
-		addColumnTextWithLength("bsge", "ifnull(StoryGenre,Genre)", 30);
-		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\",\"Genre(s)\")", 30);
+		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, "BSRating");
+		addColumnTextWithLength("bsge", "ifnull(StoryGenre, Genre)", 30, "BSGenre");
+		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, "\"BSGenre(s)\"");
 		addColumnTextWithLength("astg", "Stories", 45);
 		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
 		addColumnTextWithLength("bstg", "\"Book Stories\"", 100);
@@ -2431,7 +2432,7 @@ public:
 			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.nn.ra.btastg.dr.so.gg", "ai.dr.bi");
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi");
 		}
 	}
 
@@ -2442,8 +2443,8 @@ public:
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
-			addActionWhereCondition("btastg", title);
-			runListData("bi.nn.ra.btastg.45.dr.so.gg", "dr.bi.ln.fn");
+			addActionWhereCondition("btst", title);
+			runListData("bi.nn.bsra.btst.45.dr.so.bsgg", "dr.bi.ln.fn");
 		}
 	}
 
@@ -2465,7 +2466,7 @@ public:
 			runSingleTableOutputCmd("gi.ge.50", "Genres GBook", "ge");
 		}
 		else {
-			runListData("gg.bi.ra.btastg.dr.nn", "gg.dr.bi.ln.fn");
+			runListData("gg.bi.bsra.btst.dr.nn", "gg.dr.bi.ln.fn");
 		}
 	}
 
@@ -2480,9 +2481,9 @@ public:
 		addActionWhereCondition("st", 0);
 		if (m_hasBookStories) {
 			m_selectDistinct = true;
-			runListData("bi.bt.dr.stid.st.stng", "dr.bi.stid", IJF_Stories);
+			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", IJF_Stories);
 		}
-		else {
+		else { // Old version
 			runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", IJF_Stories);
 		}
 	}
