@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Can now specify zero newGID for set-g amd set-stg also in interactive mode.
  * 2018-10-06: Added "set-str" and "set-stg".
  * 2018-10-06: Added ratings to titleStory listing.
  * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
@@ -195,7 +196,7 @@ Adding and modifying data:
    set-r     [BookID] [rating]            Set rating for a book.
    set-str   [StoryID] [rating]           Set rating for a story.
    set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
-   set-g     [BookID] [GenreID] [newGID]  Change genre for a book. (Specify newGID=0 via arg to delete)
+   set-g     [BookID] [GenreID] [newGID]  Change genre for a book. (Specify newGID=0 to delete)
    set-stg   [StoryID] [GenreID] [newGID] Change genre for a story. (see above)
    set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
    set-s     [BookID] [SID] [part|delete] Set or delete series for a book.
@@ -3372,7 +3373,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				// Check that genreId exists for book.
 				selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
 					fmt("GenreID %llu for BookID %llu", genreId, bid).c_str());
-				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
+				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre(), optional);
 				setBookGenre(bid, genreId, newGenreId);
 			}
 		}
@@ -3382,7 +3383,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				// Check that genreId exists for book.
 				selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", stid, genreId),
 					fmt("GenreID %llu for StoryID %llu", genreId, stid).c_str());
-				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
+				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre(), optional);
 				setStoryGenre(stid, genreId, newGenreId);
 			}
 		}
