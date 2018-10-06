@@ -1,7 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2018-10-06: Can now specify zero newGID for set-g amd set-stg also in interactive mode.
+ * 2018-10-06: Factored out gidargi.
+ * 2018-10-06: Can now specify zero newGID for set-g and set-stg also in interactive mode.
  * 2018-10-06: Added "set-str" and "set-stg".
  * 2018-10-06: Added ratings to titleStory listing.
  * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
@@ -3225,6 +3226,11 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		return idargi(index, name, cf(&Litt::selStory), getListStory(), iopt);
 	}
 
+	IdValue gidargi(int index, const char* name = "GenreID", InputOptions iopt = required)
+	{
+		return idargi(index, name, cf(&Litt::selGenre), getListGenre(), iopt);
+	}
+
 	void executeAction() 
 	{
 		auto const& action = m_action;
@@ -3357,33 +3363,33 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		}
 		else if (action == "add-bg") {
 			if (auto bid = bidargi(0)) {
-				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				auto genreId = gidargi(1);
 				addBookGenre(bid, genreId);
 			}
 		}
 		else if (action == "add-stg") {
 			if (auto stid = stidargi(0)) {
-				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				auto genreId = gidargi(1);
 				addStoryGenre(stid, genreId);
 			}
 		}
 		else if (action == "set-g") {
 			if (auto bid = bidargi(0)) {
-				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				auto genreId = gidargi(1);
 				// Check that genreId exists for book.
 				selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
 					fmt("GenreID %llu for BookID %llu", genreId, bid).c_str());
-				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre(), optional);
+				auto newGenreId = gidargi(2, "New GenreID", optional);
 				setBookGenre(bid, genreId, newGenreId);
 			}
 		}
 		else if (action == "set-stg") {
 			if (auto stid = stidargi(0)) {
-				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				auto genreId = gidargi(1);
 				// Check that genreId exists for book.
 				selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", stid, genreId),
 					fmt("GenreID %llu for StoryID %llu", genreId, stid).c_str());
-				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre(), optional);
+				auto newGenreId = gidargi(2, "New GenreID", optional);
 				setStoryGenre(stid, genreId, newGenreId);
 			}
 		}
