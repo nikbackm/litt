@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Added ratings to titleStory listing.
  * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
  * 2018-10-06: Renamed ast, btast, bst => astg, btastg, bstg
  * 2018-10-06: Added rating and genre to Stories.
@@ -2549,29 +2550,33 @@ public:
 	{
 		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
-		query.columnWidths = { 6,4,20,10,15,20,10,15,20,10,15 };
+		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
 		query.initColumnWidths();
 		query.initSelectBare();
 		query.a(fmt(
 R"(B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
-B."Date read" AS 'Book read', B.Source AS 'Book source', 
-CASE WHEN B.AuthorID <> S.AuthorID THEN B."First Name" || ' ' || B."Last Name" ELSE '* see story *' END AS 'Book Author',
-S.BookID||'/'||S.StoryID AS 'B/StoryID', ltrim(S."First Name"||' '||S."Last Name") AS 'Story Author', S.Title AS 'Story book title',  
-S."Date read" AS 'Story read', S.Source AS 'Story source'
-FROM (Books
+BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
+CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
+S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title",  
+"Story read", "Story source"
+FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date read" AS "Book read", Source AS "Book source", 
+      ltrim("First Name"||' '||"Last Name") AS BookAuthor FROM Books
 	INNER JOIN AuthorBooks USING(BookID)
 	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
 ) AS B
-JOIN (Stories%s
+JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRating,
+      StoryID, Story, Stories.Rating AS SRating, 
+      "Date read" AS "Story read", Source AS "Story source", 
+      ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories%s
 	INNER JOIN Books USING(BookID)
 	INNER JOIN Authors USING(AuthorID)
 	INNER JOIN DatesRead USING(BookID)
 	INNER JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story
-ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories USING(StoryID)" : "").c_str());
+ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories USING(StoryID)" : "").c_str());
 		runOutputQuery(query);
 	}
 
