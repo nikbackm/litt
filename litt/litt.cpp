@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: The -q option implies -y option.
  * 2018-10-05: Changed from LEFT to INNER joins for source and genre as every book will always have these.
  * 2018-10-03: Renamed short name for series part from "spa" to "pa".
  * 2018-10-01: Added "dym" and "dymd" for yyyy-mm and yyyy-mm-dd of Date read.
@@ -1195,6 +1196,7 @@ public:
 					break;
 				case 'q':
 					m_showQuery = true;
+					Input::confirmEnabled = false;
 					break;
 				case 'u':
 					m_selectDistinct = true;
