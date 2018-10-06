@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Added "set-str" and "set-stg".
  * 2018-10-06: Added ratings to titleStory listing.
  * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
  * 2018-10-06: Renamed ast, btast, bst => astg, btastg, bstg
@@ -192,8 +193,10 @@ Adding and modifying data:
    add-stg   [StoryID] [GenreID]          Add a genre for a story.
    
    set-r     [BookID] [rating]            Set rating for a book.
+   set-str   [StoryID] [rating]           Set rating for a story.
    set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
-   set-g     [BookID] [GenreID] [newGID]  Change genre for a book.
+   set-g     [BookID] [GenreID] [newGID]  Change genre for a book. (Specify newGID=0 via arg to delete)
+   set-stg   [StoryID] [GenreID] [newGID] Change genre for a story. (see above)
    set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
    set-s     [BookID] [SID] [part|delete] Set or delete series for a book.
 
@@ -3096,6 +3099,25 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		}
 	}
 
+	void setStoryGenre(IdValue storyId, IdValue genreId, IdValue newGenreId)
+	{
+		if (newGenreId != EmptyId) {
+			if (confirm(fmt("Change '%s' => '%s' for '%s'",
+				selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selStory(storyId).c_str()))) {
+				int changes = executeSql(fmt("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu",
+					newGenreId, storyId, genreId));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+		else {
+			if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
+				int changes = executeSql(fmt("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu",
+					storyId, genreId));
+				printf("Deleted %i rows\n", changes);
+			}
+		}
+	}
+
 	void addDateRead(IdValue bookId, std::string const& dr, IdValue sourceId)
 	{
 		if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
@@ -3146,6 +3168,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		if (confirm(fmt("Set rating of '%s' => %s", selTitle(bookId).c_str(), rating.c_str()))) {
 			int changes = executeSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
 				rating.c_str(), bookId));
+			printf("Updated %i rows\n", changes);
+		}
+	}
+
+	void setStoryRating(IdValue storyId, std::string const & rating) // We assume rating is checked for valid rating values.
+	{
+		if (confirm(fmt("Set rating of '%s' => %s", selStory(storyId).c_str(), rating.c_str()))) {
+			int changes = executeSql(fmt("UPDATE Stories SET Rating = %s WHERE StoryID=%llu",
+				rating.c_str(), storyId));
 			printf("Updated %i rows\n", changes);
 		}
 	}
@@ -3335,7 +3366,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				addStoryGenre(stid, genreId);
 			}
 		}
-		else if (action == "set-g" || action == "setg") {
+		else if (action == "set-g") {
 			if (auto bid = bidargi(0)) {
 				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
 				// Check that genreId exists for book.
@@ -3343,6 +3374,16 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 					fmt("GenreID %llu for BookID %llu", genreId, bid).c_str());
 				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
 				setBookGenre(bid, genreId, newGenreId);
+			}
+		}
+		else if (action == "set-stg") {
+			if (auto stid = stidargi(0)) {
+				auto genreId = idargi(1, "GenreID", cf(&Litt::selGenre), getListGenre());
+				// Check that genreId exists for book.
+				selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", stid, genreId),
+					fmt("GenreID %llu for StoryID %llu", genreId, stid).c_str());
+				auto newGenreId = idargi(2, "New GenreID", cf(&Litt::selGenre), getListGenre());
+				setStoryGenre(stid, genreId, newGenreId);
 			}
 		}
 		else if (action == "add-dr" || action == "addf-dr") {
@@ -3372,6 +3413,12 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			if (auto bid = bidargi(0)) {
 				auto rating = argi(1, "Rating", RatingRegEx);
 				setRating(bid, rating);
+			}
+		}
+		else if (action == "set-str") {
+			if (auto stid = stidargi(0)) {
+				auto rating = argi(1, "Rating", RatingRegEx);
+				setStoryRating(stid, rating);
 			}
 		}
 		else if (action == "execute") {
