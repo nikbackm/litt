@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Added one more level to the help so the standard one can be shorter.
  * 2018-10-06: The -q option implies -y option.
  * 2018-10-05: Changed from LEFT to INNER joins for source and genre as every book will always have these.
  * 2018-10-03: Renamed short name for series part from "spa" to "pa".
@@ -135,13 +136,13 @@ Changelog:
 
 #include "stdafx.h"
 
-void showHelp(bool showExtended = false)
+void showHelp(int level = 0)
 {
 	fputs(
 R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
-   h                              Show full help.
+   h[1|2]                         Show help, level 1 or 2, level 2 is default.
    a|aa   [lastName] [firstName]  List authors - without/with books.
    b|bb   [title]                 List books - with minimum/full details.
    ot     [origTitle]             List original titles for books.
@@ -170,7 +171,9 @@ List number of books read for specific periods along with a total count. Can use
 
    brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
                                   - Generalization of brm,bry,brwd, can customize the period and its name.
-
+)" 
+	,stdout); if (1 <= level) fputs(
+R"(
 Adding and modifying data:
    add[f]-b                               Add a book. (addf-b variant allows less strict date values)
    add[f]-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
@@ -189,7 +192,7 @@ Adding and modifying data:
 
    execute   [sqlString]                  Execute the given SQL string. Use with CAUTION!
 )"
-	,stdout); if (showExtended) fputs(
+	,stdout); if (2 <= level) fputs(
 R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
       around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
@@ -3141,8 +3144,8 @@ ORDER BY Dupe DESC, B."Date read")", m_hasBookStories ? " INNER JOIN BookStories
 	void executeAction() 
 	{
 		auto const& action = m_action;
-		if (action == "h") {
-			showHelp(true);
+		if (action == "h" || action == "h1" || action == "h2") {
+			showHelp(action == "h1" ? 1 : 2);
 		}
 		else if (action == "a" || action == "aa") {
 			listAuthors(action, arg(0), arg(1));
