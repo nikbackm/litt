@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-06: Renamed ast, btast, bst => astg, btastg, bstg
  * 2018-10-06: Added rating and genre to Stories.
                New actions: add-stg
                New columns: btst, stra, stge, stgg, bsra, bsge, bsgg
@@ -278,8 +279,9 @@ Column short name values:
     btst             - Title combined with story (if there is one)
     stge, stgg       - Genre and Genre(s) for story
     bsra, bsge, bsgg - Rating, Genre and Genre(s) for story or book (if there is no story)
-    ast, btast, bst  - Stories for author, Title and stories for author, Stories for book
-    stng             - Aggregated authors per story (and per book)
+    astg, bstg       - Stories for author and Stories for book
+    btastg           - Title combined with stories for author
+    stng             - Authors for story
     se, si, pa       - Series, SeriesID, Part in Series
     so, soid         - Source, SourceID
 
@@ -1068,9 +1070,9 @@ public:
 		addColumnNumeric("bsra", "ifnull(Stories.Rating,Books.Rating)", 3, "Rating");
 		addColumnTextWithLength("bsge", "ifnull(StoryGenre,Genre)", 30);
 		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\",\"Genre(s)\")", 30);
-		addColumnTextWithLength("ast", "Stories", 45);
-		addColumnTextWithLength("btast", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
-		addColumnTextWithLength("bst", "\"Book Stories\"", 100);
+		addColumnTextWithLength("astg", "Stories", 45);
+		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
+		addColumnTextWithLength("bstg", "\"Book Stories\"", 100);
 		addColumnTextWithLength("stng", "\"Story author(s)\"", 50);
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", -8);
@@ -1819,8 +1821,8 @@ public:
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
 			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories INNER JOIN StoryGenres USING(StoryID) INNER JOIN Genres USING(GenreID) GROUP BY StoryID)";
 			std::string storyTables = litt.m_hasBookStories ? "Stories INNER JOIN BookStories USING(StoryID)" : "Stories";
-			auto ast = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
-			auto bst = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
+			auto astg = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
+			auto bstg = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
 			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
 			addIfColumns("dr.dw.dwl.dm.dy.dym.dymd.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", 
@@ -1828,7 +1830,7 @@ public:
 			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
 
 			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.stid.st.btst.stra.stge.stgg.bsra.bsge.bsgg.ast.btast.stng.ap.al.ac", 
+			addIfColumns("ai.fn.ln.nn.stid.st.btst.stra.stge.stgg.bsra.bsge.bsgg.astg.btastg.stng.ap.al.ac", 
 				                                     indent + "INNER JOIN AuthorBooks USING(BookID)");
 			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
 			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
@@ -1858,8 +1860,8 @@ public:
 			addIfColumns("stge.bsge",                  indent + stoJoin + " JOIN Genres GStory USING(GenreID)");
 			addIfColumns("stgg.bsgg",                  indent + "LEFT OUTER JOIN " + stgg + " USING(StoryID)");
 			addIfColumns("stng",                       indent + "LEFT OUTER JOIN " + stng + " USING(BookID,StoryID)");
-			addIfColumns("ast.btast",                  indent + "LEFT OUTER JOIN " + ast  + " USING(AuthorID,BookID)");
-			addIfColumns("bst",                        indent + "LEFT OUTER JOIN " + bst  + " USING(BookID)");
+			addIfColumns("astg.btastg",                indent + "LEFT OUTER JOIN " + astg  + " USING(AuthorID,BookID)");
+			addIfColumns("bstg",                       indent + "LEFT OUTER JOIN " + bstg  + " USING(BookID)");
 		}
 
 		void addOrderBy()
@@ -2429,7 +2431,7 @@ public:
 			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
 		}
 		else {
-			runListData("bi.nn.ra.btast.dr.so.gg", "ai.dr.bi");
+			runListData("bi.nn.ra.btastg.dr.so.gg", "ai.dr.bi");
 		}
 	}
 
@@ -2440,8 +2442,8 @@ public:
 			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
 		}
 		else {
-			addActionWhereCondition("btast", title);
-			runListData("bi.nn.ra.btast.45.dr.so.gg", "dr.bi.ln.fn");
+			addActionWhereCondition("btastg", title);
+			runListData("bi.nn.ra.btastg.45.dr.so.gg", "dr.bi.ln.fn");
 		}
 	}
 
@@ -2463,7 +2465,7 @@ public:
 			runSingleTableOutputCmd("gi.ge.50", "Genres GBook", "ge");
 		}
 		else {
-			runListData("gg.bi.ra.btast.dr.nn", "gg.dr.bi.ln.fn");
+			runListData("gg.bi.ra.btastg.dr.nn", "gg.dr.bi.ln.fn");
 		}
 	}
 
