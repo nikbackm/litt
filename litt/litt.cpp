@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-07: Can now input rating and genre(s) for new stories, also multiple genres for new books.
  * 2018-10-07: Removed the redundant (short) add/set actions.
  * 2018-10-06: Factored out gidargi.
  * 2018-10-06: Can now specify zero newGID for set-g and set-stg also in interactive mode.
@@ -2860,15 +2861,40 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		executeInsert(fmt("INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name)), "SourceID");
 	}
 
+	using GenreIds = std::vector<IdValue>;
+
+	void inputGenres(GenreIds& genres, const char* prompt)
+	{
+		for (size_t i = 0;;) {
+			auto gi = (i < genres.size()) ? genres[i] : EmptyId;
+			input(gi, prompt, cf(&Litt::selGenre), getListGenre(), optional);
+			if (gi == EmptyId) {
+				if (i < genres.size()) { genres.erase(genres.begin() + i); }
+				if (i < genres.size() || (i == 0)) continue; else break;
+			}
+			if (genres.size() <= i) { genres.reserve((i + 1) * 2); genres.resize(i + 1); }
+			genres[i++] = gi;
+		}
+	};
+
+	void printGenres(GenreIds const& genres)
+	{
+		bool first = true;
+		for (auto gi : genres) {
+			if (!first) printf(", "); first = false;
+			printf("%s", selGenre(gi).c_str());
+		}
+	}
+
 	void addBook(const char* drRegEx)
 	{
-		struct AData { IdValue authorId; std::string story; IdValue storyId; };
+		struct AData { IdValue authorId; std::string story; IdValue storyId; std::string storyRating; GenreIds storyGenres; };
 		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
 		auto title       = std::string();
 		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
 		auto sourceId    = EmptyId;
-		auto genreId     = EmptyId;
+		auto genreIds    = GenreIds();
 		auto origtitle   = std::string(); 
 		auto rating      = std::string();
 		auto lang        = int('e');
@@ -2878,29 +2904,37 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		auto seriesPart  = std::string();
 	enterBook:
 		auto nextStoryId = getNextStoryId();
+		bool hasStories = false;
 		for (size_t i = 0;;) {
-			auto aid = (i < authors.size()) ? authors[i].authorId : EmptyId;
-			input(aid, "AuthorID", cf(&Litt::selAuthor), getListAuthor(), optional);
-			if (aid == EmptyId) {
+			AData ad = (i < authors.size()) ? authors[i] : AData{};
+			input(ad.authorId, "AuthorID", cf(&Litt::selAuthor), getListAuthor(), optional);
+			if (ad.authorId == EmptyId) {
 				if (i < authors.size()) { authors.erase(authors.begin() + i); }
 				if (i < authors.size() || (i == 0 && !title.empty())) continue; else break;
 			}
-			auto story = (i < authors.size()) ? authors[i].story : std::string();
-			auto storyId = (i < authors.size()) ? authors[i].storyId : EmptyId;
-			input(story, "Story name (optional)", optional);
-			if (!story.empty()) {
+			input(ad.story, "Story name (optional)", optional);
+			if (!ad.story.empty()) {
+				hasStories = true;
 				int same = 'y';
-				if (i > 0 && story == authors[i-1].story && ask("yn", "Same as previous", same) == 'y') {
-					storyId = authors[i - 1].storyId;
+				if (i > 0 && ad.story == authors[i - 1].story && ask("yn", "Same as previous", same) == 'y') {
+					ad.storyId     = authors[i - 1].storyId;
+					ad.storyRating = authors[i - 1].storyRating;
+					ad.storyGenres = authors[i - 1].storyGenres;
 				}
 				else {
-					if (!getStoryId(storyId, story)) { 
-						storyId = nextStoryId++;
+					if (getStoryId(ad.storyId, ad.story)) {
+						ad.storyRating.clear(); // no rating => existing story, so don't add to Stories or StoryGenres
+						ad.storyGenres.clear(); // same
+					}
+					else {
+						ad.storyId = nextStoryId++;
+						input(ad.storyRating, "Story rating", RatingRegEx);
+						inputGenres(ad.storyGenres, "Story GenreID");
 					}
 				}
 			}
 			if (authors.size() <= i) { authors.reserve((i+1)*2); authors.resize(i + 1); }
-			authors[i++] = { aid, story, storyId };
+			authors[i++] = std::move(ad);
 		}
 		if (authors.empty() && title.empty()) {
 			return;
@@ -2909,7 +2943,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		input(dateRead, "Date read", drRegEx);
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
-		input(genreId, "Book GenreID", cf(&Litt::selGenre), getListGenre());
+		if (hasStories) {
+			genreIds.clear();
+			for (auto const& ad : authors) for (auto const gi : ad.storyGenres) 
+				if (std::find(genreIds.begin(), genreIds.end(), gi) == genreIds.end())
+					genreIds.push_back(gi);
+		}
+		else {
+			inputGenres(genreIds, "Book GenreID");
+		}
 		input(origtitle, "Original title (optional)", optional);
 		ask("es", "Language", lang);
 		ask("yn", "Own book", owns);
@@ -2929,8 +2971,12 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			auto name = selAuthor(a.authorId);
 			width = std::max(width, name.length());
 			if (hasWidth) {
-				printf("%-4llu - %-*s%s\n", a.authorId, width, name.c_str(), (a.story.empty()
-					? "" : fmt("  :  %s [%llu]", a.story.c_str(), a.storyId).c_str()));
+				printf("%-4llu - %-*s", a.authorId, width, name.c_str());
+				if (!a.story.empty()) {
+					printf("  :  %s [%llu] [Rating=%s]\n", a.story.c_str(), a.storyId, a.storyRating.c_str());
+					printf("        %-*s :  ", width, ""); printGenres(a.storyGenres);
+				}
+				printf("\n");
 			}
 		}
 		if (!hasWidth) { hasWidth = true; goto again; }
@@ -2938,7 +2984,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		printf("Title          : %s\n", title.c_str());
 		printf("Date read      : %s\n", dateRead.c_str());
 		printf("Rating         : %s\n", rating.c_str());
-		printf("Genre          : %s\n", selGenre(genreId).c_str());
+		printf("Genre(s)       : ");    printGenres(genreIds); printf("\n");
 		printf("Source         : %s\n", selSource(sourceId).c_str());
 		printf("Language       : %s\n", langStr(lang));
 		printf("Owned          : %s\n", ynStr(owns));
@@ -2962,12 +3008,19 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str()));
 		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
-		sql.append(fmt("INSERT INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, genreId));
+		for (auto gi : genreIds) {
+			sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, gi));
+		}
 		for (auto const& a : authors) {
 			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%s,%llu);\n", bid, a.authorId));
 			if (!a.story.empty()) {
-				sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story) VALUES(%llu,%s);\n",
-					a.storyId, ESC_S(a.story)));
+				if (!a.storyRating.empty()) {
+					sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);\n",
+						a.storyId, ESC_S(a.story), a.storyRating.c_str()));
+					for (auto gi : a.storyGenres) {
+						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", a.storyId, gi));
+					}
+				}
 				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%s,%llu,%llu);\n",
 					bid, a.authorId, a.storyId));
 			}
