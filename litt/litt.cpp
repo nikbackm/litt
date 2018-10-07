@@ -191,7 +191,7 @@ Adding and modifying data:
    add-s     [series]                     Add a series.
    add-g     [genre]                      Add a genre.
    add-so    [source]                     Add a book source.
-   add-st    [BookID] [AuthorID] [story]  Add a story for a book.
+   add-st    [BookID] [AID] [story] [rat] Add a story for a book.
    add-bg    [BookID] [GenreID]           Add a genre for a book.
    add-stg   [StoryID] [GenreID]          Add a genre for a story.
    
@@ -3024,22 +3024,29 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		return false;
 	}
 
-	void addStory(IdValue bookId, IdValue authorId, std::string const & story)
+	void addStory()
 	{
-		IdValue storyId = EmptyId; getStoryId(storyId, story);
-
-		if (confirm(fmt("Add story '%s' [%llu] to '%s [%llu]' for author %s [%llu]", 
-			story.c_str(), storyId, selTitle(bookId).c_str(), bookId, selAuthor(authorId).c_str(), authorId))) {
-			std::string sql = "BEGIN;";
-			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bookId,authorId));
-			if (storyId == EmptyId) {
-				storyId = getNextStoryId();
-				sql.append(fmt("INSERT INTO Stories (StoryID,Story) VALUES(%llu,%s);", storyId, ESC_S(story)));
+		if (auto bid = bidargi(0)) {
+			auto aid = idargi(1, "AuthorID", cf(&Litt::selAuthor), getListAuthor());
+			auto story = argi(2, "Story");
+			IdValue storyId = EmptyId;
+			std::string rating;
+			if (!getStoryId(storyId, story)) {
+				rating = argi(3, "Rating", RatingRegEx);
 			}
-			sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bookId, authorId, storyId));
-			sql.append("COMMIT");
-			executeSql(sql);
-			printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+			if (confirm(fmt("Add story '%s' [%llu] with rating='%s' to '%s [%llu]' for author %s [%llu]",
+				story.c_str(), storyId, rating.c_str(), selTitle(bid).c_str(), bid, selAuthor(aid).c_str(), aid))) {
+				std::string sql = "BEGIN;";
+				sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid));
+				if (!rating.empty()) {
+					storyId = getNextStoryId();
+					sql.append(fmt("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), rating.c_str()));
+				}
+				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, aid, storyId));
+				sql.append("COMMIT");
+				executeSql(sql);
+				printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+			}
 		}
 	}
 
@@ -3349,11 +3356,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			addBook(getDateReadRegEx(action == "addf-b"));
 		}
 		else if (action == "add-st") {
-			if (auto bid = bidargi(0)) {
-				auto aid = idargi(1, "AuthorID", cf(&Litt::selAuthor), getListAuthor());
-				auto story = argi(2, "Story");
-				addStory(bid, aid, story);
-			}
+			addStory();
 		}
 		else if (action == "set-s") {
 			if (auto bid = bidargi(0)) {
