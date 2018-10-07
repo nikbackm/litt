@@ -3010,8 +3010,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			for (;;) {
 				printf("\nStory name already exists, select a storyID to use from the ones listed or leave empty to add new.\n\n");
 				OutputQuery q(*this);
-				q.columnWidths.assign({ 7, 30, 25, 30 });
-				q.a(fmt("SELECT StoryID, Story, \"Last Name\"||' '||\"First Name\" AS Author, Title"
+				q.columnWidths.assign({ 7, 30, 6, 25, 30 });
+				q.a(fmt("SELECT StoryID, Story, Stories.Rating, \"Last Name\"||' '||\"First Name\" AS Author, Title"
 					" FROM Stories INNER JOIN BookStories USING(StoryID) INNER JOIN Books USING(BookID) INNER JOIN Authors USING(AuthorID)"
 					" WHERE Story=%s", ESC_S(story)));
 				runOutputQuery(q);
