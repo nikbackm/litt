@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-07: Removed the redundant (short) add/set actions.
  * 2018-10-06: Factored out gidargi.
  * 2018-10-06: Can now specify zero newGID for set-g and set-stg also in interactive mode.
  * 2018-10-06: Added "set-str" and "set-stg".
@@ -3328,33 +3329,33 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", firstYear, lastYear)));
 			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
 		}
-		else if (action == "add-a" || action == "adda") {
+		else if (action == "add-a") {
 			auto lastName = argi(0, "last name", optional); if (lastName.empty()) return;
 			auto firstName = argi(1, "first name", optional); // May be empty.
 			if (confirm(fmt("Add author '%s, %s'", lastName.c_str(), firstName.c_str()))) {
 				addAuthor(lastName, firstName);
 			}
 		}
-		else if (action == "add-g" || action == "addg") {
+		else if (action == "add-g") {
 			executeSimpleAddAction("genre", &Litt::addGenre);
 		}
-		else if (action == "add-s" || action == "adds") {
+		else if (action == "add-s") {
 			executeSimpleAddAction("series", &Litt::addSeries);
 		}
-		else if (action == "add-so" || action == "addso") {
+		else if (action == "add-so") {
 			executeSimpleAddAction("book source", &Litt::addSource);
 		}
-		else if (action == "add-b" || action == "addf-b" || action == "addb") {
+		else if (action == "add-b" || action == "addf-b") {
 			addBook(getDateReadRegEx(action == "addf-b"));
 		}
-		else if (action == "add-st" || action == "addst") {
+		else if (action == "add-st") {
 			if (auto bid = bidargi(0)) {
 				auto aid = idargi(1, "AuthorID", cf(&Litt::selAuthor), getListAuthor());
 				auto story = argi(2, "Story");
 				addStory(bid, aid, story);
 			}
 		}
-		else if (action == "set-s" || action == "sets") {
+		else if (action == "set-s") {
 			if (auto bid = bidargi(0)) {
 				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
 				auto part = argi(2, "Part or 'delete' to remove");
@@ -3400,7 +3401,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				addDateRead(bid, dateRead, sourceId);
 			}
 		}
-		else if (action == "set-dr" || action == "setdr") {
+		else if (action == "set-dr") {
 			if (auto bid = bidargi(0)) {
 				auto dr = argi(1, "Current date read");
 				// Check that dr exists for book.
@@ -3410,7 +3411,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				setBookDateRead(bid, dr, newDr);
 			}
 		}
-		else if (action == "set-ot" || action == "setot") {
+		else if (action == "set-ot") {
 			if (auto bid = bidargi(0)) {
 				auto ot = argi(1, "Original title or 'delete' to remove");
 				setOriginalTitle(bid, ot);
