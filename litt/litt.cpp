@@ -2799,6 +2799,20 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		return res;
 	}
 
+	std::vector<IdValue> selectRowIdValues(std::string const& userSql) const
+	{
+		auto vstr = selectRowValue(userSql);
+		std::vector<IdValue> res;
+		for (auto const& str : vstr)
+		{
+			IdValue id;
+			if (!toIdValue(str, id))
+				throw std::logic_error("Invalid id value: '" + str + "' from query " + userSql);
+			res.push_back(id);
+		}
+		return res;
+	}
+
 	bool hasRowValue(std::string const& userSql)
 	{
 		auto res = selectRowValue(userSql);
@@ -2924,7 +2938,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				else {
 					if (getStoryId(ad.storyId, ad.story)) {
 						ad.storyRating.clear(); // no rating => existing story, so don't add to Stories or StoryGenres
-						ad.storyGenres.clear(); // same
+						// Lookup existing genres so they can be added to the book.
+						ad.storyGenres = selectRowIdValues("SELECT GenreID from StoryGenres WHERE StoryID=" + std::to_string(ad.storyId));
 					}
 					else {
 						ad.storyId = nextStoryId++;
