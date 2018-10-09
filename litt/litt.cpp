@@ -1047,6 +1047,9 @@ class Litt {
 	}
 
 public:
+#define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
+#define A_NAMES "group_concat(" A_NAME ",', ')"
+
 	Litt(int argc, char** argv)
 	{
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
@@ -1062,7 +1065,7 @@ public:
 		addColumnNumeric("gi", "GenreID", -8);
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
-		addColumnTextWithLength("nn", "ltrim(\"First Name\"||' '||\"Last Name\")", 25, "Author");
+		addColumnTextWithLength("nn", A_NAME, 25, "Author");
 		addColumnText("la", "Language", 4);
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
 		addColumnNumeric("own", "Owned", 3);
@@ -1822,33 +1825,33 @@ public:
 		void addAuxTables(AuxTableOptions opt = IJF_DefaultsOnly, unsigned indentSize = 0)
 		{
 			std::string indent(indentSize, ' ');
-			auto serJoin = (opt & IJF_Series)    ? "INNER" : "LEFT OUTER";
-			auto stoJoin = (opt & IJF_Stories)   ? "INNER" : "LEFT OUTER";
-			auto ortJoin = (opt & IJF_OrigTitle) ? "INNER" : "LEFT OUTER";
-			auto ng = "(SELECT BookID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Author(s)' FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)";
-			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)";
-			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) GROUP BY BookID)";
-			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories INNER JOIN StoryGenres USING(StoryID) INNER JOIN Genres USING(GenreID) GROUP BY StoryID)";
-			std::string storyTables = litt.m_hasBookStories ? "Stories INNER JOIN BookStories USING(StoryID)" : "Stories";
+			auto serJoin = (opt & IJF_Series)    ? "" : "LEFT";
+			auto stoJoin = (opt & IJF_Stories)   ? "" : "LEFT";
+			auto ortJoin = (opt & IJF_OrigTitle) ? "" : "LEFT";
+			auto ng = "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)";
+			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)";
+			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)";
+			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)";
+			std::string storyTables = litt.m_hasBookStories ? "Stories JOIN BookStories USING(StoryID)" : "Stories";
 			auto astg = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
 			auto bstg = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
-			auto stng = "(SELECT BookID, StoryID, group_concat(ltrim(\"First Name\"||' '||\"Last Name\"),', ') AS 'Story author(s)' FROM BookStories INNER JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
+			auto stng = "(SELECT BookID, StoryID, " A_NAMES " AS 'Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
 			addIfColumns("dr.dw.dwl.dm.dy.dym.dymd.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", 
-			           	                             indent + "INNER JOIN DatesRead USING(BookID)");
-			addIfColumns("dg",                       indent + "INNER JOIN " + dg + " USING(BookID)");
+			           	                             indent + "JOIN DatesRead USING(BookID)");
+			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
 
 			if ((opt & Skip_AuthorBooks) == 0)
 			addIfColumns("ai.fn.ln.nn.stid.st.btst.stra.stge.stgg.bsra.bsge.bsgg.astg.btastg.stng.ap.al.ac", 
-				                                     indent + "INNER JOIN AuthorBooks USING(BookID)");
-			addIfColumns("fn.ln.nn",                 indent + "INNER JOIN Authors USING(AuthorID)");
-			addIfColumns("ng",                       indent + "INNER JOIN " + ng + " USING(BookID)");
+				                                     indent + "JOIN AuthorBooks USING(BookID)");
+			addIfColumns("fn.ln.nn",                 indent + "JOIN Authors USING(AuthorID)");
+			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
-			addIfColumns("so.sp.sl.sc",              indent +  "INNER JOIN Sources USING(SourceID)");
+			addIfColumns("so.sp.sl.sc",              indent +  "JOIN Sources USING(SourceID)");
 
-			addIfColumns("gi.ge.bsge.gp.gl.gc",      indent +  "INNER JOIN BookGenres USING(BookID)");
-			addIfColumns("ge.bsge",                  indent +  "INNER JOIN Genres GBook USING(GenreID)");
-			addIfColumns("gg.bsgg",                  indent +  "INNER JOIN " + gg + " USING(BookID)");
+			addIfColumns("gi.ge.bsge.gp.gl.gc",      indent +  "JOIN BookGenres USING(BookID)");
+			addIfColumns("ge.bsge",                  indent +  "JOIN Genres GBook USING(GenreID)");
+			addIfColumns("gg.bsgg",                  indent +  "JOIN " + gg + " USING(BookID)");
 
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 
@@ -1867,10 +1870,11 @@ public:
 			}
 			addIfColumns("stge.bsge",                  indent + stoJoin + " JOIN StoryGenres USING(StoryID)");
 			addIfColumns("stge.bsge",                  indent + stoJoin + " JOIN Genres GStory USING(GenreID)");
-			addIfColumns("stgg.bsgg",                  indent + "LEFT OUTER JOIN " + stgg + " USING(StoryID)");
-			addIfColumns("stng",                       indent + "LEFT OUTER JOIN " + stng + " USING(BookID,StoryID)");
-			addIfColumns("astg.btastg",                indent + "LEFT OUTER JOIN " + astg  + " USING(AuthorID,BookID)");
-			addIfColumns("bstg",                       indent + "LEFT OUTER JOIN " + bstg  + " USING(BookID)");
+			addIfColumns("stgg.bsgg",                  indent + "LEFT JOIN " + stgg + " USING(StoryID)");
+			addIfColumns("stng",                       indent + "LEFT JOIN " + stng + " USING(BookID,StoryID)");
+			addIfColumns("astg.btastg",                indent + "LEFT JOIN " + astg + " USING(AuthorID,BookID)");
+			addIfColumns("bstg",                       indent + "LEFT JOIN " + bstg + " USING(BookID)");
+
 		}
 
 		void addOrderBy()
@@ -2518,7 +2522,7 @@ public:
 		OutputQuery query(*this);
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
 		query.initSelect("brc.bt.bi.dr.ng", from, "bi.ln.dr");
-		query.add("INNER JOIN Books USING(BookID)");
+		query.add("JOIN Books USING(BookID)");
 		query.addAuxTables();
 		query.addWhere();
 		query.addOrderBy();
@@ -2530,7 +2534,7 @@ public:
 		OutputQuery query(*this);
 		const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
 		query.initSelect("bi.bt.ng.btc", from, "bt.bi");
-		query.add("INNER JOIN Books USING(Title)");
+		query.add("JOIN Books USING(Title)");
 		query.addAuxTables();
 		query.addWhere();
 		query.addOrderBy();
@@ -2543,8 +2547,8 @@ public:
 		OutputQuery query(*this);
 		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
 		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
-		query.addIf(m_hasBookStories, "INNER JOIN BookStories USING(StoryID)");
-		query.add("INNER JOIN Books USING(BookID)");
+		query.addIf(m_hasBookStories, "JOIN BookStories USING(StoryID)");
+		query.add("JOIN Books USING(BookID)");
 		query.addAuxTables(AuxTableOptions(
 			Skip_AuthorBooks | // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
 			Skip_Stories));    // Already have Stories content from above so skip to avoid ambigous column error.
@@ -2568,22 +2572,22 @@ S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title",
 "Story read", "Story source"
 FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date read" AS "Book read", Source AS "Book source", 
       ltrim("First Name"||' '||"Last Name") AS BookAuthor FROM Books
-	INNER JOIN AuthorBooks USING(BookID)
-	INNER JOIN Authors USING(AuthorID)
-	INNER JOIN DatesRead USING(BookID)
-	INNER JOIN Sources USING(SourceID)
+	JOIN AuthorBooks USING(BookID)
+	JOIN Authors USING(AuthorID)
+	JOIN DatesRead USING(BookID)
+	JOIN Sources USING(SourceID)
 ) AS B
 JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRating,
       StoryID, Story, Stories.Rating AS SRating, 
       "Date read" AS "Story read", Source AS "Story source", 
       ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories%s
-	INNER JOIN Books USING(BookID)
-	INNER JOIN Authors USING(AuthorID)
-	INNER JOIN DatesRead USING(BookID)
-	INNER JOIN Sources USING(SourceID)
+	JOIN Books USING(BookID)
+	JOIN Authors USING(AuthorID)
+	JOIN DatesRead USING(BookID)
+	JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story
-ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories USING(StoryID)" : "").c_str());
+ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(StoryID)" : "").c_str());
 		runOutputQuery(query);
 	}
 
@@ -2734,7 +2738,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 		for (auto& c : columns) {
 		// We don't update the having condition, it should be same for all columns and not included in col defs.
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
-		q.add(" LEFT OUTER JOIN");
+		q.add(" LEFT JOIN");
 		q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
 		q.add("    (SELECT BookID, " + periodFunc + " AS " + period);
 		q.add("     FROM Books");
@@ -3080,7 +3084,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " INNER JOIN BookStories U
 				OutputQuery q(*this);
 				q.columnWidths.assign({ 7, 30, 6, 25, 30 });
 				q.a(fmt("SELECT StoryID, Story, Stories.Rating, \"Last Name\"||' '||\"First Name\" AS Author, Title"
-					" FROM Stories INNER JOIN BookStories USING(StoryID) INNER JOIN Books USING(BookID) INNER JOIN Authors USING(AuthorID)"
+					" FROM Stories JOIN BookStories USING(StoryID) JOIN Books USING(BookID) JOIN Authors USING(AuthorID)"
 					" WHERE Story=%s", ESC_S(story)));
 				runOutputQuery(q);
 				printf("\n");
