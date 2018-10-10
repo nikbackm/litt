@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-10: Can now start listings from Authors table in addition to Books. 
+               Better for pseudonyms, can avoid DISTINCT. Better when listing authors too for that matter.
+ * 2018-10-10: Added support for pseudonyms.
  * 2018-10-07: Can now input rating and genre(s) for new stories, also multiple genres for new books.
  * 2018-10-07: Removed the redundant (short) add/set actions.
  * 2018-10-06: Factored out gidargi.
@@ -155,6 +158,7 @@ R"(Usage: LITT {options} <action with arguments> {options}
 Basic list actions:
    h[1|2]                         Show help, level 1 or 2, level 2 is default.
    a|aa   [lastName] [firstName]  List authors - without/with books.
+   ps     [lastName] [firstName]  List pseudonyms.
    b|bb   [title]                 List books - with minimum/full details.
    ot     [origTitle]             List original titles for books.
    st     [story]                 List (anthology) stories for books.
@@ -293,6 +297,7 @@ Column short name values:
     stng             - Authors for story
     se, si, pa       - Series, SeriesID, Part in Series
     so, soid         - Source, SourceID
+    ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
 
     To get the length of column values "l" can be appended to the short name for non-numeric/ID columns.
     E.g. "btl" will provide the lengths of the "bt" column values.
@@ -1088,6 +1093,9 @@ public:
 		addColumnTextWithLength("stng", "\"Story author(s)\"", 50);
 		addColumnTextWithLength("so", "Source", 35);
 		addColumnNumeric("soid", "SourceID", -8);
+		addColumnTextWithLength("ps", "ps.Pseudonyms", 25);
+		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25);
+		addColumnNumeric("psmid", "PSMainID", -9, "PSMainID");
 
 #define DR_FIXED "substr(\"Date Read\",1,10)"
 #define DR_SECS "CAST(ifnull(strftime('%s',\"Date Read\"), strftime('%s'," DR_FIXED ")) AS INTEGER)"
@@ -1663,6 +1671,7 @@ public:
 		IJF_OrigTitle = 0x04,
 		Skip_AuthorBooks = 0x08,
 		Skip_Stories = 0x10,
+		Starts_With_Authors = 0x20, // Normally start with books as first table.
 	};
 
 	enum class SelectOption {
@@ -1828,53 +1837,110 @@ public:
 			auto serJoin = (opt & IJF_Series)    ? "" : "LEFT";
 			auto stoJoin = (opt & IJF_Stories)   ? "" : "LEFT";
 			auto ortJoin = (opt & IJF_OrigTitle) ? "" : "LEFT";
+
+			// Some helper queries
+
 			auto ng = "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)";
+
 			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)";
 			std::string storyTables = litt.m_hasBookStories ? "Stories JOIN BookStories USING(StoryID)" : "Stories";
 			auto astg = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
 			auto bstg = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
 			auto stng = "(SELECT BookID, StoryID, " A_NAMES " AS 'Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
 
-			addIfColumns("dr.dw.dwl.dm.dy.dym.dymd.ti.sec.soid.so.lag.lagi.ap.al.ac.gp.gl.gc.sp.sl.sc.dind.mind.yind", 
-			           	                             indent + "JOIN DatesRead USING(BookID)");
-			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
+			auto psmid = "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM"
+				         "  (SELECT AuthorID, CASE AuthorID WHEN psp.PseudonymID THEN psp.MainID WHEN psm.MainID THEN psm.MainID ELSE NULL END AS psmain"
+				         "   FROM Authors LEFT JOIN Pseudonyms psm ON(psm.MainID = Authors.AuthorID) LEFT JOIN Pseudonyms psp ON(psp.PseudonymID = Authors.AuthorID)"
+				         "   WHERE psmain IS NOT NULL)"
+				         "GROUP BY AuthorID)";
+			auto ps = "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)";
+			auto psf = "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)";
+			
+			// Factor out common column combinations for easier maintenance
 
-			if ((opt & Skip_AuthorBooks) == 0)
-			addIfColumns("ai.fn.ln.nn.stid.st.btst.stra.stge.stgg.bsra.bsge.bsgg.astg.btastg.stng.ap.al.ac", 
-				                                     indent + "JOIN AuthorBooks USING(BookID)");
-			addIfColumns("fn.ln.nn",                 indent + "JOIN Authors USING(AuthorID)");
+#define BS_SHARED  "btst.bsra"
+#define B_COLS     "bt.ra.la.own.beb.btastg." BS_SHARED
+
+#define PS_COLS    "ps.psf.psmid"
+#define A_COLS     "fn.ln.nn." PS_COLS
+#define AW_COLS    "ap.al.ac"
+
+#define ST_GE_COLS "stge.bsge"
+#define ST_GG_COLS "stgg.bsgg"
+#define B_ST_COLS  "stid.stng." ST_GE_COLS "." ST_GG_COLS
+#define ST_COLS    "st.stra." BS_SHARED
+
+#define ASTG_COLS  "astg.btastg"
+
+#define AB_COLS    AW_COLS  "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
+
+#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind"
+
+#define SOW_COLS   "sp.sl.sc"
+#define DR_SO_COLS "soid.so." SOW_COLS
+
+#define GW_COLS    "gp.gl.gc"
+#define GE_COLS    "ge.bsge"
+#define G_COLS     "gi." GE_COLS "." GW_COLS
+#define GG_COLS    "gg.bsgg"
+
+#define S_COLS     "si.pa.se"
+
+#define A_AB_COLS  "bi.ng.ot.dg.bstg." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
+#define B_AB_COLS  "ai."               AB_COLS "." A_COLS
+#define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS "." GW_COLS
+
+			// Add the needed tables/queries according to included columns.
+
+			if ((opt & Starts_With_Authors) != 0) { // Start with Authors
+				if ((opt & Skip_AuthorBooks) == 0)
+				addIfColumns(A_AB_COLS,              indent + "JOIN AuthorBooks USING(AuthorID)");
+				addIfColumns(B_COLS,                 indent + "JOIN Books USING(BookID)");
+			}
+			else { // Starts with Books.
+				if ((opt & Skip_AuthorBooks) == 0)
+				addIfColumns(B_AB_COLS,              indent + "JOIN AuthorBooks USING(BookID)");
+				addIfColumns(A_COLS,                 indent + "JOIN Authors USING(AuthorID)");
+			}
+
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
-			addIfColumns("so.sp.sl.sc",              indent +  "JOIN Sources USING(SourceID)");
+			addIfColumns(DR_F_COLS,                  indent + "JOIN DatesRead USING(BookID)");
+			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
 
-			addIfColumns("gi.ge.bsge.gp.gl.gc",      indent +  "JOIN BookGenres USING(BookID)");
-			addIfColumns("ge.bsge",                  indent +  "JOIN Genres GBook USING(GenreID)");
-			addIfColumns("gg.bsgg",                  indent +  "JOIN " + gg + " USING(BookID)");
+			addIfColumns("so",                       indent +  "JOIN Sources USING(SourceID)");
+
+			addIfColumns(G_COLS,                     indent +  "JOIN BookGenres USING(BookID)");
+			addIfColumns(GE_COLS,                    indent +  "JOIN Genres GBook USING(GenreID)");
+			addIfColumns(GG_COLS,                    indent +  "JOIN " + gg + " USING(BookID)");
 
 			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
 
-			addIfColumns("si.pa.se",                 indent +  serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns(S_COLS,                     indent +  serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
 
 			if ((opt & Skip_Stories) == 0) {
 				if (litt.m_hasBookStories) {
-					addIfColumns("stid.st.btst.stra.stge.stgg.bsra.bsge.bsgg.stng", 
-						                               indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
-					addIfColumns("st.btst.stra.bsra",  indent +  stoJoin + " JOIN Stories USING(StoryID)");
+					addIfColumns(B_ST_COLS "." ST_COLS, 
+						                             indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
+					addIfColumns(ST_COLS,            indent +  stoJoin + " JOIN Stories USING(StoryID)");
 				}
 				else { // old story table
-					addIfColumns("stid.st",            indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+					addIfColumns("stid.st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
 				}
 			}
-			addIfColumns("stge.bsge",                  indent + stoJoin + " JOIN StoryGenres USING(StoryID)");
-			addIfColumns("stge.bsge",                  indent + stoJoin + " JOIN Genres GStory USING(GenreID)");
-			addIfColumns("stgg.bsgg",                  indent + "LEFT JOIN " + stgg + " USING(StoryID)");
-			addIfColumns("stng",                       indent + "LEFT JOIN " + stng + " USING(BookID,StoryID)");
-			addIfColumns("astg.btastg",                indent + "LEFT JOIN " + astg + " USING(AuthorID,BookID)");
-			addIfColumns("bstg",                       indent + "LEFT JOIN " + bstg + " USING(BookID)");
+			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN StoryGenres USING(StoryID)");
+			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN Genres GStory USING(GenreID)");
+			addIfColumns(ST_GG_COLS,                 indent + "LEFT JOIN " + stgg + " USING(StoryID)");
+			addIfColumns("stng",                     indent + "LEFT JOIN " + stng + " USING(BookID,StoryID)");
+			addIfColumns(ASTG_COLS,                  indent + "LEFT JOIN " + astg + " USING(AuthorID,BookID)");
+			addIfColumns("bstg",                     indent + "LEFT JOIN " + bstg + " USING(BookID)");
 
+			addIfColumns("psmid",                    indent + "LEFT JOIN " + psmid + " psmid ON (psmAID = Authors.AuthorID)");
+			addIfColumns("ps",                       indent + "LEFT JOIN " + ps   + " ps ON (ps.MainID = Authors.AuthorID)");
+			addIfColumns("psf",                      indent + "LEFT JOIN " + psf + " psf ON (psf.PseudonymID = Authors.AuthorID)");
 		}
 
 		void addOrderBy()
@@ -2425,11 +2491,12 @@ public:
 		runOutputQuery(query);
 	}
 
-	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly)
+	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly, SelectOption selectOption = SelectOption::normal)
 	{
 		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
-		query.initSelect(defColumns, "Books", defOrderBy);
+		auto table = ((opt & Starts_With_Authors) == 0) ? "Books" : "Authors";
+		query.initSelect(defColumns, table , defOrderBy, selectOption);
 		query.addAuxTables(opt);
 		query.addWhere();
 		query.addOrderBy();
@@ -2441,18 +2508,26 @@ public:
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
 		if (action == "a") {
-			runSingleTableOutputCmd("ai.nn.50", "Authors", "ai");
+			runListData("ai.nn.30", "ai", Starts_With_Authors); // Will only use Authors with these columns.
 		}
 		else {
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi");
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi", Starts_With_Authors);
 		}
+	}
+
+	void listPseudonyms(std::string const & ln, std::string const & fn)
+	{
+		appendToWhereCondition(LogOp_AND, (getWhereCondition("psf.*") + LogOp_OR + getWhereCondition("ps.*"))); 
+		addActionWhereCondition("ln", ln);
+		addActionWhereCondition("fn", fn);
+		runListData("psmid.ai.nn.ps.psf", "psmid.ps.desc.ln", Starts_With_Authors);
 	}
 
 	void listBooks(std::string const & action, std::string const & title)
 	{
 		if (action == "b") {
 			addActionWhereCondition("bt", title);
-			runSingleTableOutputCmd("bi.bt.70", "Books", "bi");
+			runListData("bi.bt.60", "bi");  // Will only use Books with these columns.
 		}
 		else {
 			addActionWhereCondition("btst", title);
@@ -3368,6 +3443,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "a" || action == "aa") {
 			listAuthors(action, arg(0), arg(1));
+		}
+		else if (action == "ps") {
+			listPseudonyms(arg(0), arg(1));
 		}
 		else if (action == "b" || action == "bb") {
 			listBooks(action, arg(0));
