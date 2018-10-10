@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-10: Added ISBN, Category (+id), Pages and Words columns.
  * 2018-10-10: Can now start listings from Authors table in addition to Books. 
                Better for pseudonyms, can avoid DISTINCT. Better when listing authors too for that matter.
  * 2018-10-10: Added support for pseudonyms.
@@ -1074,6 +1075,11 @@ public:
 		addColumnText("la", "Language", 4);
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
 		addColumnNumeric("own", "Owned", 3);
+		addColumnTextWithLength("isbn", "ISBN", 13);
+		addColumnNumeric("catid", "CategoryID", 3);
+		addColumnTextWithLength("cat", "Category", 11);
+		addColumnNumeric("pgs", "Pages", 5);
+		addColumnNumeric("wds", "Words", 5);
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", -8);
@@ -1861,7 +1867,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.ra.la.own.beb.btastg." BS_SHARED
+#define B_COLS     "bt.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
@@ -1904,6 +1910,8 @@ public:
 				addIfColumns(B_AB_COLS,              indent + "JOIN AuthorBooks USING(BookID)");
 				addIfColumns(A_COLS,                 indent + "JOIN Authors USING(AuthorID)");
 			}
+
+			addIfColumns("cat",                 indent + "LEFT JOIN BookCategory USING(CategoryID)"); // TODO: remove LEFT when all books have cat added!
 
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
