@@ -2859,9 +2859,13 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 	#define ESC_S(str) escSqlVal(str).c_str()
 
-	void addAuthor(std::string const & ln, std::string const & fn)
+	void addAuthor()
 	{
-		executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)), "AuthorID");
+		auto ln = argi(0, "last name", optional); if (ln.empty()) return;
+		auto fn = argi(1, "first name", optional); // May be empty.
+		if (confirm(fmt("Add author '%s, %s'", ln.c_str(), fn.c_str()))) {
+			executeInsert(fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)), "AuthorID");
+		}
 	}
 
 	void addGenre(std::string const & name)
@@ -3122,144 +3126,186 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void setBookSeries(IdValue bookId, IdValue seriesId, std::string const & part)
+	void setBookSeries()
 	{
-		if (part != "delete") {
-			if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
-				selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
-				int changes = executeSql(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
-					bookId, seriesId, escSqlVal(part, true).c_str()));
-				printf("Added/Updated %i rows\n", changes);
+		if (auto bookId = bidargi(0)) {
+			auto seriesId = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
+			auto part = argi(2, "Part or 'delete' to remove");
+			if (part != "delete") {
+				if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
+					selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
+					int changes = executeSql(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
+						bookId, seriesId, escSqlVal(part, true).c_str()));
+					printf("Added/Updated %i rows\n", changes);
+				}
 			}
-		}
-		else {
-			if (confirm(fmt("Remove '%s [%llu]' from '%s [%llu]'", 
-				selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId))) {
-				int changes = executeSql(fmt("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu",
-					bookId, seriesId));
-				printf("Deleted %i rows\n", changes);
+			else {
+				if (confirm(fmt("Remove '%s [%llu]' from '%s [%llu]'", 
+					selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId))) {
+					int changes = executeSql(fmt("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu",
+						bookId, seriesId));
+					printf("Deleted %i rows\n", changes);
+				}
 			}
 		}
 	}
 
-	void addBookGenre(IdValue bookId, IdValue genreId)
+	void addBookGenre()
 	{
-		if (confirm(fmt("Add '%s' => '%s'",
-			selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
-			int changes = executeSql(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)",
-				bookId, genreId));
-			printf("Added %i rows\n", changes);
-		}
-	}
-
-	void addStoryGenre(IdValue storyId, IdValue genreId)
-	{
-		if (confirm(fmt("Add '%s' => '%s'",
-			selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
-			int changes = executeSql(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)",
-				storyId, genreId));
-			printf("Added %i rows\n", changes);
-		}
-	}
-
-	void setBookGenre(IdValue bookId, IdValue genreId, IdValue newGenreId)
-	{
-		if (newGenreId != EmptyId) {
-			if (confirm(fmt("Change '%s' => '%s' for '%s'", 
-				selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
-					newGenreId, bookId, genreId));
-				printf("Updated %i rows\n", changes);
-			}
-		}
-		else {
-			if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+		if (auto bookId = bidargi(0)) {
+			auto genreId = gidargi(1);
+			if (confirm(fmt("Add '%s' => '%s'",
+				selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)",
 					bookId, genreId));
-				printf("Deleted %i rows\n", changes);
+				printf("Added %i rows\n", changes);
 			}
 		}
 	}
 
-	void setStoryGenre(IdValue storyId, IdValue genreId, IdValue newGenreId)
+	void addStoryGenre()
 	{
-		if (newGenreId != EmptyId) {
-			if (confirm(fmt("Change '%s' => '%s' for '%s'",
-				selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selStory(storyId).c_str()))) {
-				int changes = executeSql(fmt("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu",
-					newGenreId, storyId, genreId));
-				printf("Updated %i rows\n", changes);
-			}
-		}
-		else {
-			if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
-				int changes = executeSql(fmt("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu",
+		if (auto storyId = stidargi(0)) {
+			auto genreId = gidargi(1);
+			if (confirm(fmt("Add '%s' => '%s'",
+				selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
+				int changes = executeSql(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)",
 					storyId, genreId));
-				printf("Deleted %i rows\n", changes);
+				printf("Added %i rows\n", changes);
 			}
 		}
 	}
 
-	void addDateRead(IdValue bookId, std::string const& dr, IdValue sourceId)
+	void setBookGenre()
 	{
-		if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
-			dr.c_str(), selSource(sourceId).c_str(), selTitle(bookId).c_str()))) {
-			int changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", 
-				bookId, ESC_S(dr), sourceId));
-			printf("Added %i rows\n", changes);
+		if (auto bookId = bidargi(0)) {
+			auto genreId = gidargi(1);
+			// Check that genreId exists for book.
+			selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
+				fmt("GenreID %llu for BookID %llu", genreId, bookId).c_str());
+			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
+				if (confirm(fmt("Change '%s' => '%s' for '%s'", 
+					selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selTitle(bookId).c_str()))) {
+					int changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
+						newGenreId, bookId, genreId));
+					printf("Updated %i rows\n", changes);
+				}
+			}
+			else {
+				if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
+					int changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+						bookId, genreId));
+					printf("Deleted %i rows\n", changes);
+				}
+			}
 		}
 	}
 
-	void setBookDateRead(IdValue bookId, std::string const& dr, std::string const& newDr)
+	void setStoryGenre()
 	{
-		if (newDr != "delete") {
-			if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
-					ESC_S(newDr), bookId, ESC_S(dr)));
+		if (auto storyId = stidargi(0)) {
+			auto genreId = gidargi(1);
+			// Check that genreId exists for book.
+			selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
+				fmt("GenreID %llu for StoryID %llu", genreId, storyId).c_str());
+			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
+				if (confirm(fmt("Change '%s' => '%s' for '%s'",
+					selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selStory(storyId).c_str()))) {
+					int changes = executeSql(fmt("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu",
+						newGenreId, storyId, genreId));
+					printf("Updated %i rows\n", changes);
+				}
+			}
+			else {
+				if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
+					int changes = executeSql(fmt("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu",
+						storyId, genreId));
+					printf("Deleted %i rows\n", changes);
+				}
+			}
+		}
+	}
+
+	void addDateRead(bool flexible)
+	{
+		if (auto bookId = bidargi(0)) {
+			auto dr = argi(1, "Date read", getDateReadRegEx(flexible));
+			auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
+			if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
+				dr.c_str(), selSource(sourceId).c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", 
+					bookId, ESC_S(dr), sourceId));
+				printf("Added %i rows\n", changes);
+			}
+		}
+	}
+
+	void setBookDateRead()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto dr = argi(1, "Current date read");
+			// Check that dr exists for book.
+			selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bookId, ESC_S(dr)), 
+				fmt("date read %s for BookID %llu", dr.c_str(), bookId).c_str());
+			auto newDr = argi(2, "New date read or 'delete' to remove");
+			if (newDr != "delete") {
+				if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), selTitle(bookId).c_str()))) {
+					int changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
+						ESC_S(newDr), bookId, ESC_S(dr)));
+					printf("Updated %i rows\n", changes);
+				}
+			}
+			else {
+				if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), selTitle(bookId).c_str()))) {
+					int changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
+						bookId, ESC_S(dr)));
+					printf("Deleted %i rows\n", changes);
+				}
+			}
+		}
+	}
+
+	void setOriginalTitle()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto originalTitle = argi(1, "Original title or 'delete' to remove");
+			if (originalTitle != "delete") {
+				if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
+					int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
+						bookId, ESC_S(originalTitle)));
+					printf("Updated %i rows\n", changes);
+				}
+			}
+			else {
+				if (confirm(fmt("Remove original title of '%s'", selTitle(bookId).c_str()))) {
+					int changes = executeSql(fmt("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId));
+					printf("Deleted %i rows\n", changes);
+				}
+			}
+		}
+	}
+
+	void setRating()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto rating = argi(1, "Rating", RatingRegEx);
+			if (confirm(fmt("Set rating of '%s' => %s", selTitle(bookId).c_str(), rating.c_str()))) {
+				int changes = executeSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
+					rating.c_str(), bookId));
 				printf("Updated %i rows\n", changes);
 			}
 		}
-		else {
-			if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
-					bookId, ESC_S(dr)));
-				printf("Deleted %i rows\n", changes);
-			}
-		}
 	}
 
-	void setOriginalTitle(IdValue bookId, std::string const & originalTitle)
+	void setStoryRating()
 	{
-		if (originalTitle != "delete") {
-			if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
-				int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
-					bookId, ESC_S(originalTitle)));
+		if (auto storyId = stidargi(0)) {
+			auto rating = argi(1, "Rating", RatingRegEx);
+			if (confirm(fmt("Set rating of '%s' => %s", selStory(storyId).c_str(), rating.c_str()))) {
+				int changes = executeSql(fmt("UPDATE Stories SET Rating = %s WHERE StoryID=%llu",
+					rating.c_str(), storyId));
 				printf("Updated %i rows\n", changes);
 			}
-		}
-		else {
-			if (confirm(fmt("Remove original title of '%s'", selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId));
-				printf("Deleted %i rows\n", changes);
-			}
-		}
-	}
-
-	void setRating(IdValue bookId, std::string const & rating) // We assume rating is checked for valid rating values.
-	{
-		if (confirm(fmt("Set rating of '%s' => %s", selTitle(bookId).c_str(), rating.c_str()))) {
-			int changes = executeSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
-				rating.c_str(), bookId));
-			printf("Updated %i rows\n", changes);
-		}
-	}
-
-	void setStoryRating(IdValue storyId, std::string const & rating) // We assume rating is checked for valid rating values.
-	{
-		if (confirm(fmt("Set rating of '%s' => %s", selStory(storyId).c_str(), rating.c_str()))) {
-			int changes = executeSql(fmt("UPDATE Stories SET Rating = %s WHERE StoryID=%llu",
-				rating.c_str(), storyId));
-			printf("Updated %i rows\n", changes);
 		}
 	}
 
@@ -3271,22 +3317,25 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void executeUserSql(std::string const& sql)
+	void executeUserSql()
 	{
-		m_fitWidthOn = m_fitWidthAuto;
-		if (confirm("Execute SQL")) {
-			OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
-			// Set first few columns to width 30, better than letting label and/or first value determine it.
-			// (Don't include too many columns, then fitWidth will shrink them!)
-			q.columnWidths.assign(5, 30);
-			q.initColumnWidths();
-			q.init();
-			q.a(sql);
-			runOutputQuery(q); 
-			int changes = sqlite3_changes(m_conn.get());
-			if (changes != 0) {
-				if (m_rowCount > 0) { printf("\n"); }
-				printf("Modified %i rows\n", changes);
+		auto sql = argi(0, "sql", optional);
+		if (!sql.empty()) {
+			m_fitWidthOn = m_fitWidthAuto;
+			if (confirm("Execute SQL")) {
+				OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
+				// Set first few columns to width 30, better than letting label and/or first value determine it.
+				// (Don't include too many columns, then fitWidth will shrink them!)
+				q.columnWidths.assign(5, 30);
+				q.initColumnWidths();
+				q.init();
+				q.a(sql);
+				runOutputQuery(q); 
+				int changes = sqlite3_changes(m_conn.get());
+				if (changes != 0) {
+					if (m_rowCount > 0) { printf("\n"); }
+					printf("Modified %i rows\n", changes);
+				}
 			}
 		}
 	}
@@ -3409,11 +3458,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
 		}
 		else if (action == "add-a") {
-			auto lastName = argi(0, "last name", optional); if (lastName.empty()) return;
-			auto firstName = argi(1, "first name", optional); // May be empty.
-			if (confirm(fmt("Add author '%s, %s'", lastName.c_str(), firstName.c_str()))) {
-				addAuthor(lastName, firstName);
-			}
+			addAuthor();
 		}
 		else if (action == "add-g") {
 			executeSimpleAddAction("genre", &Litt::addGenre);
@@ -3431,82 +3476,37 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			addStory();
 		}
 		else if (action == "set-s") {
-			if (auto bid = bidargi(0)) {
-				auto sid  = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
-				auto part = argi(2, "Part or 'delete' to remove");
-				setBookSeries(bid, sid, part);
-			}
+			setBookSeries();
 		}
 		else if (action == "add-bg") {
-			if (auto bid = bidargi(0)) {
-				auto genreId = gidargi(1);
-				addBookGenre(bid, genreId);
-			}
+			addBookGenre();
 		}
 		else if (action == "add-stg") {
-			if (auto stid = stidargi(0)) {
-				auto genreId = gidargi(1);
-				addStoryGenre(stid, genreId);
-			}
+			addStoryGenre();
 		}
 		else if (action == "set-g") {
-			if (auto bid = bidargi(0)) {
-				auto genreId = gidargi(1);
-				// Check that genreId exists for book.
-				selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bid, genreId),
-					fmt("GenreID %llu for BookID %llu", genreId, bid).c_str());
-				auto newGenreId = gidargi(2, "New GenreID", optional);
-				setBookGenre(bid, genreId, newGenreId);
-			}
+			setBookGenre();
 		}
 		else if (action == "set-stg") {
-			if (auto stid = stidargi(0)) {
-				auto genreId = gidargi(1);
-				// Check that genreId exists for book.
-				selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", stid, genreId),
-					fmt("GenreID %llu for StoryID %llu", genreId, stid).c_str());
-				auto newGenreId = gidargi(2, "New GenreID", optional);
-				setStoryGenre(stid, genreId, newGenreId);
-			}
+			setStoryGenre();
 		}
 		else if (action == "add-dr" || action == "addf-dr") {
-			if (auto bid = bidargi(0)) {
-				auto dateRead = argi(1, "Date read", getDateReadRegEx(action == "addf-dr"));
-				auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
-				addDateRead(bid, dateRead, sourceId);
-			}
+			addDateRead(action == "addf-dr");
 		}
 		else if (action == "set-dr") {
-			if (auto bid = bidargi(0)) {
-				auto dr = argi(1, "Current date read");
-				// Check that dr exists for book.
-				selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bid, ESC_S(dr)), 
-					fmt("date read %s for BookID %llu", dr.c_str(), bid).c_str());
-				auto newDr = argi(2, "New date read or 'delete' to remove");
-				setBookDateRead(bid, dr, newDr);
-			}
+			setBookDateRead();
 		}
 		else if (action == "set-ot") {
-			if (auto bid = bidargi(0)) {
-				auto ot = argi(1, "Original title or 'delete' to remove");
-				setOriginalTitle(bid, ot);
-			}
+			setOriginalTitle();
 		}
 		else if (action == "set-r") {
-			if (auto bid = bidargi(0)) {
-				auto rating = argi(1, "Rating", RatingRegEx);
-				setRating(bid, rating);
-			}
+			setRating();
 		}
 		else if (action == "set-str") {
-			if (auto stid = stidargi(0)) {
-				auto rating = argi(1, "Rating", RatingRegEx);
-				setStoryRating(stid, rating);
-			}
+			setStoryRating();
 		}
 		else if (action == "execute") {
-			auto sql = argi(0, "sql", optional); if (sql.empty()) return;
-			executeUserSql(sql);
+			executeUserSql();
 		}
 		else {
 			throw std::invalid_argument("Invalid action: " + action);
