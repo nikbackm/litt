@@ -1079,7 +1079,7 @@ public:
 		addColumnNumeric("catid", "CategoryID", 3);
 		addColumnTextWithLength("cat", "Category", 11);
 		addColumnNumeric("pgs", "Pages", 5);
-		addColumnNumeric("wds", "Words", 5);
+		addColumnNumeric("wds", "Words", 6);
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", -8);
