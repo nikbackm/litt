@@ -1080,7 +1080,7 @@ public:
 		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30);
 		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, "\"Title [Story]\"");
 		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, "BSRating");
-		addColumnTextWithLength("bsge", "ifnull(StoryGenre, Genre)", 30, "BSGenre");
+		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, "BSGenre");
 		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, "\"BSGenre(s)\"");
 		addColumnTextWithLength("astg", "Stories", 45);
 		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
