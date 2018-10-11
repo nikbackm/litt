@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-11: Can now list and add book categories.
  * 2018-10-10: Added ISBN, Category (+id), Pages and Words columns.
  * 2018-10-10: Can now start listings from Authors table in addition to Books. 
                Better for pseudonyms, can avoid DISTINCT. Better when listing authors too for that matter.
@@ -166,6 +167,7 @@ Basic list actions:
    s|ss   [series]                List series - without/with books.
    g|gg   [genre]                 List genre - without/with books.
    so|soo [source]                List book sources where a certain book "read" was gotten - without/with books.
+   c|cc   [bookCategory]          List book category - without/with books.
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
    sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
@@ -173,11 +175,13 @@ Basic list actions:
    titlestory                     List books with same title as a story - Duplicates shown.
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
-List number of books read for author, genre and source. Can use virtual column "bc":
-   abc|gbc        [bookCountCond] [bRRs]             For author and genre. bRRs=1 => include re-reads.
-   sbc            [bookCountCond]                    For source. Re-reads are always included.
-   abcy|gbcy|sbcy [rowCount] [firstYear] [lastYear]  Yearly book counts for author, genre and source.
+List number of books read for author, genre, source and category. Can use virtual column "bc":
+   abc|gbc|cbc [bookCountCond] [bRRs]  For author, genre, category. bRRs=1 => include re-reads.
+   sbc         [bookCountCond]         For source. Re-reads are always included.
 
+   abcy|gbcy|sbcy|cbcy [rowCount] [firstYear] [lastYear]
+                                  - Yearly book counts for author, genre, source and category.
+    
 List number of books read for specific periods along with a total count. Can use virtual column "prc":
    brmy [firstYear] [lastYear]    Total over month/year.
    brym [yearCondition]           Total over year/month.
@@ -197,6 +201,7 @@ Adding and modifying data:
    add-s     [series]                     Add a series.
    add-g     [genre]                      Add a genre.
    add-so    [source]                     Add a book source.
+   add-c     [category]                   Add a book category.
    add-st    [BookID] [AID] [story] [rat] Add a story for a book.
    add-bg    [BookID] [GenreID]           Add a genre for a book.
    add-stg   [StoryID] [GenreID]          Add a genre for a story.
@@ -2600,6 +2605,17 @@ public:
 		}
 	}
 
+	void listBookCategories(std::string const & action, std::string const & catName)
+	{
+		addActionWhereCondition("cat", catName);
+		if (action == "c") {
+			runSingleTableOutputCmd("catid.cat.30", "BookCategory", "catid");
+		}
+		else {
+			runListData("cat.bi.bt.dr.nn", "cat.dr.bi.ln.fn");
+		}
+	}
+
 	void listRereads()
 	{
 		OutputQuery query(*this);
@@ -2966,6 +2982,11 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		executeInsert(fmt("INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name)), "SourceID");
 	}
 
+	void addBookCategory(std::string const & name)
+	{
+		executeInsert(fmt("INSERT INTO BookCategory (Category) VALUES(%s)",  ESC_S(name)), "CategoryID");
+	}
+	
 	using GenreIds = std::vector<IdValue>;
 
 	void inputGenres(GenreIds& genres, const char* prompt)
@@ -3473,6 +3494,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "so" || action == "soo") {
 			listSources(action, arg(0));
 		}
+		else if (action == "c" || action == "cc") {
+			listBookCategories(action, arg(0));
+		}
 		else if (action == "rereads") {
 			listRereads();
 		}
@@ -3494,7 +3518,10 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "sbc") {
 			listBookCounts(arg(0), true, "so.35", "soid"); // DR always included when SO is.
 		}
-		else if (action == "abcy" || action == "gbcy" || action == "sbcy") {
+		else if (action == "cbc") {
+			listBookCounts(arg(0), arg(1) == "1", "cat", "catid");
+		}
+		else if (action == "abcy" || action == "gbcy" || action == "sbcy" || action == "cbcy") {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
@@ -3502,6 +3529,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			switch (action[0]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
 				case 's': snSel = "so"; snGby = "soid"; break;
+				case 'c': snSel = "cat"; snGby = "catid"; break;
 			}
 			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby);
 		}
@@ -3554,6 +3582,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "add-so") {
 			executeSimpleAddAction("book source", &Litt::addSource);
+		}
+		else if (action == "add-c") {
+			executeSimpleAddAction("book category", &Litt::addBookCategory);
 		}
 		else if (action == "add-b" || action == "addf-b") {
 			addBook(getDateReadRegEx(action == "addf-b"));
