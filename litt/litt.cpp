@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-11: addBook now supports ISBN, category, pages and words.
  * 2018-10-11: Can now list and add book categories.
  * 2018-10-10: Added ISBN, Category (+id), Pages and Words columns.
  * 2018-10-10: Can now start listings from Authors table in addition to Books. 
@@ -509,6 +510,7 @@ namespace LittDefs
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
 	const char*   RatingRegEx = R"raw([+-]?((\d+(\.\d*)?)|(\.\d+)))raw";
+	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
 	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
@@ -658,6 +660,13 @@ namespace Input
 		if (!value.empty() && !std::regex_match(value, std::regex(regex))) {
 			goto retry;
 		}
+	}
+
+	void input(unsigned& value, const char* prompt, InputOptions options = required)
+	{
+		std::string ustr = (value != EmptyUnsigned) ? std::to_string(value) : "";
+		input(ustr, prompt, R"([1-9]\d*)", options);
+		value = std::stoul(ustr);
 	}
 
 	using InputCheckIdFunction = std::function<void(IdValue)>;
@@ -2941,7 +2950,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	std::string selGenre(IdValue id) const { return selDV(fmt("SELECT Genre FROM Genres WHERE GenreID=%llu", id), "GenreID"); }
 	std::string selAuthor(IdValue id) const { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
 	std::string selStory(IdValue id) const { return selDV(fmt("SELECT Story FROM Stories WHERE StoryID=%llu", id), "StoryID"); }
-
+	std::string selBookCategory(IdValue id) const { return selDV(fmt("SELECT Category FROM BookCategory WHERE CategoryID=%llu", id), "CategoryID"); }
+	
 	InputCheckIdFunction cf(std::string (Litt::*selMethod)(IdValue id) const) const
 	{
 		return [=](IdValue id) { (this->*selMethod)(id); };
@@ -2954,6 +2964,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	InputListFunction getListGenre()  { return LIST_F(listGenres ("g",  WcS + s + WcS)); }
 	InputListFunction getListSeries() { return LIST_F(listSeries ("s",  WcS + s + WcS)); }
 	InputListFunction getListStory()  { return LIST_F(listStories(s + WcS));             }
+	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", WcS + s + WcS)); }
+	
 	#undef LIST_F
 
 	#define ESC_S(str) escSqlVal(str).c_str()
@@ -3023,6 +3035,10 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto genreIds    = GenreIds();
 		auto origtitle   = std::string(); 
 		auto rating      = std::string();
+		auto isbn        = std::string();
+		auto catId       = EmptyId;
+		auto pages       = EmptyUnsigned;
+		auto words       = EmptyUnsigned;
 		auto lang        = int('e');
 		auto owns        = int('n');
 		auto boughtEbook = int('n');
@@ -3070,6 +3086,10 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		input(dateRead, "Date read", drRegEx);
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
+		input(isbn, "ISBN");
+		input(catId, "Book CategoryID", cf(&Litt::selBookCategory), getListBookCategory());
+		input(pages, "Pages");
+		input(words, "Words");
 		if (hasStories) {
 			genreIds.clear();
 			for (auto const& ad : authors) for (auto const gi : ad.storyGenres) 
@@ -3111,6 +3131,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		printf("Title          : %s\n", title.c_str());
 		printf("Date read      : %s\n", dateRead.c_str());
 		printf("Rating         : %s\n", rating.c_str());
+		printf("ISBN           : %s\n", isbn.c_str());
+		printf("Category       : %s\n", selBookCategory(catId).c_str());
+		printf("Pages / Words  : %u / %u\n", pages, words);
 		printf("Genre(s)       : ");    printGenres(genreIds); printf("\n");
 		printf("Source         : %s\n", selSource(sourceId).c_str());
 		printf("Language       : %s\n", langStr(lang));
@@ -3131,8 +3154,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
-		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating) VALUES(%s,%s,'%s',%i,%i,%s);\n",
-			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str()));
+		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words) VALUES(%s,%s,'%s',%i,%i,%s,%s,%llu,%u,%u);\n",
+			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words));
 		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
 		for (auto gi : genreIds) {
