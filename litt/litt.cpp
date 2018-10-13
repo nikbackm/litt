@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
  * 2018-10-13: Added "wpp" column; words per page.
  * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
                with the new --cnt:b|p|w option.
@@ -511,6 +512,7 @@ namespace LittDefs
 		books,
 		pages,
 		words,
+		kwords,
 	};
 
 	const char*   DefDbName = "litt.sqlite";
@@ -1193,9 +1195,10 @@ public:
 		// Intended for use in listRereads
 		addColumnNumeric("brc", "ReadCount", -5, "Reads");
 		// This is for the "number of books" column in list*BookCounts.
-		addColumnNumericAggregate("bc",  "COUNT(Books.BookID)", -6, "Books");
-		addColumnNumericAggregate("bcp", "SUM(Books.Pages)",    -7, "Pages");
-		addColumnNumericAggregate("bcw", "SUM(Books.Words)",    -9, "Words");
+		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, "Books");
+		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, "Pages");
+		addColumnNumericAggregate("bcw", "SUM(Words)", -9, "Words");
+		addColumnNumericAggregate("bcwk", "SUM(Words)/1000", -6, "Kwords");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1373,6 +1376,7 @@ public:
 							if      (what == "b") m_count = Count::books;
 							else if (what == "p") m_count = Count::pages;
 							else if (what == "w") m_count = Count::words;
+							else if (what == "wk") m_count = Count::kwords;
 							else throw std::invalid_argument("Unrecognized cnt value: " + what);
 						}
 					}
@@ -2731,6 +2735,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		case Count::books: return "bc";
 		case Count::pages: return "bcp";
 		case Count::words: return "bcw";
+		case Count::kwords: return "bcwk";
 		default: throw std::logic_error("Invalid Count value: " + std::to_string((int)m_count));
 		}
 	}
@@ -2761,6 +2766,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		case Count::books: cwidth = 3u; break;
 		case Count::pages: cwidth = 5u; break;
 		case Count::words: cwidth = 8u; break;
+		case Count::kwords: cwidth = 5u; break;
 		}
 
 		auto col = getColumn(snColSelect);  col->usedInQuery = true;
@@ -2861,18 +2867,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		std::string const& cond,
 		std::vector<PeriodColumn> const& columns)
 	{
-		std::string whatCol, whatOp; unsigned colWidths;
+		std::string whatCol, sn; unsigned colWidths;
 		switch (m_count) {
-		case Count::books:
-			whatCol = "BookID"; whatOp = "COUNT"; colWidths = 4u;
-			break;
-		case Count::pages:
-			whatCol = "Pages"; whatOp = "SUM"; colWidths = 5u;
-			break;
-		case Count::words:
-			whatCol = "Words"; whatOp = "SUM"; colWidths = 8u;
-			break;
+		case Count::books: whatCol = "BookID"; sn = "bc"; colWidths = 4u; break;
+		case Count::pages: whatCol = "Pages"; sn = "bcp"; colWidths = 5u; break;
+		case Count::words: whatCol = "Words"; sn = "bcw"; colWidths = 8u; break;
+		case Count::kwords: whatCol = "Words"; sn = "bcwk"; colWidths = 5u; break;
 		}
+
+		std::string colOp = getColumn(sn)->nameDef;
 
 		period = quote(period);
 		OutputQuery q(*this);
@@ -2890,7 +2893,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.initSelectBare(); 
 		q.initOrderBy(period.c_str(), true);
 		q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
-		q.add(" (SELECT " + period + ", " + whatOp +"(" + whatCol + ") as Total FROM");
+		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
 		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("    FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 4);
@@ -2903,7 +2906,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		// We don't update the having condition, it should be same for all columns and not included in col defs.
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
 		q.add(" LEFT JOIN");
-		q.add(" (SELECT " + period + ", " + whatOp + "(" + whatCol + ") AS " + c.name + " FROM");
+		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
 		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("     FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 5);
