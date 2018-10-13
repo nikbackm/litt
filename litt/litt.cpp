@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-13: Added "by" column for first publication year of book.
  * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
  * 2018-10-13: Added "wpp" column; words per page.
  * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
@@ -293,7 +294,7 @@ DisplayMode values:
     tabs        Tab-separated values
 
 Column short name values:
-    bt, bi, ot       - Book title, BookID, Original title
+    bt, bi, by, ot   - Book title, BookID, First publication year, Original title
     ln, fn, ai       - Author last and first name, AuthorID
     nn, ng           - Author full name, Aggregated full name(s) per book
     ge, gi, gg       - Genre, GenreID, Genre(s) for book
@@ -1093,6 +1094,7 @@ public:
 		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
 		addColumnNumeric("bi", "BookID", -4);
 		addColumnTextWithLength("bt", "Title", 45);
+		addColumnNumeric("by", "Year", 4);
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
@@ -1911,7 +1913,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
+#define B_COLS     "bt.by.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
