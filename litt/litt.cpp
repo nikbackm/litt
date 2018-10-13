@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-13: Added "wpp" column; words per page.
  * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
                with the new --cnt:b|p|w option.
  * 2018-10-11: addBook now supports ISBN, category, pages and words.
@@ -1107,6 +1108,7 @@ public:
 		addColumnTextWithLength("cat", "Category", 11);
 		addColumnNumeric("pgs", "Pages", 5);
 		addColumnNumeric("wds", "Words", 6);
+		addColumnNumeric("wpp", "Words / Pages" , 4, "WPP");
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", -8);
