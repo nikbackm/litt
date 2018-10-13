@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
+               with the new --cnt:b|p|w option.
  * 2018-10-11: addBook now supports ISBN, category, pages and words.
  * 2018-10-11: Can now list and add book categories.
  * 2018-10-10: Added ISBN, Category (+id), Pages and Words columns.
@@ -176,14 +178,14 @@ Basic list actions:
    titlestory                     List books with same title as a story - Duplicates shown.
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
-List number of books read for author, genre, source and category. Can use virtual column "bc":
+List number of books read for author, genre, source and category. Can use virtual columns bc, bcp and bcw:
    abc|gbc|cbc [bookCountCond] [bRRs]  For author, genre, category. bRRs=1 => include re-reads.
    sbc         [bookCountCond]         For source. Re-reads are always included.
 
    abcy|gbcy|sbcy|cbcy [rowCount] [firstYear] [lastYear]
                                   - Yearly book counts for author, genre, source and category.
     
-List number of books read for specific periods along with a total count. Can use virtual column "prc":
+List number of books read for specific periods along with a total count. Can use virtual column prc:
    brmy [firstYear] [lastYear]    Total over month/year.
    brym [yearCondition]           Total over year/month.
 
@@ -258,7 +260,10 @@ Options:
                      * colC : Specify ANSI color for given column (either given as short name or full name).
                      * valC : Specify ANSI color for the given columns when the value of the given value
                               columns matches the included regex.
-
+							  
+    --cnt:[b|p|w]    Specify what to count in book count listings. Default (b) is books.
+                     Can also use 'p' for pages and 'w' for words. 
+    
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
     Note that if an option is included several times, then the last one will normally be the effective one.
     Some options like -a and -w are additive though and all option instances of those will be used.
@@ -499,6 +504,12 @@ namespace LittDefs
 	enum class ColumnSortOrder {
 		Asc = 0,
 		Desc = 1,
+	};
+
+	enum class Count {
+		books,
+		pages,
+		words,
 	};
 
 	const char*   DefDbName = "litt.sqlite";
@@ -1029,6 +1040,8 @@ class Litt {
 	std::string m_actionRightWildCard;
 	std::string m_actionLeftWildCard;
 
+	Count m_count = Count::books;
+
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
@@ -1179,6 +1192,8 @@ public:
 		addColumnNumeric("brc", "ReadCount", -5, "Reads");
 		// This is for the "number of books" column in list*BookCounts.
 		addColumnNumericAggregate("bc",  "COUNT(Books.BookID)", -6, "Books");
+		addColumnNumericAggregate("bcp", "SUM(Books.Pages)",    -7, "Pages");
+		addColumnNumericAggregate("bcw", "SUM(Books.Words)",    -9, "Words");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1348,6 +1363,15 @@ public:
 								throw std::invalid_argument("Unrecognized ansi sub-option: " + subOpt);
 							}
 							// TODO: header colors/style? just use defColor and bold?
+						}
+					}
+					else if (extName == "cnt") {
+						std::string what;
+						while (extVal.getNext(what)) {
+							if      (what == "b") m_count = Count::books;
+							else if (what == "p") m_count = Count::pages;
+							else if (what == "w") m_count = Count::words;
+							else throw std::invalid_argument("Unrecognized cnt value: " + what);
 						}
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
@@ -2699,15 +2723,26 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		runOutputQuery(query);
 	}
 
+	std::string getCountColumn()
+	{
+		switch (m_count) {
+		case Count::books: return "bc";
+		case Count::pages: return "bcp";
+		case Count::words: return "bcw";
+		default: throw std::logic_error("Invalid Count value: " + std::to_string((int)m_count));
+		}
+	}
+
 	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy)
 	{
-		auto selCols = columns + std::string(".bc");
-		if (!countCond.empty()) { addCountCondToHavingCondition("bc", countCond); }
+		std::string ccol = getCountColumn();
+		auto selCols = columns + std::string(".") + ccol;
+		if (!countCond.empty()) { addCountCondToHavingCondition(ccol.c_str(), countCond); }
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
 		getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
 
 		OutputQuery query(*this);
-		query.initSelect(selCols.c_str(), "Books", "bc.desc");
+		query.initSelect(selCols.c_str(), "Books", (ccol + ".desc").c_str());
 		query.addAuxTables();
 		query.addWhere();
 		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
@@ -2719,9 +2754,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy)
 	{
 		m_fitWidthOn = m_fitWidthAuto;
+		unsigned cwidth = 0u;
+		switch (m_count) {
+		case Count::books: cwidth = 3u; break;
+		case Count::pages: cwidth = 5u; break;
+		case Count::words: cwidth = 8u; break;
+		}
 
 		auto col = getColumn(snColSelect);  col->usedInQuery = true;
-		auto bc  = getColumn("bc");         bc->usedInQuery = true;
+		auto bc  = getColumn(getCountColumn()); bc->usedInQuery = true;
 		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
 
 		OutputQuery q(*this);
@@ -2734,7 +2775,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
-			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%3i - %%s',%s,%s) AS \"%i\"", year, bc->nameDef.c_str(), col->nameDef.c_str(), year);
+			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
 			q.add("FROM BOOKS");
 			q.addAuxTables();
 			q.adf("WHERE %s", ycond.c_str());
@@ -2818,11 +2859,24 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		std::string const& cond,
 		std::vector<PeriodColumn> const& columns)
 	{
+		std::string whatCol, whatOp; unsigned colWidths;
+		switch (m_count) {
+		case Count::books:
+			whatCol = "BookID"; whatOp = "COUNT"; colWidths = 4u;
+			break;
+		case Count::pages:
+			whatCol = "Pages"; whatOp = "SUM"; colWidths = 5u;
+			break;
+		case Count::words:
+			whatCol = "Words"; whatOp = "SUM"; colWidths = 8u;
+			break;
+		}
+
 		period = quote(period);
 		OutputQuery q(*this);
-		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(strlen("Total"));
+		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(std::max(colWidths, strlen("Total")));
 		q.columnRight.push_back(false);             q.columnRight.push_back(true);
-		for (auto& c : columns) { q.columnWidths.push_back(std::max(4u, c.colWidth())); q.columnRight.push_back(true); }
+		for (auto& c : columns) { q.columnWidths.push_back(std::max(colWidths, c.colWidth())); q.columnRight.push_back(true); }
 		q.initColumnWidths();
 		getColumn("dr")->usedInQuery = true; // Need to JOIN with DatesRead also when not used in WHERE.
 		std::string periodFunc;
@@ -2834,8 +2888,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.initSelectBare(); 
 		q.initOrderBy(period.c_str(), true);
 		q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
-		q.add(" (SELECT " + period + ", Count(BookID) as Total FROM");
-		q.add("   (SELECT BookID, " + periodFunc + " AS " + period);
+		q.add(" (SELECT " + period + ", " + whatOp +"(" + whatCol + ") as Total FROM");
+		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("    FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 4);
 		q.addWhere(4);
@@ -2847,8 +2901,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		// We don't update the having condition, it should be same for all columns and not included in col defs.
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
 		q.add(" LEFT JOIN");
-		q.add(" (SELECT " + period + ", Count(BookID) AS " + c.name + " FROM");
-		q.add("    (SELECT BookID, " + periodFunc + " AS " + period);
+		q.add(" (SELECT " + period + ", " + whatOp + "(" + whatCol + ") AS " + c.name + " FROM");
+		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("     FROM Books");
 		q.addAuxTables(IJF_DefaultsOnly, 5);
 		q.add("     WHERE " + ccond + ")");
