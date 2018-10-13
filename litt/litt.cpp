@@ -294,7 +294,8 @@ DisplayMode values:
     tabs        Tab-separated values
 
 Column short name values:
-    bt, bi, by, ot   - Book title, BookID, First publication year, Original title
+    bt, bi, bd, by   - Book title, BookID, First publication date and year
+    ot               - Original title
     ln, fn, ai       - Author last and first name, AuthorID
     nn, ng           - Author full name, Aggregated full name(s) per book
     ge, gi, gg       - Genre, GenreID, Genre(s) for book
@@ -1914,7 +1915,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.by.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
+#define B_COLS     "bt.bd.by.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
