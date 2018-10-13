@@ -1,7 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2018-10-13: Added "by" column for first publication year of book.
+ * 2018-10-13: Added "bd" and "by" column for first publication date and year of book.
  * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
  * 2018-10-13: Added "wpp" column; words per page.
  * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
@@ -1094,7 +1094,8 @@ public:
 		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
 		addColumnNumeric("bi", "BookID", -4);
 		addColumnTextWithLength("bt", "Title", 45);
-		addColumnNumeric("by", "Year", 4);
+		addColumnTextWithLength("bd", "Date", 10);
+		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, "BYear");
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
