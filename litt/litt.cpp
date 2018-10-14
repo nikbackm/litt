@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-14: Added column "drbd" (RDelay) that shows difference between Date read and first publication date
+               in days.
  * 2018-10-14: Can now compare columns with each other in where conditions. 
                If the second operand is a short column name, then the corresponding column
 			   will be used instead of the short name literal.
@@ -307,6 +309,7 @@ Column short name values:
     dw, dwl          - Day of week numeral and Day of week string for Date read
     dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
+    drbd             - Difference in days between Date read and Book date
     ra, own, la, beb - Rating, Owned, Language, Bought Ebook
     st, stid, stra   - Story, StoryID, Story rating
     btst             - Title combined with story (if there is one)
@@ -1142,8 +1145,14 @@ public:
 		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25);
 		addColumnNumeric("psmid", "PSMainID", -9, "PSMainID");
 
+#define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
+
 #define DR_FIXED "substr(\"Date Read\",1,10)"
 #define DR_SECS "CAST(ifnull(strftime('%s',\"Date Read\"), strftime('%s'," DR_FIXED ")) AS INTEGER)"
+#define DR_DAYS "CAST(ifnull(strftime('%J',\"Date Read\"), strftime('%J'," DR_FIXED ")) AS REAL)"
+
+#define BD_FIXED "CASE WHEN length(Date) = 10 THEN Date ELSE substr(Date||'-01-01', 1,10) END"
+#define BD_DAYS "CAST(strftime('%J'," BD_FIXED ") AS REAL)"
 
 		// Columns for more formats of Date Read:
 		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, "DOW");
@@ -1156,11 +1165,11 @@ public:
 		addColumnText("dymd", "substr(\"Date Read\",1,10)", 10, "YMDay");
 		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
 		addColumnNumeric("sec", DR_SECS, -11, "Timestamp");
+		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, "RDelay");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
 		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
-#define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
 
 #define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
 		addColumnNumeric("lag", "round(" LAG ", 1)", -5, "Lag");
@@ -1926,7 +1935,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.bd.by.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
+#define B_COLS     "bt.bd.by.drbd.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
@@ -1941,7 +1950,7 @@ public:
 
 #define AB_COLS    AW_COLS  "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
 
-#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind"
+#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd"
 
 #define SOW_COLS   "sp.sl.sc"
 #define DR_SO_COLS "soid.so." SOW_COLS
