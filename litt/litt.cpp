@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-14: Added "kw" column. Updated help and aux for forgotten new columns.
  * 2018-10-14: Added column "drbd" (RDelay) that shows difference between Date read and first publication date
                in days.
  * 2018-10-14: Can now compare columns with each other in where conditions. 
@@ -301,7 +302,10 @@ DisplayMode values:
 
 Column short name values:
     bt, bi, bd, by   - Book title, BookID, First publication date and year
-    ot               - Original title
+    isbn             - ISBN for book. May also be other ID like ASIN in case there is no ISBN
+    cat, catid, ot   - Book category, CategoryID, Original title
+    pgs, wds         - Book pages and words
+    wpp, kw          - Words per page and kilo-words
     ln, fn, ai       - Author last and first name, AuthorID
     nn, ng           - Author full name, Aggregated full name(s) per book
     ge, gi, gg       - Genre, GenreID, Genre(s) for book
@@ -309,7 +313,7 @@ Column short name values:
     dw, dwl          - Day of week numeral and Day of week string for Date read
     dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
-    drbd             - Difference in days between Date read and Book date
+    drbd             - Difference in days between Date read and first publication date
     ra, own, la, beb - Rating, Owned, Language, Bought Ebook
     st, stid, stra   - Story, StoryID, Story rating
     btst             - Title combined with story (if there is one)
@@ -1122,6 +1126,7 @@ public:
 		addColumnNumeric("pgs", "Pages", 5);
 		addColumnNumeric("wds", "Words", 6);
 		addColumnNumeric("wpp", "Words / Pages" , 4, "WPP");
+		addColumnNumeric("kw", "(Words + 500) / 1000", 4, "Kwords");
 		addColumnTextWithLength("ot", "\"Original Title\"", 45);
 		addColumnTextWithLength("se", "Series", 40);
 		addColumnNumeric("si", "SeriesID", -8);
@@ -1935,7 +1940,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.bd.by.drbd.ra.la.own.beb.isbn.catid.cat.pgs.wds.btastg." BS_SHARED
+#define B_COLS     "bt.bd.by.drbd.ra.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
