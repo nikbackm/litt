@@ -1215,7 +1215,7 @@ public:
 		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, "Books");
 		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, "Pages");
 		addColumnNumericAggregate("bcw", "SUM(Words)", -9, "Words");
-		addColumnNumericAggregate("bcwk", "SUM(Words)/1000", -6, "Kwords");
+		addColumnNumericAggregate("bcwk", "(SUM(Words)+500)/1000", -6, "Kwords");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
