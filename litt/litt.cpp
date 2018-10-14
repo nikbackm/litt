@@ -1,6 +1,10 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-14: Can now compare columns with each other in where conditions. 
+               If the second operand is a short column name, then the corresponding column
+			   will be used instead of the short name literal.
+ * 2018-10-14: Added "lte" and "gte" operators for where conditions. Replaced "ne" and "nq" with "neq".
  * 2018-10-13: Added "bd" and "by" column for first publication date and year of book.
  * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
  * 2018-10-13: Added "wpp" column; words per page.
@@ -274,7 +278,7 @@ Options:
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName|actualName>[.asc|desc]{.<shortName|actualName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
-          cmpOper: lt,gt,eq,nq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
+          cmpOper: lt,lte,gt,gte,eq,neq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
           cmpOper: range,nrange - These take two cmpArgs, for start and stop of range (both inclusive)
           cmpOper: and,or,nand,nor - These will consume the rest of the whereCond terms and AND/OR/NAND/NOR them using LIKE/=.
 colSizes format: Same as selColumns format
@@ -1537,13 +1541,15 @@ public:
 
 			auto val = opts.getNext(); // Either a value or an operation for the value coming up.
 			std::string oper;
-			if      (val == "lt") oper = "<";
-			else if (val == "gt") oper = ">";
-			else if (val == "eq") oper = "=";
-			else if (val == "nq" || val == "ne") oper = "notlike";
+			if      (val == "lt")  oper = "<";
+			else if (val == "lte") oper = "<=";
+			else if (val == "gt")  oper = ">";
+			else if (val == "gte") oper = ">=";
+			else if (val == "eq")  oper = "=";
+			else if (val == "neq") oper = "notlike";
 			else if (val == "isnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
 			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
-
+			
 			if (oper.empty()) {
 				oper = "LIKE";
 			}
@@ -1553,16 +1559,21 @@ public:
 				}
 			}
 
-			val = col->getLikeArg(val);
+			auto getOperand = [&col, this](std::string val) -> std::string {
+				auto valCol = m_columnInfos.find(val);
+				return (valCol != m_columnInfos.end()) ? valCol->second.nameDef : col->getLikeArg(std::move(val));
+			};
+
+			val = getOperand(val);
 
 			std::string snCond;
-			std::string colName(col->nameDef); 
-
-			if      (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
+			std::string colName(col->nameDef);
+						
+			if (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
 			else if (oper == "isempty") snCond = colName + " = ''";
-			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext());
-			else if (oper == "nrange")  snCond = "NOT (" + val + " <= " + colName + " AND " + colName + " <= " + col->getLikeArg(opts.getNext()) + ")";
+			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext());
+			else if (oper == "nrange")  snCond = "NOT (" + val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext()) + ")";
 			else if (oper == "and" || oper == "or" || oper == "nand" || oper == "nor") {
 				snCond = "(";
 				bool not = (oper[0] == 'n');
@@ -1572,7 +1583,7 @@ public:
 						+ val);
 					if (!opts.getNext(val)) break;
 					snCond.append(oper.back() == 'd' ? LogOp_AND : LogOp_OR);
-					val = col->getLikeArg(val);
+					val = getOperand(val);
 				}
 				snCond.append(")");
 			}
