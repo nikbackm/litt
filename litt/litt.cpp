@@ -3122,6 +3122,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto catId       = EmptyId;
 		auto pages       = EmptyUnsigned;
 		auto words       = EmptyUnsigned;
+		auto date        = std::string();
 		auto lang        = int('e');
 		auto owns        = int('n');
 		auto boughtEbook = int('n');
@@ -3170,6 +3171,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
 		input(isbn, "ISBN");
+		input(date, "First publication date");
 		input(catId, "Book CategoryID", cf(&Litt::selBookCategory), getListBookCategory());
 		input(pages, "Pages");
 		input(words, "Words");
@@ -3215,6 +3217,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		printf("Date read      : %s\n", dateRead.c_str());
 		printf("Rating         : %s\n", rating.c_str());
 		printf("ISBN           : %s\n", isbn.c_str());
+		printf("Date           : %s\n", date.c_str());
 		printf("Category       : %s\n", selBookCategory(catId).c_str());
 		printf("Pages / Words  : %u / %u\n", pages, words);
 		printf("Genre(s)       : ");    printGenres(genreIds); printf("\n");
@@ -3237,8 +3240,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
-		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words) VALUES(%s,%s,'%s',%i,%i,%s,%s,%llu,%u,%u);\n",
-			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words));
+		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
+		                          " VALUES(%s,%s,'%s',%i,%i,%s,%s,%llu,%u,%u,%s);\n",
+			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words, ESC_S(date)));
 		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
 		for (auto gi : genreIds) {
