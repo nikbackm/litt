@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-15: wk => kw everywhere, be consistent!
  * 2018-10-14: Added "kw" column. Updated help and aux for forgotten new columns.
  * 2018-10-14: Added column "drbd" (RDelay) that shows difference between Date read and first publication date
                in days.
@@ -8,7 +9,7 @@ Changelog:
                If the second operand is a short column name, then the corresponding column
 			   will be used instead of the short name literal.
  * 2018-10-14: Added "lte" and "gte" operators for where conditions. Replaced "ne" and "nq" with "neq".
- * 2018-10-13: Added "bd" and "by" column for first publication date and year of book.
+ * 2018-10-13: Added "bd" and "by" columns for first publication date and year of book.
  * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
  * 2018-10-13: Added "wpp" column; words per page.
  * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
@@ -188,7 +189,7 @@ Basic list actions:
    titlestory                     List books with same title as a story - Duplicates shown.
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
-List number of books read for author, genre, source and category. Can use virtual columns bc, bcp and bcw:
+List number of books read for author, genre, source and category. Can use virtual columns bc, bcp, bcw and bckw:
    abc|gbc|cbc [bookCountCond] [bRRs]  For author, genre, category. bRRs=1 => include re-reads.
    sbc         [bookCountCond]         For source. Re-reads are always included.
 
@@ -272,7 +273,7 @@ Options:
                               columns matches the included regex.
 							  
     --cnt:[b|p|w]    Specify what to count in book count listings. Default (b) is books.
-                     Can also use 'p' for pages and 'w' for words. 
+                     Can also use p for pages, w for words or kw for kilo-words.
     
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
     Note that if an option is included several times, then the last one will normally be the effective one.
@@ -1220,7 +1221,7 @@ public:
 		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, "Books");
 		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, "Pages");
 		addColumnNumericAggregate("bcw", "SUM(Words)", -9, "Words");
-		addColumnNumericAggregate("bcwk", "(SUM(Words)+500)/1000", -6, "Kwords");
+		addColumnNumericAggregate("bckw", "(SUM(Words)+500)/1000", -6, "Kwords");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1398,7 +1399,7 @@ public:
 							if      (what == "b") m_count = Count::books;
 							else if (what == "p") m_count = Count::pages;
 							else if (what == "w") m_count = Count::words;
-							else if (what == "wk") m_count = Count::kwords;
+							else if (what == "kw") m_count = Count::kwords;
 							else throw std::invalid_argument("Unrecognized cnt value: " + what);
 						}
 					}
@@ -2764,7 +2765,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		case Count::books: return "bc";
 		case Count::pages: return "bcp";
 		case Count::words: return "bcw";
-		case Count::kwords: return "bcwk";
+		case Count::kwords: return "bckw";
 		default: throw std::logic_error("Invalid Count value: " + std::to_string((int)m_count));
 		}
 	}
@@ -2896,12 +2897,13 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		std::string const& cond,
 		std::vector<PeriodColumn> const& columns)
 	{
-		std::string whatCol, sn; unsigned colWidths;
+		std::string sn = getCountColumn();
+		std::string whatCol; unsigned colWidths;
 		switch (m_count) {
-		case Count::books: whatCol = "BookID"; sn = "bc"; colWidths = 4u; break;
-		case Count::pages: whatCol = "Pages"; sn = "bcp"; colWidths = 5u; break;
-		case Count::words: whatCol = "Words"; sn = "bcw"; colWidths = 8u; break;
-		case Count::kwords: whatCol = "Words"; sn = "bcwk"; colWidths = 5u; break;
+		case Count::books: whatCol = "BookID"; colWidths = 4u; break;
+		case Count::pages: whatCol = "Pages"; colWidths = 5u; break;
+		case Count::words: whatCol = "Words"; colWidths = 8u; break;
+		case Count::kwords: whatCol = "Words"; colWidths = 5u; break;
 		}
 
 		std::string colOp = getColumn(sn)->nameDef;
