@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-16: Added actions "lbc/lbcy" and "obc/obcy" to count languages and original languages.
  * 2018-10-16: Language now has its own table. Added ISBD, Date and Language to OriginalTitles.
  * 2018-10-15: wk => kw everywhere, be consistent!
  * 2018-10-14: Added "kw" column. Updated help and aux for forgotten new columns.
@@ -192,10 +193,12 @@ Basic list actions:
 
 List number of books read for author, genre, source and category. Can use virtual columns bc, bcp, bcw and bckw:
    abc|gbc|cbc [bookCountCond] [bRRs]  For author, genre, category. bRRs=1 => include re-reads.
+   lbc|obc     [bookCountCond] [bRRs]  For language and original title language. bRRs=1 => include re-reads.
    sbc         [bookCountCond]         For source. Re-reads are always included.
 
-   abcy|gbcy|sbcy|cbcy [rowCount] [firstYear] [lastYear]
-                                  - Yearly book counts for author, genre, source and category.
+   abcy|gbcy|sbcy|cbcy|lbcy|obcy [rowCount] [firstYear] [lastYear]
+                                  - Yearly book counts for author, genre, source, category, 
+                                    language and original title language.
     
 List number of books read for specific periods along with a total count. Can use virtual column prc:
    brmy [firstYear] [lastYear]    Total over month/year.
@@ -2787,7 +2790,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy)
+	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		std::string ccol = getCountColumn();
 		auto selCols = columns + std::string(".") + ccol;
@@ -2797,7 +2800,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 		OutputQuery query(*this);
 		query.initSelect(selCols.c_str(), "Books", (ccol + ".desc").c_str());
-		query.addAuxTables();
+		query.addAuxTables(opt);
 		query.addWhere();
 		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
 		query.addHaving();
@@ -2805,7 +2808,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		runOutputQuery(query);
 	}
 
-	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy)
+	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		m_fitWidthOn = m_fitWidthAuto;
 		unsigned cwidth = 0u;
@@ -2832,7 +2835,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
 			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
 			q.add("FROM BOOKS");
-			q.addAuxTables();
+			q.addAuxTables(opt);
 			q.adf("WHERE %s", ycond.c_str());
 			q.adf("GROUP BY %s", gby->nameDef.c_str());
 			q.addHaving();
@@ -3655,17 +3658,26 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "cbc") {
 			listBookCounts(arg(0), arg(1) == "1", "cat", "catid");
 		}
-		else if (action == "abcy" || action == "gbcy" || action == "sbcy" || action == "cbcy") {
+		else if (action == "lbc") {
+			listBookCounts(arg(0), arg(1) == "1", "la", "laid", IJF_OrigTitle);
+		}
+		else if (action == "obc") {
+			listBookCounts(arg(0), arg(1) == "1", "otla", "otli", IJF_OrigTitle);
+		}
+		else if (action == "abcy" || action == "gbcy" || action == "sbcy" || action == "cbcy" || action == "lbcy" || action == "obcy") {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
+			auto opt = IJF_DefaultsOnly;
 			switch (action[0]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
 				case 's': snSel = "so"; snGby = "soid"; break;
 				case 'c': snSel = "cat"; snGby = "catid"; break;
+				case 'l': snSel = "la"; snGby = "laid"; opt = IJF_OrigTitle; break;
+				case 'o': snSel = "otla"; snGby = "otli"; opt = IJF_OrigTitle; break;
 			}
-			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby);
+			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, opt);
 		}
 		else if (action == "brd") {
 			listBooksReadPerDate(arg(0));
