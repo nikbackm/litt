@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-16: Language now has its own table. Added ISBD, Date and Language to OriginalTitles.
  * 2018-10-15: wk => kw everywhere, be consistent!
  * 2018-10-14: Added "kw" column. Updated help and aux for forgotten new columns.
  * 2018-10-14: Added column "drbd" (RDelay) that shows difference between Date read and first publication date
@@ -302,9 +303,16 @@ DisplayMode values:
     tabs        Tab-separated values
 
 Column short name values:
-    bt, bi, bd, by   - Book title, BookID, First publication date and year
+    bt, bi           - Book title, BookID
+    cat, catid       - Book category, CategoryID
+    ra, own, beb     - Rating, Owned, Bought Ebook
+    ot               - Original title
+    la, laid         - Language, LangID
+    otla, otli       - Language and LangID for the original title
+    bd, by           - First publication date and year	
+    otd, oty         - First publication date and year for the original title
     isbn             - ISBN for book. May also be other ID like ASIN in case there is no ISBN
-    cat, catid, ot   - Book category, CategoryID, Original title
+    otis             - ISBN for the original title
     pgs, wds         - Book pages and words
     wpp, kw          - Words per page and kilo-words
     ln, fn, ai       - Author last and first name, AuthorID
@@ -315,7 +323,6 @@ Column short name values:
     dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
     drbd             - Difference in days between Date read and first publication date
-    ra, own, la, beb - Rating, Owned, Language, Bought Ebook
     st, stid, stra   - Story, StoryID, Story rating
     btst             - Title combined with story (if there is one)
     stge, stgg       - Genre and Genre(s) for story
@@ -1108,7 +1115,9 @@ public:
 		addColumnNumeric("bi", "BookID", -4);
 		addColumnTextWithLength("bt", "Title", 45);
 		addColumnTextWithLength("bd", "Date", 10);
+		addColumnTextWithLength("otd", "otDate", 10);
 		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, "BYear");
+		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, "otYear");
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
@@ -1118,10 +1127,14 @@ public:
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
 		addColumnTextWithLength("nn", A_NAME, 25, "Author");
-		addColumnText("la", "Language", 4);
+		addColumnNumeric("laid", "Books.LangID", 6, "LangID");
+		addColumnNumeric("otli", "OriginalTitles.LangID", 8, "otLangID");
+		addColumnText("la", "L_book.Language", 4, "Lang");
+		addColumnText("otla", "L_ot.Language", 4, "otLa");
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
 		addColumnNumeric("own", "Owned", 3);
 		addColumnTextWithLength("isbn", "ISBN", 13);
+		addColumnTextWithLength("otis", "otISBN", 13);
 		addColumnNumeric("catid", "CategoryID", 3);
 		addColumnTextWithLength("cat", "Category", 11);
 		addColumnNumeric("pgs", "Pages", 5);
@@ -1941,7 +1954,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.bd.by.drbd.ra.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED
+#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
@@ -1967,8 +1980,9 @@ public:
 #define GG_COLS    "gg.bsgg"
 
 #define S_COLS     "si.pa.se"
+#define OT_COLS    "ot.otli.otis.otd.oty.otla"
 
-#define A_AB_COLS  "bi.ng.ot.dg.bstg." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
+#define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
 #define B_AB_COLS  "ai."               AB_COLS "." A_COLS
 #define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS "." GW_COLS
 
@@ -1987,21 +2001,24 @@ public:
 
 			addIfColumns("cat",                 indent + "LEFT JOIN BookCategory USING(CategoryID)"); // TODO: remove LEFT when all books have cat added!
 
+			addIfColumns("la",                       indent + "JOIN Language L_book ON(L_book.LangID = Books.LangID)");
+
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
 			addIfColumns(DR_F_COLS,                  indent + "JOIN DatesRead USING(BookID)");
 			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
 
-			addIfColumns("so",                       indent +  "JOIN Sources USING(SourceID)");
+			addIfColumns("so",                       indent + "JOIN Sources USING(SourceID)");
 
-			addIfColumns(G_COLS,                     indent +  "JOIN BookGenres USING(BookID)");
-			addIfColumns(GE_COLS,                    indent +  "JOIN Genres GBook USING(GenreID)");
-			addIfColumns(GG_COLS,                    indent +  "JOIN " + gg + " USING(BookID)");
+			addIfColumns(G_COLS,                     indent + "JOIN BookGenres USING(BookID)");
+			addIfColumns(GE_COLS,                    indent + "JOIN Genres GBook USING(GenreID)");
+			addIfColumns(GG_COLS,                    indent + "JOIN " + gg + " USING(BookID)");
 
-			addIfColumns("ot",                       indent +  ortJoin + " JOIN OriginalTitles USING(BookID)");
+			addIfColumns(OT_COLS,                    indent + ortJoin + " JOIN OriginalTitles USING(BookID)");
+			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(L_ot.LangID = OriginalTitles.LangID)");
 
-			addIfColumns(S_COLS,                     indent +  serJoin + " JOIN BookSeries USING(BookID)");
-			addIfColumns("se",                       indent +  serJoin + " JOIN Series USING(SeriesID)");
+			addIfColumns(S_COLS,                     indent + serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns("se",                       indent + serJoin + " JOIN Series USING(SeriesID)");
 
 			if ((opt & Skip_Stories) == 0) {
 				if (litt.m_hasBookStories) {
