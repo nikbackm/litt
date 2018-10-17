@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-17: addBook now supports language change and new OT columns.
  * 2018-10-16: Added actions "lbc/lbcy" and "obc/obcy" to count languages and original languages.
  * 2018-10-16: Language now has its own table. Added ISBD, Date and Language to OriginalTitles.
  * 2018-10-15: wk => kw everywhere, be consistent!
@@ -3074,6 +3075,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	std::string selAuthor(IdValue id) const { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
 	std::string selStory(IdValue id) const { return selDV(fmt("SELECT Story FROM Stories WHERE StoryID=%llu", id), "StoryID"); }
 	std::string selBookCategory(IdValue id) const { return selDV(fmt("SELECT Category FROM BookCategory WHERE CategoryID=%llu", id), "CategoryID"); }
+	std::string selLanguage(IdValue id) const { return selDV(fmt("SELECT Language FROM Language WHERE LangID=%llu", id), "LangID"); }
 	
 	InputCheckIdFunction cf(std::string (Litt::*selMethod)(IdValue id) const) const
 	{
@@ -3087,7 +3089,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	InputListFunction getListGenre()  { return LIST_F(listGenres ("g",  WcS + s + WcS)); }
 	InputListFunction getListSeries() { return LIST_F(listSeries ("s",  WcS + s + WcS)); }
 	InputListFunction getListStory()  { return LIST_F(listStories(s + WcS));             }
-	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", WcS + s + WcS)); }
+	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", s + WcS)); }
+	InputListFunction getListLanguage() { return LIST_F(listBookLanguages("l", s + WcS)); }
 	
 	#undef LIST_F
 
@@ -3156,14 +3159,17 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
 		auto sourceId    = EmptyId;
 		auto genreIds    = GenreIds();
-		auto origtitle   = std::string(); 
+		auto origtitle   = std::string();
+		auto otLangId    = EmptyId;
+		auto otIsbn      = std::string();
+		auto otDate      = std::string();
 		auto rating      = std::string();
 		auto isbn        = std::string();
 		auto catId       = EmptyId;
 		auto pages       = EmptyUnsigned;
 		auto words       = EmptyUnsigned;
 		auto date        = std::string();
-		auto lang        = int('e');
+		auto langId      = IdValue{2}; // English
 		auto owns        = int('n');
 		auto boughtEbook = int('n');
 		auto seriesId    = EmptyId;
@@ -3224,8 +3230,13 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else {
 			inputGenres(genreIds, "Book GenreID");
 		}
+		input(langId, "LangID", cf(&Litt::selLanguage), getListLanguage());
 		input(origtitle, "Original title (optional)", optional);
-		ask("es", "Language", lang);
+		if (!origtitle.empty()) {
+			input(otIsbn, "OT ISBN");
+			input(otDate, "OT first publication date");
+			input(otLangId, "OT LangID", cf(&Litt::selLanguage), getListLanguage());
+		}
 		ask("yn", "Own book", owns);
 		ask("yn", "Bought ebook", boughtEbook);
 		input(seriesId, "SeriesID (optional)", cf(&Litt::selSeries), getListSeries(), optional);
@@ -3233,7 +3244,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			input(seriesPart, "Part in series");
 		}
 
-		auto langStr = [](int l) { return l == 'e' ? "en" : "sv"; };
 		auto ynStr = [](int yn) { return yn == 'y' ? "yes" : "no"; };
 		auto ynInt = [](int yn) { return yn == 'y' ? 1     : 0;    };
 
@@ -3262,11 +3272,14 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		printf("Pages / Words  : %u / %u\n", pages, words);
 		printf("Genre(s)       : ");    printGenres(genreIds); printf("\n");
 		printf("Source         : %s\n", selSource(sourceId).c_str());
-		printf("Language       : %s\n", langStr(lang));
+		printf("Language       : %s\n", selLanguage(langId).c_str());
 		printf("Owned          : %s\n", ynStr(owns));
 		printf("Bought e-book  : %s\n", ynStr(boughtEbook));
 		if (!origtitle.empty()) {
-		printf("Original title : %s\n", origtitle.c_str()); }
+		printf("Original title : %s\n", origtitle.c_str());
+		printf("OT ISBN        : %s\n", otIsbn.c_str());
+		printf("OT Date        : %s\n", otDate.c_str());
+		printf("OT Language    : %s\n", selLanguage(otLangId).c_str()); }
 		if (seriesId != EmptyId) {
 		printf("Series         : Part %s of %s\n", seriesPart.c_str(), selSeries(seriesId).c_str()); }
 		printf("\n");
@@ -3280,9 +3293,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
 
 		std::string sql = "BEGIN TRANSACTION;\n";
-		sql.append(fmt("INSERT INTO Books (BookID,Title,Language,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
-		                          " VALUES(%s,%s,'%s',%i,%i,%s,%s,%llu,%u,%u,%s);\n",
-			bid, ESC_S(title), langStr(lang), ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words, ESC_S(date)));
+		sql.append(fmt("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
+		                          " VALUES(%s,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);\n",
+			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words, ESC_S(date)));
 		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
 		for (auto gi : genreIds) {
@@ -3303,8 +3316,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			}
 		}
 		if (!origtitle.empty()) {
-			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\") VALUES(%s,%s);\n",
-				bid, ESC_S(origtitle)));
+			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%s,%s,%llu,%s,%s);\n",
+				bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate)));
 		}
 		if (seriesId != EmptyId) {
 			sql.append(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%s,%llu,%s);\n",
