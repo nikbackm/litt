@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-17: Added column "bdod" that shows difference between book and original title first publication dates.
  * 2018-10-17: addBook now supports language change and new OT columns.
  * 2018-10-16: Added actions "lbc/lbcy" and "obc/obcy" to count languages and original languages.
  * 2018-10-16: Language now has its own table. Added ISBD, Date and Language to OriginalTitles.
@@ -328,6 +329,7 @@ Column short name values:
     dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
     drbd             - Difference in days between Date read and first publication date
+    bdod             - Difference in days between book and original title first publication dates
     st, stid, stra   - Story, StoryID, Story rating
     btst             - Title combined with story (if there is one)
     stge, stgg       - Genre and Genre(s) for story
@@ -1180,6 +1182,9 @@ public:
 #define BD_FIXED "CASE WHEN length(Date) = 10 THEN Date ELSE substr(Date||'-01-01', 1,10) END"
 #define BD_DAYS "CAST(strftime('%J'," BD_FIXED ") AS REAL)"
 
+#define OTD_FIXED "CASE WHEN length(otDate) = 10 THEN otDate ELSE substr(otDate||'-01-01', 1,10) END"
+#define OTD_DAYS "CAST(strftime('%J'," OTD_FIXED ") AS REAL)"
+
 		// Columns for more formats of Date Read:
 		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, "DOW");
 		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
@@ -1192,6 +1197,7 @@ public:
 		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
 		addColumnNumeric("sec", DR_SECS, -11, "Timestamp");
 		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, "RDelay");
+		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, "TDelay");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
@@ -1961,7 +1967,9 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED
+#define BOT_SHARED "bdod"
+
+#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED "." BOT_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
@@ -1987,7 +1995,7 @@ public:
 #define GG_COLS    "gg.bsgg"
 
 #define S_COLS     "si.pa.se"
-#define OT_COLS    "ot.otli.otis.otd.oty.otla"
+#define OT_COLS    "ot.otli.otis.otd.oty.otla." BOT_SHARED
 
 #define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
 #define B_AB_COLS  "ai."               AB_COLS "." A_COLS
