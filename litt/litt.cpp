@@ -184,6 +184,7 @@ Basic list actions:
    g|gg   [genre]                 List genre - without/with books.
    so|soo [source]                List book sources where a certain book "read" was gotten - without/with books.
    c|cc   [bookCategory]          List book category - without/with books.
+   l|ll   [language]              List language - without/with books.
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
    sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
@@ -1131,7 +1132,8 @@ public:
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
 		addColumnTextWithLength("nn", A_NAME, 25, "Author");
-		addColumnNumeric("laid", "Books.LangID", 6, "LangID");
+		addColumnNumeric("laid", "Books.LangID", 6);
+		addColumnNumeric("laid_n", "LangID", 6);
 		addColumnNumeric("otli", "OriginalTitles.LangID", 8, "otLangID");
 		addColumnText("la", "L_book.Language", 4, "Lang");
 		addColumnText("otla", "L_ot.Language", 4, "otLa");
@@ -2005,7 +2007,7 @@ public:
 
 			addIfColumns("cat",                 indent + "LEFT JOIN BookCategory USING(CategoryID)"); // TODO: remove LEFT when all books have cat added!
 
-			addIfColumns("la",                       indent + "JOIN Language L_book ON(L_book.LangID = Books.LangID)");
+			addIfColumns("la",                       indent + "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
 
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
@@ -2019,7 +2021,7 @@ public:
 			addIfColumns(GG_COLS,                    indent + "JOIN " + gg + " USING(BookID)");
 
 			addIfColumns(OT_COLS,                    indent + ortJoin + " JOIN OriginalTitles USING(BookID)");
-			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(L_ot.LangID = OriginalTitles.LangID)");
+			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
 
 			addIfColumns(S_COLS,                     indent + serJoin + " JOIN BookSeries USING(BookID)");
 			addIfColumns("se",                       indent + serJoin + " JOIN Series USING(SeriesID)");
@@ -2706,6 +2708,16 @@ public:
 		}
 	}
 
+	void listBookLanguages(std::string const & action, std::string const & catName)
+	{
+		addActionWhereCondition("la", catName);
+		if (action == "l") {
+			runSingleTableOutputCmd("laid_n.la", "Language L_book", "laid_n");
+		}
+		else {
+			runListData("la.bi.bt.dr.nn", "la.dr.bi.ln.fn");
+		}
+	}
 	void listRereads()
 	{
 		OutputQuery query(*this);
@@ -3634,6 +3646,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "c" || action == "cc") {
 			listBookCategories(action, arg(0));
+		}
+		else if (action == "l" || action == "ll") {
+			listBookLanguages(action, arg(0));
 		}
 		else if (action == "rereads") {
 			listRereads();
