@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-17: Cleaned up the help for the list book count actions. Got rid of redundant column "prc".
  * 2018-10-17: Added column "bdod" that shows difference between book and original title first publication dates.
  * 2018-10-17: addBook now supports language change and new OT columns.
  * 2018-10-16: Added actions "lbc/lbcy" and "obc/obcy" to count languages and original languages.
@@ -194,24 +195,23 @@ Basic list actions:
    titlestory                     List books with same title as a story - Duplicates shown.
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
 
-List number of books read for author, genre, source and category. Can use virtual columns bc, bcp, bcw and bckw:
-   abc|gbc|cbc [bookCountCond] [bRRs]  For author, genre, category. bRRs=1 => include re-reads.
-   lbc|obc     [bookCountCond] [bRRs]  For language and original title language. bRRs=1 => include re-reads.
-   sbc         [bookCountCond]         For source. Re-reads are always included.
+List book counts or sums as determined by --cnt option. Can use virtual columns bc, bcp, bcw and bckw:
+   abc|gbc|cbc [bookCountCond] [bRRs]  - For author, genre, category. bRRs=1 => include re-reads.
+   lbc|obc     [bookCountCond] [bRRs]  - For language and original title language. bRRs=1 => include re-reads.
+   sbc         [bookCountCond]         - For source. Re-reads are always included.
 
    abcy|gbcy|sbcy|cbcy|lbcy|obcy [rowCount] [firstYear] [lastYear]
-                                  - Yearly book counts for author, genre, source, category, 
-                                    language and original title language.
+                                       - Yearly book counts for author, genre, source, category, 
+                                         language and original title language.
     
-List number of books read for specific periods along with a total count. Can use virtual column prc:
-   brmy [firstYear] [lastYear]    Total over month/year.
-   brym [yearCondition]           Total over year/month.
+   brmy [firstYear] [lastYear]         - Over month/year plus Total.
+   brym [yearCondition]                - Over year/month plus Total.
 
    brm|bry|brwd [periodCondition] {<columnWhereCond> <columnName>}
-                                  - Total over year-months, years and weekdays with optional extra columns.
+                                       - Total over year-months, years and weekdays with optional extra columns.
 
    brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
-                                  - Generalization of brm,bry,brwd, can customize the period and its name.
+                                       - Generalization of brm,bry,brwd, can customize the period and its name.
 )" 
 	,stdout); if (1 <= level) fputs(
 R"(
@@ -1237,13 +1237,10 @@ public:
 #undef DR_FIXED
 		
 		// Special-purpose "virtual" columns, these are not generally usable:
-		// Intended for use in -w for listBooksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
-		addColumnNumericAggregate("prc", "Count(BookID)", 0);
-		// Intended for use in listSametitle
-		addColumnNumeric("btc", "TitleCount", -5, "Count");
-		// Intended for use in listRereads
-		addColumnNumeric("brc", "ReadCount", -5, "Reads");
-		// This is for the "number of books" column in list*BookCounts.
+		//
+		addColumnNumeric("btc", "TitleCount", -5, "Count"); // for listSametitle
+		addColumnNumeric("brc", "ReadCount", -5, "Reads");  // for listRereads
+		// These are for the book count actions.
 		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, "Books");
 		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, "Pages");
 		addColumnNumericAggregate("bcw", "SUM(Words)", -9, "Words");
@@ -2727,6 +2724,7 @@ public:
 			runListData("la.bi.bt.dr.nn", "la.dr.bi.ln.fn");
 		}
 	}
+
 	void listRereads()
 	{
 		OutputQuery query(*this);
