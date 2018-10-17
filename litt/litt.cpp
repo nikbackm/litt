@@ -1124,9 +1124,10 @@ public:
 		addColumnTextWithLength("dr", "\"Date Read\"", 10);
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
 		addColumnTextWithLength("fn", "\"First Name\"", 15);
-		addColumnTextWithLength("ge", "GBook.Genre", 30, "Genre");
+		addColumnTextWithLength("ge", "GBook.Genre", 30);
 		addColumnTextWithLength("gg", "\"Genre(s)\"", 30);
-		addColumnNumeric("gi", "GenreID", -8);
+		addColumnNumeric("gi", "BookGenres.GenreID", -7);
+		addColumnNumeric("gi_n", "GenreID", -7);
 		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
 		addColumnTextWithLength("nn", A_NAME, 25, "Author");
@@ -2014,7 +2015,7 @@ public:
 			addIfColumns("so",                       indent + "JOIN Sources USING(SourceID)");
 
 			addIfColumns(G_COLS,                     indent + "JOIN BookGenres USING(BookID)");
-			addIfColumns(GE_COLS,                    indent + "JOIN Genres GBook USING(GenreID)");
+			addIfColumns(GE_COLS,                    indent + "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
 			addIfColumns(GG_COLS,                    indent + "JOIN " + gg + " USING(BookID)");
 
 			addIfColumns(OT_COLS,                    indent + ortJoin + " JOIN OriginalTitles USING(BookID)");
@@ -2034,7 +2035,7 @@ public:
 				}
 			}
 			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN StoryGenres USING(StoryID)");
-			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN Genres GStory USING(GenreID)");
+			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
 			addIfColumns(ST_GG_COLS,                 indent + "LEFT JOIN " + stgg + " USING(StoryID)");
 			addIfColumns("stng",                     indent + "LEFT JOIN " + stng + " USING(BookID,StoryID)");
 			addIfColumns(ASTG_COLS,                  indent + "LEFT JOIN " + astg + " USING(AuthorID,BookID)");
@@ -2652,7 +2653,7 @@ public:
 	{
 		addActionWhereCondition("ge", genre);
 		if (action == "g") {
-			runSingleTableOutputCmd("gi.ge.50", "Genres GBook", "ge");
+			runSingleTableOutputCmd("gi_n.ge.50", "Genres GBook", "ge");
 		}
 		else {
 			runListData("gg.bi.bsra.btst.dr.nn", "gg.dr.bi.ln.fn");
