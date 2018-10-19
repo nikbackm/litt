@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-19: listOriginalTitles: Add otLa, use ng and gg instead of nn and ge.
  * 2018-10-17: Cleaned up the help for the list book count actions. Got rid of redundant column "prc".
  * 2018-10-17: Added column "bdod" that shows difference between book and original title first publication dates.
  * 2018-10-17: addBook now supports language change and new OT columns.
@@ -2671,7 +2672,7 @@ public:
 	void listOriginalTitles()
 	{
 		addActionWhereCondition("ot", 0);
-		runListData("bi.nn.ot.bt.dr.so.ge", "ot.dr.bi.ln.fn", IJF_OrigTitle);
+		runListData("bi.ng.otla.ot.bt.dr.so.gg", "ot.dr.bi", IJF_OrigTitle);
 	}
 
 	void listStories()
