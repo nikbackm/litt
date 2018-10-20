@@ -1110,7 +1110,7 @@ class Litt {
 	{
 		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label, true); 
 	}
-
+/*
 #define ADJUST_IGNORE(strlit,n,s) \
 	if ((n > sizeof(strlit)-1) && sqlite3_strnicmp(strlit, s, std::min((int)(sizeof(strlit)-1), n)) == 0) \
 		{ n -= (sizeof(strlit)-1); s += (sizeof(strlit)-1); return; }
@@ -1149,6 +1149,7 @@ class Litt {
 		int r = sqlite3_strnicmp(s1, s2, std::min(n1, n2));
 		return r == 0 ? n1 - n2 : r;
 	}
+*/
 
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
@@ -1158,8 +1159,8 @@ public:
 	{
 		const char* const CDefault = nullptr;
 		const char* const CNoCase = "NOCASE";
-		const char* const CTitle = "TITLE";
-		const char* const CLastName = "LASTNAME";
+		const char* const CTitle = "NOCASE";
+		const char* const CLastName = "NOCASE";
 
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 		addColumnNumeric("ai", "AuthorID", -8);
@@ -1521,12 +1522,12 @@ public:
 		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
 		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
 
-		auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
+		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
 			if (sqlite3_create_collation(conn, name, SQLITE_UTF8, nullptr, xCompare) != SQLITE_OK)
 				throw std::runtime_error(fmt("Failed to create collation %s: %s", name, sqlite3_errmsg(conn)));
 		};
 		createCollation(CLastName, &cmpLastName);
-		createCollation(CTitle, &cmpTitle);
+		createCollation(CTitle, &cmpTitle);*/
 	}
 
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
