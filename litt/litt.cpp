@@ -587,12 +587,13 @@ namespace LittDefs
 		std::string const label; // optional, used when name does not refer to a direct table column.
 		bool        const isGroupAggregate;
 		bool        const justifyRight;
-		ColumnInfo const* lengthColumn; // Will be set only if the column has a length column added.
+		ColumnInfo const* lengthColumn = nullptr; // Will be set only if the column has a length column added.
+		const char*       collation = nullptr; // Only set if not using the default (usually BINARY)
 
 		// These values are set at runtime. Stored here for convenience.
-		mutable int  overriddenWidth;
-		mutable bool usedInQuery;
-		mutable bool usedInResult; 
+		mutable int  overriddenWidth = -1;
+		mutable bool usedInQuery = false;
+		mutable bool usedInResult = false; 
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
@@ -1082,8 +1083,6 @@ class Litt {
 		if (!res.second) {
 			throw std::logic_error("Duplicate short name: " + sn);
 		}
-		res.first->second.overriddenWidth = -1;
-		res.first->second.usedInQuery = false;
 		return res.first->second;
 	}
 
@@ -1097,12 +1096,13 @@ class Litt {
 		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label);
 	}
 
-	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "" )
+	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, const char* collation, std::string const & label = "")
 	{
 		auto& ci = addColumnText(sn, nameDef, defWidth, label);
 		auto const labelLength = "l_" + sn;
 		auto & ciLength = addColumnNumeric(sn + "l", "length(" + nameDef + ")", labelLength.length(), labelLength);
 		ci.lengthColumn = &ciLength;
+		ci.collation = collation;
 		return ci;
 	}
 
@@ -1111,31 +1111,75 @@ class Litt {
 		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label, true); 
 	}
 
-public:
+#define ADJUST_IGNORE(strlit,n,s) \
+	if ((n > sizeof(strlit)-1) && sqlite3_strnicmp(strlit, s, std::min((int)(sizeof(strlit)-1), n)) == 0) \
+		{ n -= (sizeof(strlit)-1); s += (sizeof(strlit)-1); return; }
+
+	static void adjustLastName(int& n, const char*& s)
+	{
+		ADJUST_IGNORE("de ", n, s);
+		ADJUST_IGNORE("van ", n, s);
+		ADJUST_IGNORE("von ", n, s);
+		ADJUST_IGNORE("lord ", n, s);
+	}
+
+	static int cmpLastName(void*, int n1, const void* p1, int n2, const void* p2)
+	{
+		auto s1 = static_cast<const char *>(p1);
+		auto s2 = static_cast<const char *>(p2);
+		adjustLastName(n1, s1);
+		adjustLastName(n2, s2);
+		int r = sqlite3_strnicmp(s1, s2, std::min(n1, n2));
+		return r == 0 ? n1 - n2 : r;
+	}
+
+	static void adjustTitle(int& n, const char*& s)
+	{
+		ADJUST_IGNORE("the ", n, s);
+		ADJUST_IGNORE("an ", n, s);
+		ADJUST_IGNORE("a ", n, s);
+	}
+
+	static int cmpTitle(void*, int n1, const void* p1, int n2, const void* p2)
+	{
+		auto s1 = static_cast<const char *>(p1);
+		auto s2 = static_cast<const char *>(p2);
+		adjustTitle(n1, s1);
+		adjustTitle(n2, s2);
+		int r = sqlite3_strnicmp(s1, s2, std::min(n1, n2));
+		return r == 0 ? n1 - n2 : r;
+	}
+
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
 
+public:
 	Litt(int argc, char** argv)
 	{
+		const char* const CDefault = nullptr;
+		const char* const CNoCase = "NOCASE";
+		const char* const CTitle = "TITLE";
+		const char* const CLastName = "LASTNAME";
+
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 		addColumnNumeric("ai", "AuthorID", -8);
 		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
 		addColumnNumeric("bi", "BookID", -4);
-		addColumnTextWithLength("bt", "Title", 45);
-		addColumnTextWithLength("bd", "Date", 10);
-		addColumnTextWithLength("otd", "otDate", 10);
+		addColumnTextWithLength("bt", "Title", 45, CTitle);
+		addColumnTextWithLength("bd", "Date", 10, CDefault);
+		addColumnTextWithLength("otd", "otDate", 10, CDefault);
 		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, "BYear");
 		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, "otYear");
-		addColumnTextWithLength("dr", "\"Date Read\"", 10);
-		addColumnTextWithLength("dg", "\"Date(s)\"", 30);
-		addColumnTextWithLength("fn", "\"First Name\"", 15);
-		addColumnTextWithLength("ge", "GBook.Genre", 30);
-		addColumnTextWithLength("gg", "\"Genre(s)\"", 30);
+		addColumnTextWithLength("dr", "\"Date Read\"", 10, CDefault);
+		addColumnTextWithLength("dg", "\"Date(s)\"", 30, CDefault);
+		addColumnTextWithLength("fn", "\"First Name\"", 15, CNoCase);
+		addColumnTextWithLength("ge", "GBook.Genre", 30, CNoCase);
+		addColumnTextWithLength("gg", "\"Genre(s)\"", 30, CNoCase);
 		addColumnNumeric("gi", "BookGenres.GenreID", -7);
 		addColumnNumeric("gi_n", "GenreID", -7);
-		addColumnTextWithLength("ln", "\"Last Name\"", 20); 
-		addColumnTextWithLength("ng", "\"Author(s)\"", 50);
-		addColumnTextWithLength("nn", A_NAME, 25, "Author");
+		addColumnTextWithLength("ln", "\"Last Name\"", 20, CLastName); 
+		addColumnTextWithLength("ng", "\"Author(s)\"", 50, CNoCase);
+		addColumnTextWithLength("nn", A_NAME, 25, CNoCase, "Author");
 		addColumnNumeric("laid", "Books.LangID", 6);
 		addColumnNumeric("laid_n", "LangID", 6);
 		addColumnNumeric("otli", "OriginalTitles.LangID", 8, "otLangID");
@@ -1143,35 +1187,35 @@ public:
 		addColumnText("otla", "L_ot.Language", 4, "otLa");
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
 		addColumnNumeric("own", "Owned", 3);
-		addColumnTextWithLength("isbn", "ISBN", 13);
-		addColumnTextWithLength("otis", "otISBN", 13);
+		addColumnTextWithLength("isbn", "ISBN", 13, CDefault);
+		addColumnTextWithLength("otis", "otISBN", 13, CDefault);
 		addColumnNumeric("catid", "CategoryID", 3);
-		addColumnTextWithLength("cat", "Category", 11);
+		addColumnTextWithLength("cat", "Category", 11, CNoCase);
 		addColumnNumeric("pgs", "Pages", 5);
 		addColumnNumeric("wds", "Words", 6);
 		addColumnNumeric("wpp", "Words / Pages" , 4, "WPP");
 		addColumnNumeric("kw", "(Words + 500) / 1000", 4, "Kwords");
-		addColumnTextWithLength("ot", "\"Original Title\"", 45);
-		addColumnTextWithLength("se", "Series", 40);
+		addColumnTextWithLength("ot", "\"Original Title\"", 45, CTitle);
+		addColumnTextWithLength("se", "Series", 40, CTitle);
 		addColumnNumeric("si", "SeriesID", -8);
 		addColumnText("pa", "\"Part in Series\"", 4);
-		addColumnTextWithLength("st", "Story", 45);
+		addColumnTextWithLength("st", "Story", 45, CTitle);
 		addColumnNumeric("stid", "StoryID", -7);
 		addColumnNumeric("stra", "Stories.Rating", 3, "SRating");
-		addColumnTextWithLength("stge", "GStory.Genre", 30, "SGenre");
-		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30);
-		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, "\"Title [Story]\"");
+		addColumnTextWithLength("stge", "GStory.Genre", 30, "SGenre", CNoCase);
+		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, CNoCase);
+		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, CTitle, "\"Title [Story]\"");
 		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, "BSRating");
-		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, "BSGenre");
-		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, "\"BSGenre(s)\"");
-		addColumnTextWithLength("astg", "Stories", 45);
-		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, "\"Title [Stories]\"");
-		addColumnTextWithLength("bstg", "\"Book Stories\"", 100);
-		addColumnTextWithLength("stng", "\"Story author(s)\"", 50);
-		addColumnTextWithLength("so", "Source", 35);
+		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, CNoCase, "BSGenre");
+		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, CNoCase, "\"BSGenre(s)\"");
+		addColumnTextWithLength("astg", "Stories", 45, CNoCase);
+		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, CTitle, "\"Title [Stories]\"");
+		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, CNoCase);
+		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, CNoCase);
+		addColumnTextWithLength("so", "Source", 35, CNoCase);
 		addColumnNumeric("soid", "SourceID", -8);
-		addColumnTextWithLength("ps", "ps.Pseudonyms", 25);
-		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25);
+		addColumnTextWithLength("ps", "ps.Pseudonyms", 25, CNoCase);
+		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25, CNoCase);
 		addColumnNumeric("psmid", "PSMainID", -9, "PSMainID");
 
 #define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
@@ -1476,6 +1520,13 @@ public:
 		}
 		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
 		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
+
+		auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
+			if (sqlite3_create_collation(conn, name, SQLITE_UTF8, nullptr, xCompare) != SQLITE_OK)
+				throw std::runtime_error(fmt("Failed to create collation %s: %s", name, sqlite3_errmsg(conn)));
+		};
+		createCollation(CLastName, &cmpLastName);
+		createCollation(CTitle, &cmpTitle);
 	}
 
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
@@ -2069,6 +2120,9 @@ public:
 					// For window function based columns the latter may cause an out of memory error for some reason!
 					// But only if the column is also included in the result, if the column is only used in order by it works!
 					m_sstr << (ci->usedInResult ? ci->labelName() : ci->nameDef);
+					if (ci->collation != nullptr) {
+						m_sstr << " COLLATE " << ci->collation;
+					}
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
