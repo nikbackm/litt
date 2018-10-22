@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-22: Added a constructor for ColumnInfo so default member initializers can be used with VS2013.
+               Also clearer code at call sites that way.
  * 2018-10-19: listOriginalTitles: Add otLa, use ng and gg instead of nn and ge.
  * 2018-10-17: Cleaned up the help for the list book count actions. Got rid of redundant column "prc".
  * 2018-10-17: Added column "bdod" that shows difference between book and original title first publication dates.
@@ -587,13 +589,24 @@ namespace LittDefs
 		std::string const label; // optional, used when name does not refer to a direct table column.
 		bool        const isGroupAggregate;
 		bool        const justifyRight;
+
+		// Also pre-configured, but have default values:
 		ColumnInfo const* lengthColumn = nullptr; // Will be set only if the column has a length column added.
 		const char*       collation = nullptr; // Only set if not using the default (usually BINARY)
 
 		// These values are set at runtime. Stored here for convenience.
 		mutable int  overriddenWidth = -1;
 		mutable bool usedInQuery = false;
-		mutable bool usedInResult = false; 
+		mutable bool usedInResult = false;
+
+		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType type, std::string const& label, bool isGroupAggregate = false, bool justifyRight = false) :
+			nameDef(nameDef),
+			defWidth(defWidth),
+			type(type),
+			label(label),
+			isGroupAggregate(isGroupAggregate),
+			justifyRight(justifyRight)
+		{}
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
@@ -1079,7 +1092,8 @@ class Litt {
 
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
 	{
-		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, defWidth<0 }));
+		bool const justifyRight = (defWidth < 0);
+		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight }));
 		if (!res.second) {
 			throw std::logic_error("Duplicate short name: " + sn);
 		}
@@ -1536,7 +1550,7 @@ public:
 		if (it == m_columnInfos.end()) {
 			if (allowActualName) {
 				static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
-				cols.push_back(ColumnInfo{quote(sn), (int)sn.length(), ColumnType::numeric, sn, false, nullptr});
+				cols.push_back(ColumnInfo{quote(sn), (int)sn.length(), ColumnType::numeric, sn});
 				return &cols.back();
 			}
 			throw std::invalid_argument("Invalid short column name: " + sn);
