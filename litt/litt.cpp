@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-10-29: Added sameisbn action to show books with same ISBN. Will show collections/packs of multiple books.
  * 2018-10-22: Added a constructor for ColumnInfo so default member initializers can be used with VS2013.
                Also clearer code at call sites that way.
  * 2018-10-19: listOriginalTitles: Add otLa, use ng and gg instead of nn and ge.
@@ -194,6 +195,7 @@ Basic list actions:
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
    sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
+   sameisbn                       List books with same ISBN.
    samestory                      List stories with same title.
    titlestory                     List books with same title as a story - Duplicates shown.
    brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
@@ -2819,6 +2821,18 @@ public:
 		runOutputQuery(query);
 	}
 
+	void listSameISBN()
+	{
+		OutputQuery query(*this);
+		const char* from = "(SELECT ISBN, Count(ISBN) As ISBNCount FROM Books GROUP BY ISBN HAVING Count(ISBN) > 1)";
+		query.initSelect("bi.bt.isbn.dr.ng", from, "isbn.dr.bi");
+		query.add("JOIN Books USING(ISBN)");
+		query.addAuxTables();
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
 	void listSamestory() 
 	{
 		m_fitWidthOn = m_fitWidthAuto;
@@ -3744,6 +3758,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "sametitle") {
 			listSametitle();
+		}
+		else if (action == "sameisbn") {
+			listSameISBN();
 		}
 		else if (action == "titlestory") {
 			listTitlestory();
