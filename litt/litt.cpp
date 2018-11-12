@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2018-11-12: set-ot need to set the new OT fields. (Just included the mandatory langID for now, as add-b is supposed to
+               set everything already and all almost all current data is already up to date)
  * 2018-10-29: Added sameisbn action to show books with same ISBN. Will show collections/packs of multiple books.
  * 2018-10-22: Added a constructor for ColumnInfo so default member initializers can be used with VS2013.
                Also clearer code at call sites that way.
@@ -3627,9 +3629,10 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto bookId = bidargi(0)) {
 			auto originalTitle = argi(1, "Original title or 'delete' to remove");
 			if (originalTitle != "delete") {
+				auto langId = lidargi(2);
 				if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
-					int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\") VALUES (%llu, %s)", 
-						bookId, ESC_S(originalTitle)));
+					int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)", 
+						bookId, ESC_S(originalTitle), langId));
 					printf("Updated %i rows\n", changes);
 				}
 			}
@@ -3715,6 +3718,11 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	IdValue gidargi(int index, const char* name = "GenreID", InputOptions iopt = required)
 	{
 		return idargi(index, name, cf(&Litt::selGenre), getListGenre(), iopt);
+	}
+
+	IdValue lidargi(int index, const char* name = "LangID", InputOptions iopt = required)
+	{
+		return idargi(index, name, cf(&Litt::selLanguage), getListLanguage(), iopt);
 	}
 
 	void executeAction() 
