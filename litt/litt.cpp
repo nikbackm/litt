@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-25: Added column "bdo" that shows otDate if exists otherwise Date, i.e. the oldest date overall.
  * 2019-02-25: add-st now adds genre(s) for the added story and book.
  * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
  * 2019-02-25: Fixed bug in set-ot - would delete existing otISBN and otDate for OriginalTitle! 
@@ -341,6 +342,7 @@ Column short name values:
     ti, sec          - Time of day and TotalSeconds for Date read
     drbd             - Difference in days between Date read and first publication date
     bdod             - Difference in days between book and original title first publication dates
+    bdo              - otd if exists else bd (i.e. always the first publication date)
     st, stid, stra   - Story, StoryID, Story rating
     btst             - Title combined with story (if there is one)
     stge, stgg       - Genre and Genre(s) for story
@@ -1191,6 +1193,7 @@ public:
 		addColumnTextWithLength("bt", "Title", 45, CTitle);
 		addColumnTextWithLength("bd", "Date", 10, CDefault);
 		addColumnTextWithLength("otd", "otDate", 10, CDefault);
+		addColumnTextWithLength("bdo", "ifnull(otDate, Date)", 10, CDefault, "oDate");
 		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, "BYear");
 		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, "otYear");
 		addColumnTextWithLength("dr", "\"Date Read\"", 10, CDefault);
@@ -2039,7 +2042,7 @@ public:
 			// Factor out common column combinations for easier maintenance
 
 #define BS_SHARED  "btst.bsra"
-#define BOT_SHARED "bdod"
+#define BOT_SHARED "bdod.bdo"
 
 #define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED "." BOT_SHARED
 
