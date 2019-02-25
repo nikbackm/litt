@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
  * 2019-02-25: Fixed bug in set-ot - would delete existing otISBN and otDate for OriginalTitle! 
                Needed to use UPSERT instead of INSERT OR REPLACE since we are not setting all columns for OT.
  * 2018-11-12: set-ot need to set the new OT fields. (Just included the mandatory langID for now, as add-b is supposed to
@@ -1223,7 +1224,7 @@ public:
 		addColumnTextWithLength("st", "Story", 45, CTitle);
 		addColumnNumeric("stid", "StoryID", -7);
 		addColumnNumeric("stra", "Stories.Rating", 3, "SRating");
-		addColumnTextWithLength("stge", "GStory.Genre", 30, "SGenre", CNoCase);
+		addColumnTextWithLength("stge", "GStory.Genre", 30, CNoCase, "SGenre");
 		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, CNoCase);
 		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, CTitle, "\"Title [Story]\"");
 		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, "BSRating");
