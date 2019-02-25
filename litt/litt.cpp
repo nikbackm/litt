@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-25: add-st now adds genre(s) for the added story and book.
  * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
  * 2019-02-25: Fixed bug in set-ot - would delete existing otISBN and otDate for OriginalTitle! 
                Needed to use UPSERT instead of INSERT OR REPLACE since we are not setting all columns for OT.
@@ -3469,21 +3470,34 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto story = argi(2, "Story");
 			IdValue storyId = EmptyId;
 			std::string rating;
+			GenreIds genreIds;
 			if (!getStoryId(storyId, story)) {
 				rating = argi(3, "Rating", RatingRegEx);
+				inputGenres(genreIds, "GenreID");
 			}
 			if (confirm(fmt("Add story '%s' [%llu] with rating='%s' to '%s [%llu]' for author %s [%llu]",
 				story.c_str(), storyId, rating.c_str(), selTitle(bid).c_str(), bid, selAuthor(aid).c_str(), aid))) {
-				std::string sql = "BEGIN;";
+				std::string sql = "BEGIN TRANSACTION;";
 				sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid));
 				if (!rating.empty()) {
 					storyId = getNextStoryId();
 					sql.append(fmt("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), rating.c_str()));
+					for (auto gi : genreIds) {
+						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", storyId, gi));
+						sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);\n", bid, gi));
+					}
 				}
 				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, aid, storyId));
-				sql.append("COMMIT");
-				executeSql(sql);
-				printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+				sql.append("COMMIT TRANSACTION");
+
+				try {
+					executeSql(sql);
+					printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+				}
+				catch (std::exception& ex) {
+					printf("Failed to add story: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), sql.c_str());
+					executeSql("ROLLBACK TRANSACTION");
+				}
 			}
 		}
 	}
