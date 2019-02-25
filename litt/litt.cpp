@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-25: Fixed bug in set-ot - would delete existing otISBN and otDate for OriginalTitle! 
+               Needed to use UPSERT instead of INSERT OR REPLACE since we are not setting all columns for OT.
  * 2018-11-12: set-ot need to set the new OT fields. (Just included the mandatory langID for now, as add-b is supposed to
                set everything already and all almost all current data is already up to date)
  * 2018-10-29: Added sameisbn action to show books with same ISBN. Will show collections/packs of multiple books.
@@ -3631,7 +3633,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			if (originalTitle != "delete") {
 				auto langId = lidargi(2);
 				if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
-					int changes = executeSql(fmt("INSERT OR REPLACE INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)", 
+					int changes = executeSql(fmt(
+						"INSERT INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)"
+							" ON CONFLICT(BookID) DO UPDATE SET \"Original Title\"=excluded.\"Original Title\", LangID=excluded.LangID", 
 						bookId, ESC_S(originalTitle), langId));
 					printf("Updated %i rows\n", changes);
 				}
