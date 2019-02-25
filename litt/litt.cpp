@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
+               This could cause genres to go missing from a book if an existing story was used in addBook.
+			   Fixed by replacing selectRowValue with selectRowValue*s*.
  * 2019-02-25: Added column "bdo" that shows otDate if exists otherwise Date, i.e. the oldest date overall.
  * 2019-02-25: add-st now adds genre(s) for the added story and book.
  * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
@@ -3120,14 +3123,16 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	std::vector<std::string> selectRowValue(std::string const& userSql) const
+	std::vector<std::vector<std::string>> selectRowValues(std::string const& userSql) const
 	{
-		std::vector<std::string> res;
+		std::vector<std::vector<std::string>> res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
-			auto& res = *static_cast<std::vector<std::string>*>(pArg);
-			res.resize(argc);
-			std::transform(argv, argv + argc, res.begin(), rowValue);
+			std::vector<std::string> row;
+			row.resize(argc);
+			std::transform(argv, argv + argc, row.begin(), rowValue);
+			auto& res = *static_cast<std::vector<std::vector<std::string>>*>(pArg);
+			res.push_back(std::move(row));
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
@@ -3136,13 +3141,13 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 	std::vector<IdValue> selectRowIdValues(std::string const& userSql) const
 	{
-		auto vstr = selectRowValue(userSql);
+		auto rows = selectRowValues(userSql);
 		std::vector<IdValue> res;
-		for (auto const& str : vstr)
+		for (auto const& row : rows)
 		{
 			IdValue id;
-			if (!toIdValue(str, id))
-				throw std::logic_error("Invalid id value: '" + str + "' from query " + userSql);
+			if (!toIdValue(row.at(0), id))
+				throw std::logic_error("Invalid id value: '" + row.at(0) + "' from query " + userSql);
 			res.push_back(id);
 		}
 		return res;
@@ -3150,17 +3155,17 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 	bool hasRowValue(std::string const& userSql)
 	{
-		auto res = selectRowValue(userSql);
+		auto res = selectRowValues(userSql);
 		return !res.empty();
 	}
 
 	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
 	{
-		auto res = selectRowValue(userSql);
+		auto res = selectRowValues(userSql);
 		if (res.empty()) {
 			throw std::runtime_error(fmt("Could not find %s", valueName));
 		}
-		return res[0];
+		return res[0].at(0);
 	}
 
 	std::string selDV(std::string const& sql, const char* idName) const
