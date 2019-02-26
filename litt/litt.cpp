@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-26: Added new columns for showing DR range values.
  * 2019-02-26: Added set-so for changing a book/DR source.
  * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
  * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
@@ -348,6 +349,8 @@ Column short name values:
     nn, ng           - Author full name, Aggregated full name(s) per book
     ge, gi, gg       - Genre, GenreID, Genre(s) for book
     dr, dg           - Date read, Aggregated dates
+    drrf, drrl, drrm - First, last and middle date of a DR range
+    drrr, drrd       - A random date in a DR range and the number of days in it
     dw, dwl          - Day of week numeral and Day of week string for Date read
     dy,dm, dym,dymd  - Year, Month and yyyy-MM, yyyy-MM-dd for Date read
     ti, sec          - Time of day and TotalSeconds for Date read
@@ -1282,6 +1285,30 @@ public:
 		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, "RDelay");
 		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, "TDelay");
 
+		// Some columns for displaying the DR-range values with format "yyyy-mm-dd__yyyy-mm-dd".
+		// Will also display sensible values for all other supported formats.
+		addColumnText("drrf", "substr(\"Date Read\",1,10)", 10, "DRRFirst");
+
+		addColumnText("drrl", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+			" THEN substr(\"Date Read\",13)"
+			" ELSE substr(\"Date Read\",1,10) END",
+			10, "DRRLast");
+
+		addColumnText("drrm", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+			" THEN date(substr(\"Date Read\",1,10), ((julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))) / 2) || ' days')"
+			" ELSE substr(\"Date Read\",1,10) END",
+			10, "DRRMiddle");
+		
+		addColumnText("drrr", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+			" THEN date(substr(\"Date Read\",1,10), abs(random() % (julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10)))) || ' days')"
+			" ELSE substr(\"Date Read\",1,10) END",
+			10, "DRRRandom");
+		
+		addColumnNumeric("drrd", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+			" THEN julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))"
+			" ELSE 0.0 END",
+			-6, "DRRDays");
+
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
 		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
@@ -2076,7 +2103,7 @@ public:
 
 #define AB_COLS    AW_COLS  "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
 
-#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd"
+#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd.drrf.drrl.drrm.drrr.drrd"
 
 #define SOW_COLS   "sp.sl.sc"
 #define DR_SO_COLS "soid.so." SOW_COLS
