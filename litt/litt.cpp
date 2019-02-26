@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-26: Added set-so for changing a book/DR source.
  * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
  * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
                - "yyyy-mm-dd hh:mm"
@@ -251,12 +252,13 @@ Adding and modifying data:
    set-r    [BookID] [rating]              Set rating for a book.
    set-str  [StoryID] [rating]             Set rating for a story.
    set-dr   [BookID] [newDr|delete] [dr|i] Change or delete 'date read' for a book. Dr/Index optional if #dr = 1.
-   set-g     [BookID] [GenreID] [newGID]  Change genre for a book. (Specify newGID=0 to delete)
-   set-stg   [StoryID] [GenreID] [newGID] Change genre for a story. (see above)
-   set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
-   set-s     [BookID] [SID] [part|delete] Set or delete series for a book.
+   set-so   [BookID] [SourceId] [dr|i]     Change source for a 'date read'. Dr/Index optional if #dr = 1.
+   set-g    [BookID] [GenreID] [newGID]    Change genre for a book. (Specify newGID=0 to delete)
+   set-stg  [StoryID] [GenreID] [newGID]   Change genre for a story. (see above)
+   set-ot   [BookID] [origTitle|delete]    Set or delete the original title for a book.
+   set-s    [BookID] [SID] [part|delete]   Set or delete series for a book.
 
-   execute   [sqlString]                  Execute the given SQL string. Use with CAUTION!
+   execute   [sqlString]                   Execute the given SQL string. Use with CAUTION!
 )"
 	,stdout); if (2 <= level) fputs(
 R"(
@@ -3686,6 +3688,19 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
+	void setBookSource()
+	{
+		if (auto const bookId = bidargi(0)) {
+			auto const sourceId = soidargi(1);
+			auto const dr = getDrArg(bookId, 2);
+			if (confirm(fmt("Set source to '%s' for %s of '%s'", selSource(sourceId).c_str(), dr.c_str(), selTitle(bookId).c_str()))) {
+				int changes = executeSql(fmt("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND \"Date Read\"=%s",
+					sourceId, bookId, ESC_S(dr)));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+	}
+
 	void setOriginalTitle()
 	{
 		if (auto bookId = bidargi(0)) {
@@ -3952,6 +3967,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "set-dr") {
 			setBookDateRead();
+		}
+		else if (action == "set-so") {
+			setBookSource();
 		}
 		else if (action == "set-ot") {
 			setOriginalTitle();
