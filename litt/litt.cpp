@@ -7,7 +7,7 @@ Changelog:
  * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
                - "yyyy-mm-dd hh:mm"
 			   - "yyyy-mm-dd"
-			   - "yyyy-mm-dd-CA" (cirka, not exactly known)
+			   - "yyyy-mm-dd~" (approximately)
 			   - "yyyy-mm-dd__yyyy-mm-dd" (firstDate to lastDate, inclusive range)
  * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
                This could cause genres to go missing from a book if an existing story was used in addBook.
@@ -579,7 +579,7 @@ namespace LittDefs
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
 	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
-	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|-CA|__\d{4}-\d\d-\d\d)?)x";
+	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|__\d{4}-\d\d-\d\d)?)x";
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
