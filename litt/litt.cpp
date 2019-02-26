@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
  * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
                - "yyyy-mm-dd hh:mm"
 			   - "yyyy-mm-dd"
@@ -238,18 +239,18 @@ R"(
 Adding and modifying data:
    add-b                                   Add a book.
    add-dr   [BookID] [dr] [SourceId]       Add a 'date read' for a book with given source.
-   add-a     [lastName] [firstName]       Add an author.
-   add-s     [series]                     Add a series.
-   add-g     [genre]                      Add a genre.
-   add-so    [source]                     Add a book source.
-   add-c     [category]                   Add a book category.
-   add-st    [BookID] [AID] [story] [rat] Add a story for a book.
-   add-bg    [BookID] [GenreID]           Add a genre for a book.
-   add-stg   [StoryID] [GenreID]          Add a genre for a story.
+   add-a    [lastName] [firstName]         Add an author.
+   add-s    [series]                       Add a series.
+   add-g    [genre]                        Add a genre.
+   add-so   [source]                       Add a book source.
+   add-c    [category]                     Add a book category.
+   add-st   [BookID] [AID] [story] [rat]   Add a story for a book.
+   add-bg   [BookID] [GenreID]             Add a genre for a book.
+   add-stg  [StoryID] [GenreID]            Add a genre for a story.
    
-   set-r     [BookID] [rating]            Set rating for a book.
-   set-str   [StoryID] [rating]           Set rating for a story.
-   set-dr    [BookID] [dr] [newDr|delete] Change or delete 'date read' for a book.
+   set-r    [BookID] [rating]              Set rating for a book.
+   set-str  [StoryID] [rating]             Set rating for a story.
+   set-dr   [BookID] [newDr|delete] [dr|i] Change or delete 'date read' for a book. Dr/Index optional if #dr = 1.
    set-g     [BookID] [GenreID] [newGID]  Change genre for a book. (Specify newGID=0 to delete)
    set-stg   [StoryID] [GenreID] [newGID] Change genre for a story. (see above)
    set-ot    [BookID] [origTitle|delete]  Set or delete the original title for a book.
@@ -1781,6 +1782,11 @@ public:
 	void addActionWhereCondition(const char* sn, unsigned actionArgIndex) const
 	{
 		addActionWhereCondition(sn, arg(actionArgIndex)); 
+	}
+
+	bool hasArg(unsigned index)
+	{
+		return index < m_actionArgs.size();
 	}
 
 	std::string arg(unsigned index, const char* def = "") const 
@@ -3630,14 +3636,39 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
+	std::string getDrArg(IdValue bookId, int argIndex)
+	{
+		auto const drRows = selectRowValues(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
+		if (drRows.empty())
+			throw std::runtime_error(fmt("No date read:s for book %llu", bookId));
+
+		if (!hasArg(argIndex) && drRows.size() == 1) {
+			return drRows[0].at(0);
+		}
+		else {
+			auto const drOrIndex = argi(argIndex, "Current date read value or index");
+			int index;
+			if (toInt(drOrIndex, index)) {
+				if (0 <= index && index < (int)drRows.size()) {
+					return drRows[index].at(0);
+				}
+				else {
+					throw std::runtime_error(fmt("No date read found at index %i for book %llu", index, bookId));
+				}
+			}
+			else {
+				return drOrIndex;
+			}
+		}
+	}
+
 	void setBookDateRead()
 	{
-		if (auto bookId = bidargi(0)) {
-			auto dr = argi(1, "Current date read");
-			// Check that dr exists for book.
-			selectSingleValue(fmt("SELECT BookID FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bookId, ESC_S(dr)), 
-				fmt("date read %s for BookID %llu", dr.c_str(), bookId).c_str());
-			auto newDr = argi(2, "New date read or 'delete' to remove");
+		auto const deleteOrDrRegEx = fmt("(delete)|(%s)", DateReadRegEx);
+
+		if (auto const bookId = bidargi(0)) {
+			auto const newDr = argi(1, "New date read or 'delete' to remove", deleteOrDrRegEx.c_str());
+			auto const dr = getDrArg(bookId, 2);
 			if (newDr != "delete") {
 				if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), selTitle(bookId).c_str()))) {
 					int changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
@@ -3751,6 +3782,11 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	IdValue lidargi(int index, const char* name = "LangID", InputOptions iopt = required)
 	{
 		return idargi(index, name, cf(&Litt::selLanguage), getListLanguage(), iopt);
+	}
+
+	IdValue soidargi(int index, const char* name = "SourceID", InputOptions iopt = required)
+	{
+		return idargi(index, name, cf(&Litt::selSource), getListSource(), iopt);
 	}
 
 	void executeAction() 
