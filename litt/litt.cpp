@@ -1,6 +1,11 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
+               - "yyyy-mm-dd hh:mm"
+			   - "yyyy-mm-dd"
+			   - "yyyy-mm-dd-CA" (cirka, not exactly known)
+			   - "yyyy-mm-dd__yyyy-mm-dd" (firstDate to lastDate, inclusive range)
  * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
                This could cause genres to go missing from a book if an existing story was used in addBook.
 			   Fixed by replacing selectRowValue with selectRowValue*s*.
@@ -231,8 +236,8 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
 	,stdout); if (1 <= level) fputs(
 R"(
 Adding and modifying data:
-   add[f]-b                               Add a book. (addf-b variant allows less strict date values)
-   add[f]-dr [BookID] [dr] [SourceId]     Add a 'date read' for a book with given source.
+   add-b                                   Add a book.
+   add-dr   [BookID] [dr] [SourceId]       Add a 'date read' for a book with given source.
    add-a     [lastName] [firstName]       Add an author.
    add-s     [series]                     Add a series.
    add-g     [genre]                      Add a genre.
@@ -567,7 +572,8 @@ namespace LittDefs
 	const char*   LogOp_OR = " OR ";
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
-	const char*   RatingRegEx = R"raw([+-]?((\d+(\.\d*)?)|(\.\d+)))raw";
+	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
+	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|-CA|__\d{4}-\d\d-\d\d)?)x";
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
@@ -3254,13 +3260,13 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void addBook(const char* drRegEx)
+	void addBook()
 	{
 		struct AData { IdValue authorId; std::string story; IdValue storyId; std::string storyRating; GenreIds storyGenres; };
 		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
 		auto title       = std::string();
-		auto dateRead    = fmt("%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+		auto dateRead    = fmt("%04d-%02d-%02d ", st.wYear, st.wMonth, st.wDay); // extra space to remind adding mm:ss.
 		auto sourceId    = EmptyId;
 		auto genreIds    = GenreIds();
 		auto origtitle   = std::string();
@@ -3317,7 +3323,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			return;
 		}
 		input(title, "Book title");
-		input(dateRead, "Date read", drRegEx);
+		input(dateRead, "Date read", DateReadRegEx);
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
 		input(isbn, "ISBN");
@@ -3610,10 +3616,10 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void addDateRead(bool flexible)
+	void addDateRead()
 	{
 		if (auto bookId = bidargi(0)) {
-			auto dr = argi(1, "Date read", getDateReadRegEx(flexible));
+			auto dr = argi(1, "Date read", DateReadRegEx);
 			auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
 			if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
 				dr.c_str(), selSource(sourceId).c_str(), selTitle(bookId).c_str()))) {
@@ -3725,11 +3731,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 				}
 			}
 		}
-	}
-
-	static const char* getDateReadRegEx(bool flexible)
-	{
-		return flexible ? R"(\d\d\d\d-.*)" : R"(\d\d\d\d-\d\d-\d\d \d\d\:\d\d)";
 	}
 
 	IdValue bidargi(int index, const char* name = "BookID", InputOptions iopt = optional)
@@ -3889,8 +3890,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "add-c") {
 			executeSimpleAddAction("book category", &Litt::addBookCategory);
 		}
-		else if (action == "add-b" || action == "addf-b") {
-			addBook(getDateReadRegEx(action == "addf-b"));
+		else if (action == "add-b") {
+			addBook();
 		}
 		else if (action == "add-st") {
 			addStory();
@@ -3910,8 +3911,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "set-stg") {
 			setStoryGenre();
 		}
-		else if (action == "add-dr" || action == "addf-dr") {
-			addDateRead(action == "addf-dr");
+		else if (action == "add-dr") {
+			addDateRead();
 		}
 		else if (action == "set-dr") {
 			setBookDateRead();
