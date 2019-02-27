@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-27: Added set-bd and set-otd.
  * 2019-02-27: Removed LEFT join for BookCategory, all cats added a few days ago!
  * 2019-02-26: Added new columns for showing DR range values.
  * 2019-02-26: Added set-so for changing a book/DR source.
@@ -259,6 +260,8 @@ Adding and modifying data:
    set-stg  [StoryID] [GenreID] [newGID]   Change genre for a story. (see above)
    set-ot   [BookID] [origTitle|delete]    Set or delete the original title for a book.
    set-s    [BookID] [SID] [part|delete]   Set or delete series for a book.
+   set-bd   [BookID] [pubdate]             Set first publication date for a book.
+   set-otd  [BookID] [otPubdate]           Set first publication date of the original title for a book.
 
    execute   [sqlString]                   Execute the given SQL string. Use with CAUTION!
 )"
@@ -581,6 +584,7 @@ namespace LittDefs
 	const IdValue EmptyId = 0;
 	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
 	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|__\d{4}-\d\d-\d\d)?)x";
+	const char*   PubDateRegEx = R"x(\d{4}(-\d\d(-\d\d)?)?)x";
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
@@ -3776,6 +3780,30 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
+	void setBookPubDate()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto pubdate = argi(1, "Publication date", PubDateRegEx);
+			if (confirm(fmt("Set Date of '%s' => %s", selTitle(bookId).c_str(), pubdate.c_str()))) {
+				int changes = executeSql(fmt("UPDATE Books SET Date = %s WHERE BookID=%llu", 
+					ESC_S(pubdate), bookId));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+	}
+
+	void setBookOriginalTitlePubDate()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto pubdate = argi(1, "Publication date", PubDateRegEx);
+			if (confirm(fmt("Set otDate of '%s' => %s", selTitle(bookId).c_str(), pubdate.c_str()))) {
+				int changes = executeSql(fmt("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", 
+					ESC_S(pubdate), bookId));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+	}
+	
 	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
 	{
 		auto arg = argi(argIndex, name, optional);
@@ -4007,6 +4035,12 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "set-str") {
 			setStoryRating();
+		}
+		else if (action == "set-bd") {
+			setBookPubDate();
+		}
+		else if (action == "set-otd") {
+			setBookOriginalTitlePubDate();
 		}
 		else if (action == "execute") {
 			executeUserSql();
