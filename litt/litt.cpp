@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-27: Removed LEFT join for BookCategory, all cats added a few days ago!
  * 2019-02-26: Added new columns for showing DR range values.
  * 2019-02-26: Added set-so for changing a book/DR source.
  * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
@@ -2133,7 +2134,7 @@ public:
 				addIfColumns(A_COLS,                 indent + "JOIN Authors USING(AuthorID)");
 			}
 
-			addIfColumns("cat",                 indent + "LEFT JOIN BookCategory USING(CategoryID)"); // TODO: remove LEFT when all books have cat added!
+			addIfColumns("cat",                      indent + "JOIN BookCategory USING(CategoryID)");
 
 			addIfColumns("la",                       indent + "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
 
