@@ -1384,27 +1384,36 @@ public:
 
 		// Some columns for displaying the DR-range values with format "yyyy-mm-dd__yyyy-mm-dd".
 		// Will also display sensible values for all other supported formats.
-		addColumnText("drrf", "substr(\"Date Read\",1,10)", 10, "DRRFirst");
 
-		addColumnText("drrl", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
-			" THEN substr(\"Date Read\",13)"
-			" ELSE substr(\"Date Read\",1,10) END",
-			10, "DRRLast");
+		#define DRR_CHECK "substr(\"Date Read\",11,2) = '..'"
+		#define DRR_FIRST "substr(\"Date Read\",1,10)"
+		#define DRR_LAST  "substr(\"Date Read\",13)"
+		
+		addColumnText("drrf", DRR_FIRST, 10, "DRRFirst");
 
-		addColumnText("drrm", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
-			" THEN date(substr(\"Date Read\",1,10), ((julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))) / 2) || ' days')"
-			" ELSE substr(\"Date Read\",1,10) END",
-			10, "DRRMiddle");
+		addColumnText("drrl", "CASE WHEN " DRR_CHECK
+			" THEN " DRR_LAST
+			" ELSE " DRR_FIRST
+			" END", 10, "DRRLast");
+
+		addColumnText("drrm", "CASE WHEN " DRR_CHECK
+			" THEN date(" DRR_FIRST ", ((julianday(" DRR_LAST ") - julianday(" DRR_FIRST ")) / 2) || ' days')"
+			" ELSE " DRR_FIRST
+			" END", 10, "DRRMiddle");
 		
-		addColumnText("drrr", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
-			" THEN date(substr(\"Date Read\",1,10), abs(random() % (julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10)))) || ' days')"
-			" ELSE substr(\"Date Read\",1,10) END",
-			10, "DRRRandom");
+		addColumnText("drrr", "CASE WHEN " DRR_CHECK
+			" THEN date(" DRR_FIRST ", abs(random() % (julianday(" DRR_LAST ") - julianday(" DRR_FIRST "))) || ' days')"
+			" ELSE " DRR_FIRST 
+			" END", 10, "DRRRandom");
 		
-		addColumnNumeric("drrd", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
-			" THEN julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))"
-			" ELSE 0.0 END",
-			-6, "DRRDays");
+		addColumnNumeric("drrd", "CASE WHEN " DRR_CHECK
+			" THEN julianday(" DRR_LAST" ) - julianday(" DRR_FIRST ")"
+			" ELSE 0.0" 
+			" END", -6, "DRRDays");
+
+		#undef DRR_CHECK
+		#undef DRR_FIRST
+		#undef DRR_LAST
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
