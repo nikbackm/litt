@@ -1,6 +1,8 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-27: Changed fitWidth; "auto" now means fitting will be used only for console output and when the console
+               width is smaller than the sum of all column widths. The meaning of "on" and "off" remain the same.
  * 2019-02-27: Added "notnull" operator for where condition.
  * 2019-02-27: Added columns for displaying ISBN10 and ISBN13, will also error-check ISBN values first.
  * 2019-02-27: Added set-bd and set-otd.
@@ -288,9 +290,9 @@ Options:
                       current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
     -n                Print number of output rows at the end.
     -e[encoding]      Output encoding for pipes and redirection. Default is utf8.
-    -f[on|off|auto|w] Fit width mode. Default is auto; used where most fitting. Specifying
-                      an explicit width value implies mode "on". If no value is specified then the width
-                      of the console is used. If there is no console then a hard-coded value is used.
+    -f[on|off|auto|w] Fit column width mode. Default is auto => fit only when console is too narrow.
+                      Specifying an explicit width value implies mode "on". If no value is specified then 
+                      the width of the console is used. If there is no console then a hard-coded value is used.
     -y[on|off]        Automatic YES to all confirm prompts. Default is off.
     -x[2]             Explains the query plan. x2 will show virtual machine code.
 
@@ -576,6 +578,12 @@ namespace LittDefs
 		pages,
 		words,
 		kwords,
+	};
+
+	enum class FitWidth {
+		off,
+		on,
+		automatic,
 	};
 
 	const char*   DefDbName = "litt.sqlite";
@@ -1096,9 +1104,8 @@ class Litt {
 
 	int const consoleCodePage = GetConsoleCP();
 	bool m_headerOn = true;
-	bool m_fitWidthOn = false;
-	bool m_fitWidthAuto = true;
-	int  m_fitWidthValue = 200;
+	FitWidth m_fitWidth = FitWidth::automatic;
+	int  m_fitWidthValue = 230;
 	bool m_selectDistinct = false;
 	bool m_showQuery = false;
 	int  m_explainQuery = 0; // 1 == EXPLAIN QUERY PLAN, >1 == EXPLAIN
@@ -1503,9 +1510,9 @@ public:
 				case 'f': {
 					OptionParser fval(val);
 					auto v = fval.empty() ? "on" : fval.getNext();
-					if      (v == "on" || toInt(v, m_fitWidthValue)) { m_fitWidthOn = true;  m_fitWidthAuto = true; }
-					else if (v == "off")                             { m_fitWidthOn = false; m_fitWidthAuto = false; }
-					else if (v == "auto")                            { m_fitWidthOn = false; m_fitWidthAuto = true; }
+					if      (v == "on" || toInt(v, m_fitWidthValue)) m_fitWidth = FitWidth::on;
+					else if (v == "off")                             m_fitWidth = FitWidth::off;
+					else if (v == "auto")                            m_fitWidth = FitWidth::automatic;
 					else throw std::invalid_argument("Invalid fit width value: " + val);
 					break;
 				}
@@ -1544,7 +1551,6 @@ public:
 					break;
 				case 'x':
 					m_explainQuery = (val == "2") ? 2 : 1;
-					m_fitWidthOn = m_fitWidthAuto = false;
 					break;
 				case 'n': 
 					m_showNumberOfRows = true;
@@ -2713,29 +2719,44 @@ public:
 						query.columnRight.push_back(false);
 					}
 
-					if (m_fitWidthOn) {
-						int const target = m_fitWidthValue;
-						for (auto& w : query.columnWidths) { if (w > target) w = target; } // Guard against HUGE sizes, can be slow to inc!
-						int current = 0; for (auto w : query.columnWidths) { current += (w + 2); } current -= 2;
-						if (current != target) {
-							int const inc = (target > current) ? 1 : -1;
-							int diff = abs(target - current);
-							for (;;) {
-								int changed = 0;
-								for (auto& w : query.columnWidths) {
-									// Don't touch columns with smallish widths (IDs, dates)
-									// Also don't make arbitrarily small and large. 
-									// Currently widest value in any column (not ng!) is 59.
-									if (10 < w && (inc < 0 || w < 60)) {
-										w += inc;
-										changed += abs(inc);
-										if (changed >= diff) goto done;
+					bool fitW = (m_fitWidth == FitWidth::on);
+					bool const autoFit = (m_fitWidth == FitWidth::automatic && m_output.stdOutIsConsole());
+					if (fitW || autoFit) {
+						int requiredWidth = 0;
+						for (auto& w : query.columnWidths) { 
+							if (w > m_fitWidthValue) w = m_fitWidthValue; // Guard against HUGE sizes, can be slow to inc!
+							requiredWidth += w;
+						}
+						if (query.columnWidths.size() > 1) {
+							requiredWidth += (2 * (query.columnWidths.size() - 1));
+						}
+						if (autoFit) {
+							fitW = (requiredWidth > m_fitWidthValue);
+						}
+					
+						if (fitW) {
+							int const target = m_fitWidthValue;
+							int const current = requiredWidth;
+							if (current != target) {
+								int const inc = (target > current) ? 1 : -1;
+								int diff = abs(target - current);
+								for (;;) {
+									int changed = 0;
+									for (auto& w : query.columnWidths) {
+										// Don't touch columns with smallish widths (IDs, dates)
+										// Also don't make arbitrarily small and large. 
+										// Currently widest value in any column (not ng!) is 59.
+										if (10 < w && (inc < 0 || w < 60)) {
+											w += inc;
+											changed += abs(inc);
+											if (changed >= diff) goto done;
+										}
 									}
+									if (changed == 0) goto done;
+									diff -= changed;
 								}
-								if (changed == 0) goto done;
-								diff -= changed;
+								done:;
 							}
-							done:;
 						}
 					}
 
@@ -2835,7 +2856,6 @@ public:
 
 	void runSingleTableOutputCmd(const char* defColumns, const char* table, const char* defOrderBy)
 	{
-		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		query.initSelect(defColumns, table, defOrderBy);
 		query.addWhere();
@@ -2845,7 +2865,6 @@ public:
 
 	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly, SelectOption selectOption = SelectOption::normal)
 	{
-		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		auto table = ((opt & Starts_With_Authors) == 0) ? "Books" : "Authors";
 		query.initSelect(defColumns, table , defOrderBy, selectOption);
@@ -2883,7 +2902,7 @@ public:
 		}
 		else {
 			addActionWhereCondition("btst", title);
-			runListData("bi.nn.bsra.btst.45.dr.so.bsgg", "dr.bi.ln.fn");
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.ln.fn");
 		}
 	}
 
@@ -3004,7 +3023,6 @@ public:
 
 	void listSamestory() 
 	{
-		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
 		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
@@ -3020,7 +3038,6 @@ public:
 
 	void listTitlestory()
 	{
-		m_fitWidthOn = m_fitWidthAuto;
 		OutputQuery query(*this);
 		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
 		query.initColumnWidths();
@@ -3083,7 +3100,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
-		m_fitWidthOn = m_fitWidthAuto;
 		unsigned cwidth = 0u;
 		switch (m_count) {
 		case Count::books: cwidth = 3u; break;
@@ -3927,7 +3943,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	{
 		auto sql = argi(0, "sql", optional);
 		if (!sql.empty()) {
-			m_fitWidthOn = m_fitWidthAuto;
 			if (confirm("Execute SQL")) {
 				OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
 				// Set first few columns to width 30, better than letting label and/or first value determine it.
