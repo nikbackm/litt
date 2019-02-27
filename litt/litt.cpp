@@ -12,7 +12,7 @@ Changelog:
                - "yyyy-mm-dd hh:mm"
 			   - "yyyy-mm-dd"
 			   - "yyyy-mm-dd~" (approximately)
-			   - "yyyy-mm-dd__yyyy-mm-dd" (firstDate to lastDate, inclusive range)
+			   - "yyyy-mm-dd..yyyy-mm-dd" (firstDate to lastDate, inclusive range)
  * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
                This could cause genres to go missing from a book if an existing story was used in addBook.
 			   Fixed by replacing selectRowValue with selectRowValue*s*.
@@ -587,7 +587,7 @@ namespace LittDefs
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
 	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
-	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|__\d{4}-\d\d-\d\d)?)x";
+	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|\.\.\d{4}-\d\d-\d\d)?)x";
 	const char*   PubDateRegEx = R"x(\d{4}(-\d\d(-\d\d)?)?)x";
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
@@ -1386,22 +1386,22 @@ public:
 		// Will also display sensible values for all other supported formats.
 		addColumnText("drrf", "substr(\"Date Read\",1,10)", 10, "DRRFirst");
 
-		addColumnText("drrl", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+		addColumnText("drrl", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
 			" THEN substr(\"Date Read\",13)"
 			" ELSE substr(\"Date Read\",1,10) END",
 			10, "DRRLast");
 
-		addColumnText("drrm", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+		addColumnText("drrm", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
 			" THEN date(substr(\"Date Read\",1,10), ((julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))) / 2) || ' days')"
 			" ELSE substr(\"Date Read\",1,10) END",
 			10, "DRRMiddle");
 		
-		addColumnText("drrr", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+		addColumnText("drrr", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
 			" THEN date(substr(\"Date Read\",1,10), abs(random() % (julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10)))) || ' days')"
 			" ELSE substr(\"Date Read\",1,10) END",
 			10, "DRRRandom");
 		
-		addColumnNumeric("drrd", "CASE WHEN substr(\"Date Read\",11,2) = '__'"
+		addColumnNumeric("drrd", "CASE WHEN substr(\"Date Read\",11,2) = '..'"
 			" THEN julianday(substr(\"Date Read\",13)) - julianday(substr(\"Date Read\",1,10))"
 			" ELSE 0.0 END",
 			-6, "DRRDays");
