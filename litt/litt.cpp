@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-27: Added "notnull" operator for where condition.
  * 2019-02-27: Added columns for displaying ISBN10 and ISBN13, will also error-check ISBN values first.
  * 2019-02-27: Added set-bd and set-otd.
  * 2019-02-27: Removed LEFT join for BookCategory, all cats added a few days ago!
@@ -318,7 +319,7 @@ Options:
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 colOrder format: <shortName|actualName>[.asc|desc]{.<shortName|actualName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
-          cmpOper: lt,lte,gt,gte,eq,neq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
+          cmpOper: lt,lte,gt,gte,eq,neq,isnull,notnull,isempty ("LIKE" if none is given, isnull, notnull & isempty take no cmpArg)
           cmpOper: range,nrange - These take two cmpArgs, for start and stop of range (both inclusive)
           cmpOper: and,or,nand,nor - These will consume the rest of the whereCond terms and AND/OR/NAND/NOR them using LIKE/=.
 colSizes format: Same as selColumns format
@@ -1807,14 +1808,14 @@ public:
 			else if (val == "gte") oper = ">=";
 			else if (val == "eq")  oper = "=";
 			else if (val == "neq") oper = "notlike";
-			else if (val == "isnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
+			else if (val == "isnull" || val == "notnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
 			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
 			
 			if (oper.empty()) {
 				oper = "LIKE";
 			}
 			else {
-				if (oper != "isnull" && oper != "isempty") {
+				if (oper != "isnull" && oper != "notnull" && oper != "isempty") {
 					val = opts.getNext();
 				}
 			}
@@ -1831,6 +1832,7 @@ public:
 						
 			if (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
 			else if (oper == "isnull")  snCond = colName + " IS NULL";
+			else if (oper == "notnull") snCond = colName + " IS NOT NULL";
 			else if (oper == "isempty") snCond = colName + " = ''";
 			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext());
 			else if (oper == "nrange")  snCond = "NOT (" + val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext()) + ")";
