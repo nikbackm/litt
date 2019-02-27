@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-27: Added columns for displaying ISBN10 and ISBN13, will also error-check ISBN values first.
  * 2019-02-27: Added set-bd and set-otd.
  * 2019-02-27: Removed LEFT join for BookCategory, all cats added a few days ago!
  * 2019-02-26: Added new columns for showing DR range values.
@@ -346,7 +347,9 @@ Column short name values:
     bd, by           - First publication date and year	
     otd, oty         - First publication date and year for the original title
     isbn             - ISBN for book. May also be other ID like ASIN in case there is no ISBN
+    is10, is13       - ISBN value in ISBN10 and ISBN13 formats. (NULL if check sum wrong)
     otis             - ISBN for the original title
+    oi10, oi13       - otISBN value in ISBN10 and ISBN13 formats.  (NULL if check sum wrong)
     pgs, wds         - Book pages and words
     wpp, kw          - Words per page and kilo-words
     ln, fn, ai       - Author last and first name, AuthorID
@@ -1195,6 +1198,90 @@ class Litt {
 	}
 */
 
+	static int calcIsbn10CheckDigit(const char* isbn)
+	{
+		int sum = 0;
+		for (int i = 0; i < 9; ++i) {
+			sum += (10 - i) * (isbn[i] - '0');
+		}
+		int const rem = sum % 11;
+		int const chkVal = (rem == 0) ? 0 : 11 - rem;
+		return (chkVal == 10) ? 'X' : chkVal + '0';
+	}
+
+	static int calcIsbn13CheckDigit(const char* isbn)
+	{
+		int sum = 0, weight = 1;
+		for (int i = 0; i < 12; ++i) {
+			sum += weight * (isbn[i] - '0');
+			weight = (weight == 1) ? 3 : 1;
+		}
+		int const rem = sum % 10;
+		int const chkVal = (rem == 0) ? 0 : 10 - rem;
+		return chkVal + '0';
+	}
+
+	static bool checkIsbn(const char* isbn, int len)
+	{
+		if (len == 10) {
+			auto const chk = calcIsbn10CheckDigit(isbn);
+			return chk == isbn[9];
+		}
+		else if (len == 13) {
+			auto const chk = calcIsbn13CheckDigit(isbn);
+			return chk == isbn[12];
+		}
+		return false;
+	}
+
+	static void isbn10(sqlite3_context* context, int argc, sqlite3_value** argv)
+	{
+		if (argc == 1) {
+			auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+			if (isbn && isbn[0]) {
+				int const len = strlen(isbn);
+				if (checkIsbn(isbn, len)) {
+					if (len == 10) {
+						sqlite3_result_text(context, isbn, 10, SQLITE_TRANSIENT);
+						return;
+					}
+					else if (len == 13 && isbn[0] == '9' && isbn[1] == '7' && isbn[2] == '8') {
+						char i10[10];
+						strncpy(i10, isbn+3, 9);
+						i10[9] = (char)calcIsbn10CheckDigit(i10);
+						sqlite3_result_text(context, i10, 10, SQLITE_TRANSIENT);
+						return;
+					}
+				}
+			}
+		}
+		sqlite3_result_null(context);
+	}
+
+	static void isbn13(sqlite3_context *context, int argc, sqlite3_value **argv)
+	{
+		if (argc == 1) {
+			auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+			if (isbn && isbn[0]) {
+				int const len = strlen(isbn);
+				if (checkIsbn(isbn, len)) {
+					if (len == 13) {
+						sqlite3_result_text(context, isbn, 13, SQLITE_TRANSIENT);
+						return;
+					}
+					else if (len == 10) {
+						char i13[13] = { '9', '7', '8' };
+						strncpy(i13 + 3, isbn, 9);
+						i13[12] = (char)calcIsbn13CheckDigit(i13);
+						sqlite3_result_text(context, i13, 13, SQLITE_TRANSIENT);
+						return;
+					}
+				}
+			}
+		}
+		sqlite3_result_null(context);
+	}
+
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
 
@@ -1234,7 +1321,11 @@ public:
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
 		addColumnNumeric("own", "Owned", 3);
 		addColumnTextWithLength("isbn", "ISBN", 13, CDefault);
+		addColumnTextWithLength("is10", "isbn10(ISBN)", 10, CDefault);
+		addColumnTextWithLength("is13", "isbn13(ISBN)", 13, CDefault);
 		addColumnTextWithLength("otis", "otISBN", 13, CDefault);
+		addColumnTextWithLength("oi10", "isbn10(otISBN)", 10, CDefault);
+		addColumnTextWithLength("oi13", "isbn13(otISBN)", 13, CDefault);
 		addColumnNumeric("catid", "CategoryID", 3);
 		addColumnTextWithLength("cat", "Category", 11, CNoCase);
 		addColumnNumeric("pgs", "Pages", 5);
@@ -1597,6 +1688,15 @@ public:
 		};
 		createCollation(CLastName, &cmpLastName);
 		createCollation(CTitle, &cmpTitle);*/
+
+		using SqliteFunc = void (*)(sqlite3_context *context, int argc, sqlite3_value **argv);
+		auto createScalarFunc = [conn](const char* name, int nArg, SqliteFunc func) {
+			if (sqlite3_create_function(conn, name, nArg, SQLITE_UTF8, nullptr, func, nullptr, nullptr) != SQLITE_OK)
+				throw std::runtime_error(fmt("Failed to create sqlite function %s: %s", name, sqlite3_errmsg(conn)));
+		};
+
+		createScalarFunc("isbn10", 1, isbn10);
+		createScalarFunc("isbn13", 1, isbn13);
 	}
 
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
@@ -2093,7 +2193,7 @@ public:
 #define BS_SHARED  "btst.bsra"
 #define BOT_SHARED "bdod.bdo"
 
-#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED "." BOT_SHARED
+#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.is10.is13.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED "." BOT_SHARED
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
@@ -2119,7 +2219,7 @@ public:
 #define GG_COLS    "gg.bsgg"
 
 #define S_COLS     "si.pa.se"
-#define OT_COLS    "ot.otli.otis.otd.oty.otla." BOT_SHARED
+#define OT_COLS    "ot.otli.otis.oi10.oi13.otd.oty.otla." BOT_SHARED
 
 #define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
 #define B_AB_COLS  "ai."               AB_COLS "." A_COLS
