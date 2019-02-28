@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-28: Added --drr option to select dates from date range values in book count listings.
  * 2019-02-28: Now displays the generated SQL automatically when there's an SQL execution error.
  * 2019-02-27: Changed fitWidth; "auto" now means fitting will be used only for console output and when the console
                width is smaller than the sum of all column widths. The meaning of "on" and "off" remain the same.
@@ -314,6 +315,10 @@ Options:
 							  
     --cnt:[b|p|w]    Specify what to count in book count listings. Default (b) is books.
                      Can also use p for pages, w for words or kw for kilo-words.
+
+    --drr:[f|l|m|r]  Specify which date in a date range value (yyyy-mm-dd..yyyy-mm-dd) that will be
+                     used in book count listings for date periods.
+                     Default is (f)irst, can also use (l)ast, (m)iddle or (r)andom.
     
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
     Note that if an option is included several times, then the last one will normally be the effective one.
@@ -585,6 +590,13 @@ namespace LittDefs
 		off,
 		on,
 		automatic,
+	};
+
+	enum class DRRange {
+		first,
+		last,
+		middle,
+		random
 	};
 
 	const char*   DefDbName = "litt.sqlite";
@@ -1130,6 +1142,8 @@ class Litt {
 
 	Count m_count = Count::books;
 
+	DRRange m_drRange = DRRange::first; // Which DRR option to use when counting.
+
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
@@ -1390,38 +1404,26 @@ public:
 		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, "RDelay");
 		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, "TDelay");
 
-		// Some columns for displaying the DR-range values with format "yyyy-mm-dd__yyyy-mm-dd".
+		// Some columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
 		// Will also display sensible values for all other supported formats.
 
-		#define DRR_CHECK "substr(\"Date Read\",11,2) = '..'"
-		#define DRR_FIRST "substr(\"Date Read\",1,10)"
-		#define DRR_LAST  "substr(\"Date Read\",13)"
-		
+#define IS_DRR     "substr(\"Date Read\",11,2) = '..'"
+#define DRR_1      "substr(\"Date Read\",1,10)"
+#define DRR_2      "substr(\"Date Read\",13)"
+#define DRR_IDAYS  "(julianday(" DRR_2 ") - julianday(" DRR_1 "))"
+
+#define DRR_FIRST DRR_1
+#define DRR_LAST "CASE WHEN " IS_DRR " THEN " DRR_2 " ELSE " DRR_1 " END"
+#define DRR_MID  "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", (" DRR_IDAYS " / 2) || ' days') ELSE " DRR_1 " END"
+#define DRR_RAND "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", abs(random() % " DRR_IDAYS ") || ' days') ELSE " DRR_1 " END"
+#define DRR_DAYS "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
+// We keep these macros defined so they can be used elsewhere as well.
+
 		addColumnText("drrf", DRR_FIRST, 10, "DRRFirst");
-
-		addColumnText("drrl", "CASE WHEN " DRR_CHECK
-			" THEN " DRR_LAST
-			" ELSE " DRR_FIRST
-			" END", 10, "DRRLast");
-
-		addColumnText("drrm", "CASE WHEN " DRR_CHECK
-			" THEN date(" DRR_FIRST ", ((julianday(" DRR_LAST ") - julianday(" DRR_FIRST ")) / 2) || ' days')"
-			" ELSE " DRR_FIRST
-			" END", 10, "DRRMiddle");
-		
-		addColumnText("drrr", "CASE WHEN " DRR_CHECK
-			" THEN date(" DRR_FIRST ", abs(random() % (julianday(" DRR_LAST ") - julianday(" DRR_FIRST "))) || ' days')"
-			" ELSE " DRR_FIRST 
-			" END", 10, "DRRRandom");
-		
-		addColumnNumeric("drrd", "CASE WHEN " DRR_CHECK
-			" THEN julianday(" DRR_LAST" ) - julianday(" DRR_FIRST ")"
-			" ELSE 0.0" 
-			" END", -6, "DRRDays");
-
-		#undef DRR_CHECK
-		#undef DRR_FIRST
-		#undef DRR_LAST
+		addColumnText("drrl", DRR_LAST,  10, "DRRLast");
+		addColumnText("drrm", DRR_MID,   10, "DRRMiddle");
+		addColumnText("drrr", DRR_RAND,  10, "DRRRandom");
+		addColumnNumeric("drrd", DRR_DAYS, -7, "DRRDays");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
@@ -1649,6 +1651,16 @@ public:
 							else throw std::invalid_argument("Unrecognized cnt value: " + what);
 						}
 					}
+					else if (extName == "drr") {
+						std::string what;
+						while (extVal.getNext(what)) {
+							if      (what == "f") m_drRange = DRRange::first;
+							else if (what == "l") m_drRange = DRRange::last;
+							else if (what == "m") m_drRange = DRRange::middle;
+							else if (what == "r") m_drRange = DRRange::random;
+							else throw std::invalid_argument("Unrecognized drr value: " + what);
+						}
+					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
 					break;
@@ -1697,6 +1709,7 @@ public:
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 		}
 		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
+		executeSql("PRAGMA temp_store = 2", nullptr, nullptr, false); // memory
 		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
 
 		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
@@ -2020,6 +2033,7 @@ public:
 		Skip_AuthorBooks = 0x08,
 		Skip_Stories = 0x10,
 		Starts_With_Authors = 0x20, // Normally start with books as first table.
+		Skip_DatesRead = 0x40,
 	};
 
 	enum class SelectOption {
@@ -2262,6 +2276,7 @@ public:
 
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
+			if ((opt & Skip_DatesRead) == 0)
 			addIfColumns(DR_F_COLS,                  indent + "JOIN DatesRead USING(BookID)");
 			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
 
@@ -3081,6 +3096,17 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
+	std::string getDrRangeColumn()
+	{
+		switch (m_drRange) {
+		case DRRange::first: return DRR_FIRST;
+		case DRRange::last: return DRR_LAST;
+		case DRRange::middle: return DRR_MID;
+		case DRRange::random: return DRR_RAND;
+		default: throw std::logic_error("Invalid DRRange value: " + std::to_string((int)m_drRange));
+		}
+	}
+
 	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		std::string ccol = getCountColumn();
@@ -3224,20 +3250,23 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.columnRight.push_back(false);             q.columnRight.push_back(true);
 		for (auto& c : columns) { q.columnWidths.push_back(std::max(colWidths, c.colWidth())); q.columnRight.push_back(true); }
 		q.initColumnWidths();
-		getColumn("dr")->usedInQuery = true; // Need to JOIN with DatesRead also when not used in WHERE.
 		std::string periodFunc;
 		if      (periodDef == "%Y")    periodFunc = "substr(\"Date Read\",1,4)";
 		else if (periodDef == "%m")    periodFunc = "substr(\"Date Read\",6,2)";
 		else if (periodDef == "%Y-%m") periodFunc = "substr(\"Date Read\",1,7)";
 		else                           periodFunc = fmt("strftime('%s', \"Date Read\")", periodDef.c_str());
 
-		q.initSelectBare(); 
+		// Uses a temp table instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
+		q.add("DROP TABLE IF EXISTS TEMP.tmpDr;");
+		q.add("CREATE TEMP TABLE tmpDr AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
+
+		q.init();
 		q.initOrderBy(period.c_str(), true);
-		q.a("Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
+		q.add("SELECT Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
 		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("    FROM Books");
-		q.addAuxTables(IJF_DefaultsOnly, 4);
+		q.add("    FROM Books JOIN tmpDr USING(BookID)");
+		q.addAuxTables(Skip_DatesRead, 4);
 		q.addWhere(4);
 		q.add("   )");
 		q.add("  GROUP BY " + period);
@@ -3249,8 +3278,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" LEFT JOIN");
 		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
 		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("     FROM Books");
-		q.addAuxTables(IJF_DefaultsOnly, 5);
+		q.add("     FROM Books JOIN tmpDr USING(BookID)");
+		q.addAuxTables(Skip_DatesRead, 5);
 		q.add("     WHERE " + ccond + ")");
 		q.add("  GROUP BY " + period);
 		if (!m_havingCondition.empty()) { 
