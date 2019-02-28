@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-02-28: Now displays the generated SQL automatically when there's an SQL execution error.
  * 2019-02-27: Changed fitWidth; "auto" now means fitting will be used only for console output and when the console
                width is smaller than the sum of all column widths. The meaning of "on" and "off" remain the same.
  * 2019-02-27: Added "notnull" operator for where condition.
@@ -2846,7 +2847,7 @@ public:
 		}
 		m_output.flushNoThrow();
 		if (res != SQLITE_OK) {
-			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
+			throw std::runtime_error(fmt("%s\n\nSQL error: %s", sql.c_str(), sqlite3_errmsg(m_conn.get())));
 		}
 
 		if (m_showNumberOfRows) {
