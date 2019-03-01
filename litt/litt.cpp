@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-03-01: Check format for publication dates also in addBook.
  * 2019-02-28: Added --drr option to select dates from date range values in book count listings.
  * 2019-02-28: Now displays the generated SQL automatically when there's an SQL execution error.
  * 2019-02-27: Changed fitWidth; "auto" now means fitting will be used only for console output and when the console
@@ -3524,7 +3525,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
 		input(isbn, "ISBN");
-		input(date, "First publication date");
+		input(date, "First publication date", PubDateRegEx);
 		input(catId, "Book CategoryID", cf(&Litt::selBookCategory), getListBookCategory());
 		input(pages, "Pages");
 		input(words, "Words");
@@ -3541,7 +3542,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		input(origtitle, "Original title (optional)", optional);
 		if (!origtitle.empty()) {
 			input(otIsbn, "OT ISBN");
-			input(otDate, "OT first publication date");
+			input(otDate, "OT first publication date", PubDateRegEx);
 			input(otLangId, "OT LangID", cf(&Litt::selLanguage), getListLanguage());
 		}
 		ask("yn", "Own book", owns);
