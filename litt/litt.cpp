@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-03-11: Added set-own.
  * 2019-03-01: Check format for publication dates also in addBook.
  * 2019-02-28: Added --drr option to select dates from date range values in book count listings.
  * 2019-02-28: Now displays the generated SQL automatically when there's an SQL execution error.
@@ -269,6 +270,7 @@ Adding and modifying data:
    set-s    [BookID] [SID] [part|delete]   Set or delete series for a book.
    set-bd   [BookID] [pubdate]             Set first publication date for a book.
    set-otd  [BookID] [otPubdate]           Set first publication date of the original title for a book.
+   set-own  [BookID] [owned]               Set owned for a book.
 
    execute   [sqlString]                   Execute the given SQL string. Use with CAUTION!
 )"
@@ -2019,6 +2021,13 @@ public:
 				? m_actionArgs[index] 
 				: throw std::invalid_argument(fmt("Invalid %s value: %s", name, m_actionArgs[index].c_str())))
 			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
+	}
+
+	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const 
+	{
+		return std::stoi(index < m_actionArgs.size()
+			? m_actionArgs[index]
+			: input(fmt("Enter %s", name, R"x(\d+)x", iopt).c_str(), iopt));
 	}
 
 	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
@@ -3961,6 +3970,18 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			}
 		}
 	}
+
+	void setBookOwned()
+	{
+		if (auto bookId = bidargi(0)) {
+			auto owned = intargi(1, "Owned");
+			if (confirm(fmt("Set owned of '%s' => %i", selTitle(bookId).c_str(), owned))) {
+				int changes = executeSql(fmt("UPDATE Books SET Owned = %i WHERE BookID=%llu", 
+					owned, bookId));
+				printf("Updated %i rows\n", changes);
+			}
+		}
+	}
 	
 	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
 	{
@@ -4198,6 +4219,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "set-otd") {
 			setBookOriginalTitlePubDate();
+		}
+		else if (action == "set-own") {
+			setBookOwned();
 		}
 		else if (action == "execute") {
 			executeUserSql();
