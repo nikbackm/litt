@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-03-12: Changed handling of output errors, avoid noisy error messages when output (pipe) is terminated/closed.
  * 2019-03-11: Added set-own.
  * 2019-03-01: Check format for publication dates also in addBook.
  * 2019-02-28: Added --drr option to select dates from date range values in book count listings.
@@ -947,10 +948,14 @@ class Output {
 	static const int BufSize = 1000*10;
 	mutable char m_buffer[BufSize];
 	mutable int  m_bufPos = 0;
+	mutable bool m_error = false;
+
 public:
 	bool stdOutIsConsole() const { return m_stdOutIsConsole; }
 
 	void setEncoding(int encoding) { m_encoding = encoding; }
+
+	bool error() const { return m_error; }
 
 	void writeUtf8Bom() const
 	{
@@ -1067,7 +1072,7 @@ public:
 		}
 	}
 
-	void doWrite(const char* str, int len) const
+	void doWrite(const char* const str, int const len) const
 	{
 		if (len == 0) return;
 		if (m_stdOutIsConsole) {
@@ -1088,6 +1093,7 @@ public:
 				res = fwrite(encStr.c_str(), encStr.length(), 1, stdout);
 			}
 			if (res != 1) {
+				m_error = true;
 				throw std::runtime_error("fwrite failed to write all data, errno: " + std::to_string(errno));
 			}
 		}
@@ -1095,8 +1101,10 @@ public:
 
 	void flush() const 
 	{
-		doWrite(m_buffer, m_bufPos);
-		m_bufPos = 0;
+		// Reset buffer before calling doWrite so we don't end up with further write errors during
+		// error propagation in case it fails. Only the first failure is relevant.
+		auto len = m_bufPos; m_bufPos = 0;
+		doWrite(m_buffer, len);
 	}
 
 	void flushNoThrow() const
@@ -2838,8 +2846,10 @@ public:
 			return 0;
 		}
 		catch (std::exception& ex) {
-			m_output.flushNoThrow();
-			fprintf(stderr, "\nCallback exception: %s\n", ex.what());
+			if (! m_output.error()) {
+				m_output.flushNoThrow();
+				fprintf(stderr, "\nCallback exception: %s\n", ex.what());
+			}
 			return 1;
 		}
 	}
@@ -2855,7 +2865,7 @@ public:
 		}
 
 		m_rowCount = 0;
-		int res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
+		int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
 		if (res == SQLITE_OK) {
 			if (m_eqpGraph) {
 				m_eqpGraph->render();
@@ -2869,14 +2879,15 @@ public:
 					consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 				}
 			}
+			m_output.flush();
+			if (m_showNumberOfRows) {
+				printf("\n# = %i\n", m_rowCount);
+			}
 		}
-		m_output.flushNoThrow();
-		if (res != SQLITE_OK) {
-			throw std::runtime_error(fmt("%s\n\nSQL error: %s", sql.c_str(), sqlite3_errmsg(m_conn.get())));
-		}
-
-		if (m_showNumberOfRows) {
-			printf("\n# = %i\n", m_rowCount);
+		else {
+			if (! m_output.error()) {
+				throw std::runtime_error(fmt("%s\n\nSQL error: %s", sql.c_str(), sqlite3_errmsg(m_conn.get())));
+			}
 		}
 	}
 
