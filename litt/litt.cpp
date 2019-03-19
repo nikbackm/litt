@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-03-19: Added --limit and --offset options for adding LIMIT and OFFSET clauses.
+ * 2019-03-19: No longer automatically quotes custom/named columns, so can use SQL functions like random() in them.
+               Bug fix: Can now have more than one custom/named column in -o option without crashing!
  * 2019-03-12: Changed handling of output errors, avoid noisy error messages when output (pipe) is terminated/closed.
  * 2019-03-11: Added set-own.
  * 2019-03-01: Check format for publication dates also in addBook.
@@ -198,7 +201,7 @@ Changelog:
  * 2017-05-22: Have now decided to finish it and no longer depend on TCC and the SQLite shell. Also for a faster LITT!
  * 2017-05-20: First tests started. Not using Modern C++ so far though, not for SQLite parts at least.
  * 2017-05-19: Got inpired by Kenny Kerr's PluralSight course "SQlite with Modern C++".
- * Previous:   Refer to the litt.btm changelog.
+ * Previous:   Refer to the (old)litt.btm changelog.
 
 **********************************************************************************************************************/
 
@@ -323,6 +326,9 @@ Options:
     --drr:[f|l|m|r]  Specify which date in a date range value (yyyy-mm-dd..yyyy-mm-dd) that will be
                      used in book count listings for date periods.
                      Default is (f)irst, can also use (l)ast, (m)iddle or (r)andom.
+
+    --limit:<n>      LIMIT value.
+    --offset:<n>     OFFSET value.
     
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
     Note that if an option is included several times, then the last one will normally be the effective one.
@@ -1140,6 +1146,8 @@ class Litt {
 	std::string m_dbPath; // Path to LITT db file
 
 	Columns m_orderBy; // Overrides the default action order.
+	int m_limit = 0;
+	int m_offset = 0;
 	Columns m_selectedColumns; // Overrides the default action columns.
 	Columns m_additionalColumns; // Added to the action or overridden columns.
 
@@ -1672,6 +1680,12 @@ public:
 							else throw std::invalid_argument("Unrecognized drr value: " + what);
 						}
 					}
+					else if (extName == "limit") {
+						m_limit = extVal.nextInt();
+					}
+					else if (extName == "offset") {
+						m_offset = extVal.nextInt();
+					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
 					break;
@@ -1745,8 +1759,11 @@ public:
 		auto it = m_columnInfos.find(sn);
 		if (it == m_columnInfos.end()) {
 			if (allowActualName) {
+				const int MaxSize = 100;
 				static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
-				cols.push_back(ColumnInfo{quote(sn), (int)sn.length(), ColumnType::numeric, sn});
+				if (cols.size() == 0) cols.reserve(MaxSize);
+				if (cols.size() == MaxSize) throw std::runtime_error("Too many allowActualName columns!");
+				cols.push_back(ColumnInfo{sn, (int)sn.length(), ColumnType::numeric, sn});
 				return &cols.back();
 			}
 			throw std::invalid_argument("Invalid short column name: " + sn);
@@ -2352,6 +2369,12 @@ public:
 					if (order == ColumnSortOrder::Desc) {
 						m_sstr << " DESC"; // ASC is default.
 					}
+				}
+			}
+			if (litt.m_limit > 0) {
+				m_sstr << "\nLIMIT " << litt.m_limit;
+				if (litt.m_offset > 0) {
+					m_sstr << " OFFSET " << litt.m_offset;
 				}
 			}
 		}
