@@ -3088,7 +3088,7 @@ public:
 		OutputQuery query(*this);
 		const char* with = 
 R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks GROUP BY BookID),
-	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID)),
+	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID) WHERE BookID NOT IN (SELECT BookID FROM OriginalTitles)),
 	qot AS (SELECT BookID, ais, "Original Title" FROM OriginalTitles JOIN ag USING(BookID)),
 	reot AS (SELECT qbt.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title") UNION 
 	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title")))r";
