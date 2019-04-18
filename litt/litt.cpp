@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-04-18: Added reot action to list re-read translated books.
  * 2019-03-19: Added --limit and --offset options for adding LIMIT and OFFSET clauses.
  * 2019-03-19: No longer automatically quotes custom/named columns, so can use SQL functions like random() in them.
                Bug fix: Can now have more than one custom/named column in -o option without crashing!
@@ -226,6 +227,7 @@ Basic list actions:
    l|ll   [language]              List language - without/with books.
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
+   reot                           List re-read original titles; translated books also read as original title books.
    sametitle                      List books with same title. Can use virtual column "btc" - Book Title Count.
    sameisbn                       List books with same ISBN.
    samestory                      List stories with same title.
@@ -2096,13 +2098,26 @@ public:
 			}
 		}
 
+		void addDistinct(SelectOption selectOption)
+		{
+			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
+				m_sstr << "DISTINCT ";
+			}
+		}
+
 		void initSelectBare(SelectOption selectOption = SelectOption::normal)
 		{
 			init();
 			m_sstr << "SELECT ";
-			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
-				m_sstr << "DISTINCT ";
-			}
+			addDistinct(selectOption);
+		}
+
+		void initWithSelectBare(const char* with, SelectOption selectOption = SelectOption::normal)
+		{
+			init();
+			m_sstr << "WITH\n" << with << "\n";
+			m_sstr << "SELECT ";
+			addDistinct(selectOption);
 		}
 
 		void initColumnWidths()
@@ -2122,10 +2137,8 @@ public:
 			}
 		}
 
-		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+		void addColums(const char* defColumns)
 		{
-			initSelectBare(selectOption);
-
 			auto selCols = litt.m_selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.m_selectedColumns;
 			appendTo(selCols, litt.m_additionalColumns);
 			for (unsigned i = 0; i < selCols.size(); ++i) {
@@ -2142,9 +2155,22 @@ public:
 				}
 			}
 			initColumnWidths();
+		}
 
+		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+		{
+			initSelectBare(selectOption);
+			addColums(defColumns);
 			m_sstr << "\nFROM " << from;
+			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
+			initOrderBy(defOrderBy);
+		}
 
+		void initWithSelect(const char* defColumns, const char* with, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
+		{
+			initWithSelectBare(with, selectOption);
+			addColums(defColumns);
+			m_sstr << "\nFROM " << from;
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			initOrderBy(defOrderBy);
 		}
@@ -3051,6 +3077,23 @@ public:
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
 		query.initSelect("brc.bt.bi.dr.ng", from, "bi.ln.dr");
 		query.add("JOIN Books USING(BookID)");
+		query.addAuxTables();
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
+	void listReot()
+	{
+		OutputQuery query(*this);
+		const char* with = 
+R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks GROUP BY BookID),
+	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID)),
+	qot AS (SELECT BookID, ais, "Original Title" FROM OriginalTitles JOIN ag USING(BookID)),
+	reot AS (SELECT qbt.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title") UNION 
+	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title")))r";
+		const char* from = "reot JOIN Books USING(BookID)";
+		query.initWithSelect("ng.ra.bt.dr.so.gg", with, from, "ng.dr");
 		query.addAuxTables();
 		query.addWhere();
 		query.addOrderBy();
@@ -4110,6 +4153,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 		else if (action == "rereads") {
 			listRereads();
+		}
+		else if (action == "reot") {
+			listReot();
 		}
 		else if (action == "sametitle") {
 			listSametitle();
