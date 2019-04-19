@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-04-19: Extended reot to list different translations of the same book. E.g. English and Swedish of a Polish original.
  * 2019-04-18: Added reot action to list re-read translated books.
  * 2019-03-19: Added --limit and --offset options for adding LIMIT and OFFSET clauses.
  * 2019-03-19: No longer automatically quotes custom/named columns, so can use SQL functions like random() in them.
@@ -3089,9 +3090,10 @@ public:
 		const char* with = 
 R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks GROUP BY BookID),
 	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID) WHERE BookID NOT IN (SELECT BookID FROM OriginalTitles)),
-	qot AS (SELECT BookID, ais, "Original Title" FROM OriginalTitles JOIN ag USING(BookID)),
-	reot AS (SELECT qbt.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title") UNION 
-	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot."Original Title")))r";
+	qot AS (SELECT BookID, ais, "Original Title" as ot, Books.LangID as bli FROM OriginalTitles JOIN Books USING(BookID) JOIN ag USING(BookID)),
+	reot AS (SELECT qbt.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION 
+	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION
+	         SELECT q1.BookID FROM qot q1 JOIN qot q2 ON (q1.ais = q2.ais AND q1.ot = q2.ot AND q1.BookID <> q2.BookID AND q1.bli <> q2.bli)))r";
 		const char* from = "reot JOIN Books USING(BookID)";
 		query.initWithSelect("ng.ra.bt.dr.so.gg", with, from, "ng.dr");
 		query.addAuxTables();
