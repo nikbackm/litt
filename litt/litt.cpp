@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-05-10: Justified "Part in series" to right. 
+               Documented addColumns format.
+			   Added -qd for showing default columns.
  * 2019-05-10: Added --colsep option to customize column separator in columns display mode.
  * 2019-04-19: Extended reot to list different translations of the same book. E.g. English and Swedish of a Polish original.
  * 2019-04-18: Added reot action to list re-read translated books.
@@ -297,7 +300,8 @@ Options:
     -w[whereCond]     Add a WHERE condition - will be AND:ed with the one specified by the action and arguments.
                       If several -w options are included their values will be OR:ed together.
     -s[colSizes]      Override the default column sizes.
-    -q                Use debug mode - dump the SQL query/command instead of executing it.
+    -q[d]             Use debug mode - dump the SQL query/command instead of executing it. 
+                      Adding 'd' also lists default columns for the action.
     -u                Make sure the result only contain DISTINCT (UNIQUE) values.
     -l[dbPath]        Specify litt-sqlite database file. Uses "litt.sqlite" by default. Either from the
                       current directory or from "%MYDOCS%\litt\" if MYDOCS is set.
@@ -341,6 +345,7 @@ Options:
     Some options like -a and -w are additive though and all option instances of those will be used.
 
 selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
+addColumns format: Same as selColumns format.
 colOrder format: <shortName|actualName>[.asc|desc]{.<shortName|actualName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
           cmpOper: lt,lte,gt,gte,eq,neq,isnull,notnull,isempty ("LIKE" if none is given, isnull, notnull & isempty take no cmpArg)
@@ -1144,6 +1149,7 @@ class Litt {
 	int  m_fitWidthValue = 230;
 	bool m_selectDistinct = false;
 	bool m_showQuery = false;
+	bool m_showDefaults = false;
 	int  m_explainQuery = 0; // 1 == EXPLAIN QUERY PLAN, >1 == EXPLAIN
 	bool m_showNumberOfRows = false;
 	DisplayMode m_displayMode = DisplayMode::column;
@@ -1384,7 +1390,7 @@ public:
 		addColumnTextWithLength("ot", "\"Original Title\"", 45, CTitle);
 		addColumnTextWithLength("se", "Series", 40, CTitle);
 		addColumnNumeric("si", "SeriesID", -8);
-		addColumnText("pa", "\"Part in Series\"", 4);
+		addColumnText("pa", "\"Part in Series\"", -4);
 		addColumnTextWithLength("st", "Story", 45, CTitle);
 		addColumnNumeric("stid", "StoryID", -7);
 		addColumnNumeric("stra", "Stories.Rating", 3, "SRating");
@@ -1573,6 +1579,7 @@ public:
 					break;
 				case 'q':
 					m_showQuery = true;
+					if (val == "d") m_showDefaults = true;
 					Input::confirmEnabled = false;
 					break;
 				case 'u':
@@ -2167,8 +2174,16 @@ public:
 			initColumnWidths();
 		}
 
+		void showDefaultColumns(const char* defColumns, const char* defOrderBy)
+		{
+			if (litt.m_showDefaults) {
+				printf("defColumns: %s\ndefOrderBy: %s\n\n", defColumns, defOrderBy);
+			}
+		}
+
 		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
 		{
+			showDefaultColumns(defColumns, defOrderBy);
 			initSelectBare(selectOption);
 			addColums(defColumns);
 			m_sstr << "\nFROM " << from;
@@ -2178,6 +2193,7 @@ public:
 
 		void initWithSelect(const char* defColumns, const char* with, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
 		{
+			showDefaultColumns(defColumns, defOrderBy);
 			initWithSelectBare(with, selectOption);
 			addColums(defColumns);
 			m_sstr << "\nFROM " << from;
