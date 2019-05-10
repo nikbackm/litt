@@ -1,6 +1,9 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-05-10: The -x option now implies -y option.
+			   Command actions now respect the -x option! 
+			   Command actions no longer print changes when -q is specified.
  * 2019-05-10: Justified "Part in series" to right. 
                Documented addColumns format.
 			   Added -qd for showing default columns.
@@ -1587,6 +1590,7 @@ public:
 					break;
 				case 'x':
 					m_explainQuery = (val == "2") ? 2 : 1;
+					Input::confirmEnabled = false;
 					break;
 				case 'n': 
 					m_showNumberOfRows = true;
@@ -3426,17 +3430,39 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		return sqlite3_changes(m_conn.get());
 	}
 
-	IdValue executeInsert(std::string const& userSql) const
+	int executeWriteSql(std::string const& userSql)
 	{
-		executeSql(userSql);
-		return sqlite3_last_insert_rowid(m_conn.get());
+		if (m_explainQuery > 0) {
+			OutputQuery q(*this); 
+			q.columnWidths.assign(5, 30);
+			q.initColumnWidths();
+			q.init();
+			q.a(userSql);
+			runOutputQuery(q);
+			return 0;
+		}
+		else {
+			int const changes = executeSql(userSql);
+			if (!m_showQuery) {
+				const char* verb = "Modified";
+				if (userSql.find("UPDATE") != std::string::npos && userSql.find("INSERT") == std::string::npos) verb = "Updated";
+				else if (userSql.find("DELETE")  != std::string::npos) verb = "Deleted";
+				else if (userSql.find("REPLACE") != std::string::npos) verb = "Added/Updated";
+				else if (userSql.find("UPDATE")  != std::string::npos) verb = "Added/Updated";
+				else if (userSql.find("INSERT")  != std::string::npos) verb = "Added";
+				printf("%s %i rows\n", verb, changes);
+			}
+			return changes;
+		}
 	}
 
-	void executeInsert(std::string const& userSql, const char* idName) const
+	void executeInsert(std::string const& userSql, const char* idName)
 	{
-		auto id = executeInsert(userSql);
-		if (id != EmptyId) {
-			printf("Added with %s %llu\n", idName, id);
+		if (executeWriteSql(userSql) > 0) {
+			auto const id = sqlite3_last_insert_rowid(m_conn.get());
+			if (id != EmptyId) {
+				printf("Added with %s %llu\n", idName, id);
+			}
 		}
 	}
 
@@ -3571,8 +3597,24 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
+	void explainNotSupported()
+	{
+		if (m_explainQuery > 0) {
+			throw std::invalid_argument("-x option is not supported for this action");
+		}
+	}
+
+	void printTotalChanges()
+	{
+		auto const changes = sqlite3_total_changes(m_conn.get());
+		if (changes > 0)
+			printf("Added %i rows.\n", changes);
+	}
+
 	void addBook()
 	{
+		explainNotSupported();
+
 		struct AData { IdValue authorId; std::string story; IdValue storyId; std::string storyRating; GenreIds storyGenres; };
 		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
@@ -3748,7 +3790,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		
 		try {
 			executeSql(sql);
-			printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+			printTotalChanges();
 		}
 		catch (std::exception& ex) {
 			printf("Failed to add book: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), sql.c_str());
@@ -3790,6 +3832,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 	void addStory()
 	{
+		explainNotSupported();
+
 		if (auto bid = bidargi(0)) {
 			auto aid = idargi(1, "AuthorID", cf(&Litt::selAuthor), getListAuthor());
 			auto story = argi(2, "Story");
@@ -3817,7 +3861,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 				try {
 					executeSql(sql);
-					printf("Added %i rows.\n", sqlite3_total_changes(m_conn.get()));
+					printTotalChanges();
 				}
 				catch (std::exception& ex) {
 					printf("Failed to add story: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), sql.c_str());
@@ -3835,17 +3879,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			if (part != "delete") {
 				if (confirm(fmt("Add '%s [%llu]' to '%s [%llu]' as part %s", 
 					selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId, part.c_str()))) {
-					int changes = executeSql(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
+					executeWriteSql(fmt("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)", 
 						bookId, seriesId, escSqlVal(part, true).c_str()));
-					printf("Added/Updated %i rows\n", changes);
 				}
 			}
 			else {
 				if (confirm(fmt("Remove '%s [%llu]' from '%s [%llu]'", 
 					selTitle(bookId).c_str(), bookId, selSeries(seriesId).c_str(), seriesId))) {
-					int changes = executeSql(fmt("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu",
+					executeWriteSql(fmt("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu",
 						bookId, seriesId));
-					printf("Deleted %i rows\n", changes);
 				}
 			}
 		}
@@ -3857,9 +3899,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto genreId = gidargi(1);
 			if (confirm(fmt("Add '%s' => '%s'",
 				selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)",
+				executeWriteSql(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)",
 					bookId, genreId));
-				printf("Added %i rows\n", changes);
 			}
 		}
 	}
@@ -3870,9 +3911,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto genreId = gidargi(1);
 			if (confirm(fmt("Add '%s' => '%s'",
 				selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
-				int changes = executeSql(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)",
+				executeWriteSql(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)",
 					storyId, genreId));
-				printf("Added %i rows\n", changes);
 			}
 		}
 	}
@@ -3887,16 +3927,14 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
 				if (confirm(fmt("Change '%s' => '%s' for '%s'", 
 					selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selTitle(bookId).c_str()))) {
-					int changes = executeSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
+					executeWriteSql(fmt("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", 
 						newGenreId, bookId, genreId));
-					printf("Updated %i rows\n", changes);
 				}
 			}
 			else {
 				if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selTitle(bookId).c_str()))) {
-					int changes = executeSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
+					executeWriteSql(fmt("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu",
 						bookId, genreId));
-					printf("Deleted %i rows\n", changes);
 				}
 			}
 		}
@@ -3912,16 +3950,14 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
 				if (confirm(fmt("Change '%s' => '%s' for '%s'",
 					selGenre(genreId).c_str(), selGenre(newGenreId).c_str(), selStory(storyId).c_str()))) {
-					int changes = executeSql(fmt("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu",
+					executeWriteSql(fmt("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu",
 						newGenreId, storyId, genreId));
-					printf("Updated %i rows\n", changes);
 				}
 			}
 			else {
 				if (confirm(fmt("Remove '%s' from '%s'", selGenre(genreId).c_str(), selStory(storyId).c_str()))) {
-					int changes = executeSql(fmt("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu",
+					executeWriteSql(fmt("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu",
 						storyId, genreId));
-					printf("Deleted %i rows\n", changes);
 				}
 			}
 		}
@@ -3934,9 +3970,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto sourceId = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
 			if (confirm(fmt("Add date read '%s' with source '%s' to '%s'", 
 				dr.c_str(), selSource(sourceId).c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", 
+				executeWriteSql(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", 
 					bookId, ESC_S(dr), sourceId));
-				printf("Added %i rows\n", changes);
 			}
 		}
 	}
@@ -3976,16 +4011,14 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto const dr = getDrArg(bookId, 2);
 			if (newDr != "delete") {
 				if (confirm(fmt("Change date read '%s' => '%s' for '%s'", dr.c_str(), newDr.c_str(), selTitle(bookId).c_str()))) {
-					int changes = executeSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
+					executeWriteSql(fmt("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
 						ESC_S(newDr), bookId, ESC_S(dr)));
-					printf("Updated %i rows\n", changes);
 				}
 			}
 			else {
 				if (confirm(fmt("Remove date read '%s' from '%s'", dr.c_str(), selTitle(bookId).c_str()))) {
-					int changes = executeSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
+					executeWriteSql(fmt("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s",
 						bookId, ESC_S(dr)));
-					printf("Deleted %i rows\n", changes);
 				}
 			}
 		}
@@ -3997,9 +4030,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			auto const sourceId = soidargi(1);
 			auto const dr = getDrArg(bookId, 2);
 			if (confirm(fmt("Set source to '%s' for %s of '%s'", selSource(sourceId).c_str(), dr.c_str(), selTitle(bookId).c_str()))) {
-				int changes = executeSql(fmt("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND \"Date Read\"=%s",
+				executeWriteSql(fmt("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND \"Date Read\"=%s",
 					sourceId, bookId, ESC_S(dr)));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
@@ -4011,17 +4043,15 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			if (originalTitle != "delete") {
 				auto langId = lidargi(2);
 				if (confirm(fmt("Set original title of '%s' => '%s'", selTitle(bookId).c_str(), originalTitle.c_str()))) {
-					int changes = executeSql(fmt(
+					executeWriteSql(fmt(
 						"INSERT INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)"
 							" ON CONFLICT(BookID) DO UPDATE SET \"Original Title\"=excluded.\"Original Title\", LangID=excluded.LangID", 
 						bookId, ESC_S(originalTitle), langId));
-					printf("Updated %i rows\n", changes);
 				}
 			}
 			else {
 				if (confirm(fmt("Remove original title of '%s'", selTitle(bookId).c_str()))) {
-					int changes = executeSql(fmt("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId));
-					printf("Deleted %i rows\n", changes);
+					executeWriteSql(fmt("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId));
 				}
 			}
 		}
@@ -4032,9 +4062,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto bookId = bidargi(0)) {
 			auto rating = argi(1, "Rating", RatingRegEx);
 			if (confirm(fmt("Set rating of '%s' => %s", selTitle(bookId).c_str(), rating.c_str()))) {
-				int changes = executeSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
+				executeWriteSql(fmt("UPDATE Books SET Rating = %s WHERE BookID=%llu", 
 					rating.c_str(), bookId));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
@@ -4044,9 +4073,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto storyId = stidargi(0)) {
 			auto rating = argi(1, "Rating", RatingRegEx);
 			if (confirm(fmt("Set rating of '%s' => %s", selStory(storyId).c_str(), rating.c_str()))) {
-				int changes = executeSql(fmt("UPDATE Stories SET Rating = %s WHERE StoryID=%llu",
+				executeWriteSql(fmt("UPDATE Stories SET Rating = %s WHERE StoryID=%llu",
 					rating.c_str(), storyId));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
@@ -4056,9 +4084,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = argi(1, "Publication date", PubDateRegEx);
 			if (confirm(fmt("Set Date of '%s' => %s", selTitle(bookId).c_str(), pubdate.c_str()))) {
-				int changes = executeSql(fmt("UPDATE Books SET Date = %s WHERE BookID=%llu", 
+				executeWriteSql(fmt("UPDATE Books SET Date = %s WHERE BookID=%llu", 
 					ESC_S(pubdate), bookId));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
@@ -4068,9 +4095,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = argi(1, "Publication date", PubDateRegEx);
 			if (confirm(fmt("Set otDate of '%s' => %s", selTitle(bookId).c_str(), pubdate.c_str()))) {
-				int changes = executeSql(fmt("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", 
+				executeWriteSql(fmt("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", 
 					ESC_S(pubdate), bookId));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
@@ -4080,9 +4106,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		if (auto bookId = bidargi(0)) {
 			auto owned = intargi(1, "Owned");
 			if (confirm(fmt("Set owned of '%s' => %i", selTitle(bookId).c_str(), owned))) {
-				int changes = executeSql(fmt("UPDATE Books SET Owned = %i WHERE BookID=%llu", 
+				executeWriteSql(fmt("UPDATE Books SET Owned = %i WHERE BookID=%llu", 
 					owned, bookId));
-				printf("Updated %i rows\n", changes);
 			}
 		}
 	}
