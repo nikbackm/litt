@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-05-10: Added --colsep option to customize column separator in columns display mode.
  * 2019-04-19: Extended reot to list different translations of the same book. E.g. English and Swedish of a Polish original.
  * 2019-04-18: Added reot action to list re-read translated books.
  * 2019-03-19: Added --limit and --offset options for adding LIMIT and OFFSET clauses.
@@ -332,6 +333,8 @@ Options:
 
     --limit:<n>      LIMIT value.
     --offset:<n>     OFFSET value.
+
+    --colsep:<str>   The column separator used in columns display mode. Default = "  "
     
     For escaping option separators the escape character '!' can be used. It's also used to escape itself.
     Note that if an option is included several times, then the last one will normally be the effective one.
@@ -1146,6 +1149,7 @@ class Litt {
 	DisplayMode m_displayMode = DisplayMode::column;
 	std::string m_listSep = "|";
 	std::string m_colSep = "  ";
+	int m_colSepSize = 2; // Avoid recalculating during output since contains character count and not code-point count.
 	std::string m_dbPath; // Path to LITT db file
 
 	Columns m_orderBy; // Overrides the default action order.
@@ -1688,6 +1692,11 @@ public:
 					}
 					else if (extName == "offset") {
 						m_offset = extVal.nextInt();
+					}
+					else if (extName == "colsep") {
+						try { m_colSep = toUtf8(extVal.getNext()); }
+						catch (std::invalid_argument& ) { m_colSep.clear(); } // allow empty values for colsep!
+						m_colSepSize = Utils::utf8ToWide(m_colSep.c_str()).size();
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
@@ -2812,7 +2821,7 @@ public:
 							requiredWidth += w;
 						}
 						if (query.columnWidths.size() > 1) {
-							requiredWidth += (2 * (query.columnWidths.size() - 1));
+							requiredWidth += (m_colSepSize * (query.columnWidths.size() - 1));
 						}
 						if (autoFit) {
 							fitW = (requiredWidth > m_fitWidthValue);
