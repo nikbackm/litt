@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-06-03: Added virtual column "sep" that includes both series and part.
  * 2019-05-10: The -x option now implies -y option.
 			   Command actions now respect the -x option! 
 			   Command actions no longer print changes when -q is specified.
@@ -404,7 +405,7 @@ Column short name values:
     astg, bstg       - Stories for author and Stories for book
     btastg           - Title combined with stories for author
     stng             - Authors for story
-    se, si, pa       - Series, SeriesID, Part in Series
+    se, si, pa, sep  - Series, SeriesID, Part in Series, Series + Part
     so, soid         - Source, SourceID
     ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
 
@@ -1394,6 +1395,7 @@ public:
 		addColumnTextWithLength("se", "Series", 40, CTitle);
 		addColumnNumeric("si", "SeriesID", -8);
 		addColumnText("pa", "\"Part in Series\"", -4);
+		addColumnText("sep", "Series||' '||\"Part in Series\"", 40, "\"Series #\"");
 		addColumnTextWithLength("st", "Story", 45, CTitle);
 		addColumnNumeric("stid", "StoryID", -7);
 		addColumnNumeric("stra", "Stories.Rating", 3, "SRating");
@@ -2341,7 +2343,8 @@ public:
 #define G_COLS     "gi." GE_COLS "." GW_COLS
 #define GG_COLS    "gg.bsgg"
 
-#define S_COLS     "si.pa.se"
+#define SE_COLS    "se.sep"
+#define S_COLS     "si.pa." SE_COLS
 #define OT_COLS    "ot.otli.otis.oi10.oi13.otd.oty.otla." BOT_SHARED
 
 #define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
@@ -2381,7 +2384,7 @@ public:
 			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
 
 			addIfColumns(S_COLS,                     indent + serJoin + " JOIN BookSeries USING(BookID)");
-			addIfColumns("se",                       indent + serJoin + " JOIN Series USING(SeriesID)");
+			addIfColumns(SE_COLS,                    indent + serJoin + " JOIN Series USING(SeriesID)");
 
 			if ((opt & Skip_Stories) == 0) {
 				if (litt.m_hasBookStories) {
