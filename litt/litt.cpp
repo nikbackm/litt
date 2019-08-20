@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
  * 2019-06-03: Added virtual column "sep" that includes both series and part.
  * 2019-05-10: The -x option now implies -y option.
 			   Command actions now respect the -x option! 
@@ -223,7 +224,7 @@ void showHelp(int level = 0)
 R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
-   h[1|2]                         Show help, level 1 or 2, level 2 is default.
+   h[0|1|2]                       Show help, level 0..2, level 2 is default.
    a|aa   [lastName] [firstName]  List authors - without/with books.
    ps     [lastName] [firstName]  List pseudonyms.
    b|bb   [title]                 List books - with minimum/full details.
@@ -4173,8 +4174,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	void executeAction() 
 	{
 		auto const& action = m_action;
-		if (action == "h" || action == "h1" || action == "h2") {
-			showHelp(action == "h1" ? 1 : 2);
+		if (action == "h" || action == "h0" || action == "h1" || action == "h2") {
+			int const level = (action.length() == 2) ? (action[1] - '0') : 0;
+			showHelp(level);
 		}
 		else if (action == "a" || action == "aa") {
 			listAuthors(action, arg(0), arg(1));
