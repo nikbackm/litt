@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-21: Added virtual columns ar, gr and sr for Author, Genre and Source average book ratings. 
  * 2019-08-21: No need to automatically join DatesRead table for windows function columns ac and gc.
  * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
  * 2019-08-21: Don't count stories with same title as the book they appear in for titleStory listing.
@@ -403,6 +404,7 @@ Column short name values:
     bdod             - Difference in days between book and original title first publication dates
     bdo              - otd if exists else bd (i.e. always the first publication date)
     st, stid, stra   - Story, StoryID, Story rating
+    ar, gr, sr       - Average rating for Author, Genre, Source
     btst             - Title combined with story (if there is one)
     stge, stgg       - Genre and Genre(s) for story
     bsra, bsge, bsgg - Rating, Genre and Genre(s) for story or book (if there is no story)
@@ -1382,6 +1384,9 @@ public:
 		addColumnText("la", "L_book.Language", 4, "Lang");
 		addColumnText("otla", "L_ot.Language", 4, "otLa");
 		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
+		addColumnNumeric("ar", "ARating", 3);
+		addColumnNumeric("gr", "GRating", 3);
+		addColumnNumeric("sr", "SRating", 3);
 		addColumnNumeric("own", "Owned", 3);
 		addColumnTextWithLength("isbn", "ISBN", 13, CDefault);
 		addColumnTextWithLength("is10", "isbn10(ISBN)", 10, CDefault);
@@ -2303,6 +2308,10 @@ public:
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)";
 			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)";
 
+			auto ar = "(SELECT AuthorID, avg(Rating) AS ARating FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)";
+			auto gr = "(SELECT GenreID,  avg(Rating) AS GRating FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)";
+			auto sr = "(SELECT SourceID, avg(Rating) AS SRating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)";
+
 			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)";
 			std::string storyTables = litt.m_hasBookStories ? "Stories JOIN BookStories USING(StoryID)" : "Stories";
 			auto astg = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
@@ -2341,12 +2350,12 @@ public:
 #define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd.drrf.drrl.drrm.drrr.drrd"
 
 #define SOW_COLS   "sp.sl.sc"
-#define DR_SO_COLS "soid.so." SOW_COLS
+#define DR_SO_COLS "soid.so.sr." SOW_COLS
 
 #define GW_COLS_DR "gp.gl"
 #define GW_COLS    GW_COLS_DR ".gc"
 #define GE_COLS    "ge.bsge"
-#define G_COLS     "gi." GE_COLS "." GW_COLS
+#define G_COLS     "gi.gr." GE_COLS "." GW_COLS
 #define GG_COLS    "gg.bsgg"
 
 #define SE_COLS    "se.sep"
@@ -2354,7 +2363,7 @@ public:
 #define OT_COLS    "ot.otli.otis.oi10.oi13.otd.oty.otla." BOT_SHARED
 
 #define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
-#define B_AB_COLS  "ai."               AB_COLS "." A_COLS
+#define B_AB_COLS  "ai.ar."                     AB_COLS "." A_COLS
 #define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS_DR "." GW_COLS_DR
 
 			// Add the needed tables/queries according to included columns.
@@ -2376,15 +2385,19 @@ public:
 
 			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
 
+			addIfColumns("ar",                       indent + "JOIN " + ar + " USING(AuthorID)");
+
 			if ((opt & Skip_DatesRead) == 0)
 			addIfColumns(DR_F_COLS,                  indent + "JOIN DatesRead USING(BookID)");
 			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
 
 			addIfColumns("so",                       indent + "JOIN Sources USING(SourceID)");
+			addIfColumns("sr",                       indent + "JOIN " + sr + " USING(SourceID)");
 
 			addIfColumns(G_COLS,                     indent + "JOIN BookGenres USING(BookID)");
 			addIfColumns(GE_COLS,                    indent + "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
 			addIfColumns(GG_COLS,                    indent + "JOIN " + gg + " USING(BookID)");
+			addIfColumns("gr",                       indent + "JOIN " + gr + " USING(GenreID)");
 
 			addIfColumns(OT_COLS,                    indent + ortJoin + " JOIN OriginalTitles USING(BookID)");
 			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
