@@ -1493,9 +1493,9 @@ public:
 		addColumnNumeric("al", XLAG("AuthorID"),   -5, "ALag");
 		addColumnNumeric("ac", XCOUNT("AuthorID"), -4, "ACnt");
 
-		addColumnNumeric("gp", XPERIOD("GenreID"), -7, "GPeriod");
-		addColumnNumeric("gl", XLAG("GenreID"),    -5, "GLag");
-		addColumnNumeric("gc", XCOUNT("GenreID"),  -4, "GCnt");
+		addColumnNumeric("gp", XPERIOD("BookGenres.GenreID"), -7, "GPeriod");
+		addColumnNumeric("gl", XLAG("BookGenres.GenreID"),    -5, "GLag");
+		addColumnNumeric("gc", XCOUNT("BookGenres.GenreID"),  -4, "GCnt");
 
 		addColumnNumeric("sp", XPERIOD("SourceID"),-7, "SPeriod");
 		addColumnNumeric("sl", XLAG("SourceID"),   -5, "SLag");
@@ -2345,7 +2345,7 @@ public:
 
 #define ASTG_COLS  "astg.btastg"
 
-#define AB_COLS    AW_COLS  "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
+#define AB_COLS    AW_COLS "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
 
 #define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd.drrf.drrl.drrm.drrr.drrd"
 
