@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-21: No need to automatically join DatesRead table for windows function columns ac and gc.
  * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
  * 2019-08-21: Don't count stories with same title as the book they appear in for titleStory listing.
  * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
@@ -2325,7 +2326,8 @@ public:
 
 #define PS_COLS    "ps.psf.psmid"
 #define A_COLS     "fn.ln.nn." PS_COLS
-#define AW_COLS    "ap.al.ac"
+#define AW_COLS_DR "ap.al"
+#define AW_COLS    AW_COLS_DR ".ac"
 
 #define ST_GE_COLS "stge.bsge"
 #define ST_GG_COLS "stgg.bsgg"
@@ -2341,7 +2343,8 @@ public:
 #define SOW_COLS   "sp.sl.sc"
 #define DR_SO_COLS "soid.so." SOW_COLS
 
-#define GW_COLS    "gp.gl.gc"
+#define GW_COLS_DR "gp.gl"
+#define GW_COLS    GW_COLS_DR ".gc"
 #define GE_COLS    "ge.bsge"
 #define G_COLS     "gi." GE_COLS "." GW_COLS
 #define GG_COLS    "gg.bsgg"
@@ -2352,7 +2355,7 @@ public:
 
 #define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
 #define B_AB_COLS  "ai."               AB_COLS "." A_COLS
-#define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS "." GW_COLS
+#define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS_DR "." GW_COLS_DR
 
 			// Add the needed tables/queries according to included columns.
 
