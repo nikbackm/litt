@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
  * 2019-08-21: Don't count stories with same title as the book they appear in for titleStory listing.
  * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
  * 2019-06-03: Added virtual column "sep" that includes both series and part.
@@ -3052,7 +3053,7 @@ public:
 	void listOriginalTitles()
 	{
 		addActionWhereCondition("ot", 0);
-		runListData("bi.ng.otla.ot.bt.dr.so.gg", "ot.dr.bi", IJF_OrigTitle);
+		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", IJF_OrigTitle);
 	}
 
 	void listStories()
@@ -3110,7 +3111,7 @@ public:
 	{
 		OutputQuery query(*this);
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-		query.initSelect("brc.bt.bi.dr.ng", from, "bi.ln.dr");
+		query.initSelect("brc.bt.bi.dr.ng", from, "dr.bi");
 		query.add("JOIN Books USING(BookID)");
 		query.addAuxTables();
 		query.addWhere();
@@ -3129,7 +3130,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION
 	         SELECT q1.BookID FROM qot q1 JOIN qot q2 ON (q1.ais = q2.ais AND q1.ot = q2.ot AND q1.BookID <> q2.BookID AND q1.bli <> q2.bli)))r";
 		const char* from = "reot JOIN Books USING(BookID)";
-		query.initWithSelect("ng.ra.bt.dr.so.gg", with, from, "ng.dr");
+		query.initWithSelect("ng.ra.bt.dr.so.gg", with, from, "dr.bi");
 		query.addAuxTables();
 		query.addWhere();
 		query.addOrderBy();
