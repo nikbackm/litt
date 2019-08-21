@@ -4177,7 +4177,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	{
 		auto const& action = m_action;
 		if (action == "h" || action == "h0" || action == "h1" || action == "h2") {
-			int const level = (action.length() == 2) ? (action[1] - '0') : 0;
+			int const level = (action.length() != 2) ? 2 : (action[1] - '0');
 			showHelp(level);
 		}
 		else if (action == "a" || action == "aa") {
