@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-21: Don't count stories with same title as the book they appear in for titleStory listing.
  * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
  * 2019-06-03: Added virtual column "sep" that includes both series and part.
  * 2019-05-10: The -x option now implies -y option.
@@ -3202,7 +3203,7 @@ JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRa
 	JOIN DatesRead USING(BookID)
 	JOIN Sources USING(SourceID)
 ) as S 
-WHERE B.Title = S.Story
+WHERE B.Title = S.Story AND B.BookID <> S.BookID
 ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(StoryID)" : "").c_str());
 		runOutputQuery(query);
 	}
