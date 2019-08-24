@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-24: Added st listing for simple stories, renamed old st listing to stt.
  * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
                This makes the former as flexible as the latter, while still being as simple/efficient in the base case,
 			   i.e. they include no unneeded tables.
@@ -236,7 +237,7 @@ Basic list actions:
    ps     [lastName] [firstName]  List pseudonyms.
    b|bb   [title]                 List books - with minimum/full details.
    ot     [origTitle]             List original titles for books.
-   st     [story]                 List (anthology) stories for books.
+   st|stt [story]                 List (anthology) stories for books.
    s|ss   [series]                List series - without/with books.
    g|gg   [genre]                 List genre - without/with books.
    so|soo [source]                List book sources where a certain book "read" was gotten - without/with books.
@@ -3357,21 +3358,20 @@ public:
 		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", Table::originalTitles);
 	}
 
-	void listStories()
-	{
-		addActionWhereCondition("st", 0);
-		if (m_hasBookStories) {
-			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
-		}
-		else { // Old version
-			runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", Table::stories);
-		}
-	}
-
-	void listStories(std::string story)
+	void listStories(std::string const & action, std::string const & story)
 	{
 		addActionWhereCondition("st", story);
-		runListData("stid.st", "stid.st", Table::stories);
+		if (action == "st") {
+			runListData("stid.st", "stid.st", Table::stories);
+		}
+		else {
+			if (m_hasBookStories) {
+				runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
+			}
+			else { // Old version
+				runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", Table::stories);
+			}
+		}
 	}
 
 	void listSources(std::string const & action, std::string const & sourceName)
@@ -3848,7 +3848,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	InputListFunction getListSource() { return LIST_F(listSources("so", WcS + s + WcS)); }
 	InputListFunction getListGenre()  { return LIST_F(listGenres ("g",  WcS + s + WcS)); }
 	InputListFunction getListSeries() { return LIST_F(listSeries ("s",  WcS + s + WcS)); }
-	InputListFunction getListStory()  { return LIST_F(listStories(s + WcS));             }
+	InputListFunction getListStory()  { return LIST_F(listStories("st", s + WcS));       }
 	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", s + WcS)); }
 	InputListFunction getListLanguage() { return LIST_F(listBookLanguages("l", s + WcS)); }
 	
@@ -4505,8 +4505,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		else if (action == "ot") {
 			listOriginalTitles();
 		}
-		else if (action == "st") {
-			listStories();
+		else if (action == "st" || action == "stt") {
+			listStories(action, arg(0));
 		}
 		else if (action == "so" || action == "soo") {
 			listSources(action, arg(0));
