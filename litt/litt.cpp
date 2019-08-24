@@ -1,6 +1,7 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
+ * 2019-08-24: Changed gg listing columns.
  * 2019-08-24: Added st listing for simple stories, renamed old st listing to stt.
  * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
                This makes the former as flexible as the latter, while still being as simple/efficient in the base case,
@@ -3348,7 +3349,7 @@ public:
 			runListData("gi_n.ge.50", "ge", Table::genres);
 		}
 		else {
-			runListData("gg.bi.bsra.btst.dr.nn", "gg.dr.bi.ln.fn", Table::genres);
+			runListData("ge.bi.bt.ra.dr.ng.gg", "ge.dr.bi", Table::genres);
 		}
 	}
 
