@@ -1442,6 +1442,7 @@ class Litt {
 
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
+#define APPEND_OPT_COL(mand, opt) mand " || CASE WHEN " opt " IS NULL THEN '' ELSE (' [' || " opt " || ']') END"
 
 public:
 	Litt(int argc, char** argv)
@@ -1505,12 +1506,12 @@ public:
 		addColumnNumeric("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
 		addColumnTextWithLength("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
 		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
-		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
+		addColumnTextWithLength("btst", APPEND_OPT_COL("Title", "Story"), 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
 		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
 		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
 		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
 		addColumnTextWithLength("astg", "Stories", 45, Tables(&t.astg), CNoCase);
-		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, Tables(&t.books, &t.astg), CTitle, "\"Title [Stories]\"");
+		addColumnTextWithLength("btastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.astg), CTitle, "\"Title [Stories]\"");
 		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
 		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
 		addColumnTextWithLength("so", "Source", 35, Tables(&t.sources), CNoCase);
