@@ -1,9 +1,6 @@
 ﻿/** LITT - now for C++! ***********************************************************************************************
 
 Changelog:
- * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
-               This makes the former as flexible as the latter, while still being as simple/efficient in the base case,
-			   i.e. they include no unneeded tables.
  * 2019-08-21: Added virtual columns ar, gr and sr for Author, Genre and Source average book ratings. 
  * 2019-08-21: No need to automatically join DatesRead table for windows function columns ac and gc.
  * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
@@ -669,92 +666,6 @@ namespace LittDefs
 
 	bool toIdValue(std::string const & str, IdValue& value) { return toULongLong(str, value); }
 
-	struct TableInfo {
-		TableInfo* parent = nullptr; // Parent table, i.e. table that will need to be included in the current query if this table is. May be null.
-		bool used = false;           // Is the table used in the (output) query?
-		bool included = false;       // Is the table already included in the query?
-
-		void reset()
-		{
-			parent = nullptr;
-			used = false;
-			included = false;
-		}
-	};
-
-	struct Tables {
-		enum : int { MaxSize = 2};
-		TableInfo* tis[MaxSize];
-
-		Tables(TableInfo* ti1 = nullptr, TableInfo* ti2 = nullptr)
-		{
-			tis[0] = ti1;
-			tis[1] = ti2;
-		}
-
-		void reset(TableInfo* ti1 = nullptr, TableInfo* ti2 = nullptr)
-		{
-			tis[0] = ti1;
-			tis[1] = ti2;
-		}
-
-		TableInfo** begin() { return tis;}
-
-		TableInfo** end() 
-		{ 
-			int i = 0;
-			while (i < MaxSize && tis[i] != nullptr) { ++i; }
-			return tis + i;
-		}
-	};
-
-	struct TableInfos {
-		TableInfos() {};
-
-		union {
-			TableInfo arrView[11 + 7 + 13];
-			#pragma warning(disable : 4201) // nameless struct extension.
-			struct {
-				// Start tables
-				TableInfo books;
-				TableInfo authors;
-				TableInfo originalTitles;
-				TableInfo series;
-				TableInfo sources;
-				TableInfo gbook;
-				TableInfo gstory;
-				TableInfo stories;
-				TableInfo bookCategory;
-				TableInfo l_book;
-				TableInfo l_ot;
-
-				// Other tables
-				TableInfo authorbooks;
-				TableInfo bookGenres;
-				TableInfo bookSeries;
-				TableInfo bookStories;
-				TableInfo datesRead;
-				TableInfo pseudonyms;
-				TableInfo storyGenres;
-
-				// Virtual tables
-				TableInfo ng;
-				TableInfo dg;
-				TableInfo gg;
-				TableInfo ar;
-				TableInfo gr;
-				TableInfo sr;
-				TableInfo stgg;
-				TableInfo astg;
-				TableInfo bstg;
-				TableInfo stng;
-				TableInfo psmid;
-				TableInfo ps;
-				TableInfo psf;
-			};
-		};
-	};
-
 	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
 	struct ColumnInfo {
 		// These values are pre-configured:
@@ -769,21 +680,18 @@ namespace LittDefs
 		ColumnInfo const* lengthColumn = nullptr; // Will be set only if the column has a length column added.
 		const char*       collation = nullptr; // Only set if not using the default (usually BINARY)
 
-		mutable Tables tables; // The tables referenced by the column definition.
-
 		// These values are set at runtime. Stored here for convenience.
 		mutable int  overriddenWidth = -1;
 		mutable bool usedInQuery = false;
 		mutable bool usedInResult = false;
 
-		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType type, std::string const& label, bool isGroupAggregate = false, bool justifyRight = false, Tables tables = Tables()) :
+		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType type, std::string const& label, bool isGroupAggregate = false, bool justifyRight = false) :
 			nameDef(nameDef),
 			defWidth(defWidth),
 			type(type),
 			label(label),
 			isGroupAggregate(isGroupAggregate),
-			justifyRight(justifyRight),
-			tables(tables)
+			justifyRight(justifyRight)
 		{}
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
@@ -1240,7 +1148,6 @@ public:
 struct SqliteCloser { void operator()(sqlite3* p) const { sqlite3_close(p); } };
 
 class Litt {
-	TableInfos m_tableInfos;
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
 	bool m_hasBookStories = false; // To keep backwards compatibility with older litt-db:s (LDIFF!).
@@ -1281,39 +1188,39 @@ class Litt {
 
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
-	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, Tables tables, std::string const& label = "", bool isGroupAgg = false)
+	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, std::string const& label = "", bool isGroupAgg = false)
 	{
 		bool const justifyRight = (defWidth < 0);
-		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight, tables }));
+		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight }));
 		if (!res.second) {
 			throw std::logic_error("Duplicate short name: " + sn);
 		}
 		return res.first->second;
 	}
 
-	ColumnInfo& addColumnText(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& addColumnText(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::text, tables, label);
+		return addColumn(sn, nameDef, defWidth, ColumnType::text, label);
 	}
 
-	ColumnInfo& addColumnNumeric(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& addColumnNumeric(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, tables, label);
+		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label);
 	}
 
-	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, const char* collation, std::string const & label = "")
+	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, const char* collation, std::string const & label = "")
 	{
-		auto& ci = addColumnText(sn, nameDef, defWidth, tables, label);
+		auto& ci = addColumnText(sn, nameDef, defWidth, label);
 		auto const labelLength = "l_" + sn;
-		auto & ciLength = addColumnNumeric(sn + "l", "length(" + nameDef + ")", labelLength.length(), tables, labelLength);
+		auto & ciLength = addColumnNumeric(sn + "l", "length(" + nameDef + ")", labelLength.length(), labelLength);
 		ci.lengthColumn = &ciLength;
 		ci.collation = collation;
 		return ci;
 	}
 
-	ColumnInfo& addColumnNumericAggregate(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& addColumnNumericAggregate(std::string const & sn, std::string const & nameDef, int defWidth, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, tables, label, true); 
+		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, label, true); 
 	}
 /*
 #define ADJUST_IGNORE(strlit,n,s) \
@@ -1451,73 +1358,71 @@ public:
 		const char* const CTitle = "NOCASE";
 		const char* const CLastName = "NOCASE";
 
-		auto&t = m_tableInfos;
-
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
-		addColumnNumeric("ai", "AuthorID", -8, Tables());
-		addColumnNumeric("beb", "\"Bought Ebook\"", 3, Tables(&t.books));
-		addColumnNumeric("bi", "BookID", -4, Tables());
-		addColumnTextWithLength("bt", "Title", 45, Tables(&t.books), CTitle);
-		addColumnTextWithLength("bd", "Date", 10, Tables(&t.books), CDefault);
-		addColumnTextWithLength("otd", "otDate", 10, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("bdo", "ifnull(otDate, Date)", 10, Tables(&t.books, &t.originalTitles), CDefault, "oDate");
-		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, Tables(&t.books), "BYear");
-		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, Tables(&t.originalTitles), "otYear");
-		addColumnTextWithLength("dr", "\"Date Read\"", 10, Tables(&t.datesRead), CDefault);
-		addColumnTextWithLength("dg", "\"Date(s)\"", 30, Tables(&t.dg), CDefault);
-		addColumnTextWithLength("fn", "\"First Name\"", 15, Tables(&t.authors), CNoCase);
-		addColumnTextWithLength("ge", "GBook.Genre", 30, Tables(&t.gbook), CNoCase);
-		addColumnTextWithLength("gg", "\"Genre(s)\"", 30, Tables(&t.gg), CNoCase);
-		addColumnNumeric("gi", "BookGenres.GenreID", -7, Tables(&t.bookGenres));
-		addColumnNumeric("gi_n", "GenreID", -7, Tables());
-		addColumnTextWithLength("ln", "\"Last Name\"", 20, Tables(&t.authors), CLastName); 
-		addColumnTextWithLength("ng", "\"Author(s)\"", 50, Tables(&t.ng), CNoCase);
-		addColumnTextWithLength("nn", A_NAME, 25, Tables(&t.authors), CNoCase, "Author");
-		addColumnNumeric("laid", "Books.LangID", 6, Tables(&t.books));
-		addColumnNumeric("laid_n", "LangID", 6, Tables());
-		addColumnNumeric("otli", "OriginalTitles.LangID", 8, Tables(&t.originalTitles), "otLangID");
-		addColumnText("la", "L_book.Language", 4, Tables(&t.l_book), "Lang");
-		addColumnText("otla", "L_ot.Language", 4, Tables(&t.l_ot), "otLa");
-		addColumnNumeric("ra", "Books.Rating", 3, Tables(&t.books), "Rating");
-		addColumnNumeric("ar", "ARating", 3, Tables(&t.ar));
-		addColumnNumeric("gr", "GRating", 3, Tables(&t.gr));
-		addColumnNumeric("sr", "SRating", 3, Tables(&t.sr));
-		addColumnNumeric("own", "Owned", 3, Tables(&t.books));
-		addColumnTextWithLength("isbn", "ISBN", 13, Tables(&t.books), CDefault);
-		addColumnTextWithLength("is10", "isbn10(ISBN)", 10, Tables(&t.books), CDefault);
-		addColumnTextWithLength("is13", "isbn13(ISBN)", 13, Tables(&t.books), CDefault);
-		addColumnTextWithLength("otis", "otISBN", 13, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("oi10", "isbn10(otISBN)", 10, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("oi13", "isbn13(otISBN)", 13, Tables(&t.originalTitles), CDefault);
-		addColumnNumeric("catid", "CategoryID", 3, Tables());
-		addColumnTextWithLength("cat", "Category", 11, Tables(&t.bookCategory), CNoCase);
-		addColumnNumeric("pgs", "Pages", 5, Tables(&t.books));
-		addColumnNumeric("wds", "Words", 6, Tables(&t.books));
-		addColumnNumeric("wpp", "Words / Pages", 4, Tables(&t.books), "WPP");
-		addColumnNumeric("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
-		addColumnTextWithLength("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
-		addColumnTextWithLength("se", "Series", 40, Tables(&t.series), CTitle);
-		addColumnNumeric("si", "SeriesID", -8, Tables());
-		addColumnText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
-		addColumnText("sep", "Series||' '||\"Part in Series\"", 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
-		addColumnTextWithLength("st", "Story", 45, Tables(&t.stories), CTitle);
-		addColumnNumeric("stid", "StoryID", -7, Tables());
-		addColumnNumeric("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
-		addColumnTextWithLength("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
-		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
-		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
-		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
-		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
-		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
-		addColumnTextWithLength("astg", "Stories", 45, Tables(&t.astg), CNoCase);
-		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, Tables(&t.books, &t.astg), CTitle, "\"Title [Stories]\"");
-		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
-		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
-		addColumnTextWithLength("so", "Source", 35, Tables(&t.sources), CNoCase);
-		addColumnNumeric("soid", "SourceID", -8, Tables());
-		addColumnTextWithLength("ps", "ps.Pseudonyms", 25, Tables(&t.ps), CNoCase);
-		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25, Tables(&t.psf), CNoCase);
-		addColumnNumeric("psmid", "PSMainID", -9, Tables(&t.psmid), "PSMainID");
+		addColumnNumeric("ai", "AuthorID", -8);
+		addColumnNumeric("beb", "\"Bought Ebook\"", 3);
+		addColumnNumeric("bi", "BookID", -4);
+		addColumnTextWithLength("bt", "Title", 45, CTitle);
+		addColumnTextWithLength("bd", "Date", 10, CDefault);
+		addColumnTextWithLength("otd", "otDate", 10, CDefault);
+		addColumnTextWithLength("bdo", "ifnull(otDate, Date)", 10, CDefault, "oDate");
+		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, "BYear");
+		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, "otYear");
+		addColumnTextWithLength("dr", "\"Date Read\"", 10, CDefault);
+		addColumnTextWithLength("dg", "\"Date(s)\"", 30, CDefault);
+		addColumnTextWithLength("fn", "\"First Name\"", 15, CNoCase);
+		addColumnTextWithLength("ge", "GBook.Genre", 30, CNoCase);
+		addColumnTextWithLength("gg", "\"Genre(s)\"", 30, CNoCase);
+		addColumnNumeric("gi", "BookGenres.GenreID", -7);
+		addColumnNumeric("gi_n", "GenreID", -7);
+		addColumnTextWithLength("ln", "\"Last Name\"", 20, CLastName); 
+		addColumnTextWithLength("ng", "\"Author(s)\"", 50, CNoCase);
+		addColumnTextWithLength("nn", A_NAME, 25, CNoCase, "Author");
+		addColumnNumeric("laid", "Books.LangID", 6);
+		addColumnNumeric("laid_n", "LangID", 6);
+		addColumnNumeric("otli", "OriginalTitles.LangID", 8, "otLangID");
+		addColumnText("la", "L_book.Language", 4, "Lang");
+		addColumnText("otla", "L_ot.Language", 4, "otLa");
+		addColumnNumeric("ra", "Books.Rating", 3, "Rating");
+		addColumnNumeric("ar", "ARating", 3);
+		addColumnNumeric("gr", "GRating", 3);
+		addColumnNumeric("sr", "SRating", 3);
+		addColumnNumeric("own", "Owned", 3);
+		addColumnTextWithLength("isbn", "ISBN", 13, CDefault);
+		addColumnTextWithLength("is10", "isbn10(ISBN)", 10, CDefault);
+		addColumnTextWithLength("is13", "isbn13(ISBN)", 13, CDefault);
+		addColumnTextWithLength("otis", "otISBN", 13, CDefault);
+		addColumnTextWithLength("oi10", "isbn10(otISBN)", 10, CDefault);
+		addColumnTextWithLength("oi13", "isbn13(otISBN)", 13, CDefault);
+		addColumnNumeric("catid", "CategoryID", 3);
+		addColumnTextWithLength("cat", "Category", 11, CNoCase);
+		addColumnNumeric("pgs", "Pages", 5);
+		addColumnNumeric("wds", "Words", 6);
+		addColumnNumeric("wpp", "Words / Pages" , 4, "WPP");
+		addColumnNumeric("kw", "(Words + 500) / 1000", 4, "Kwords");
+		addColumnTextWithLength("ot", "\"Original Title\"", 45, CTitle);
+		addColumnTextWithLength("se", "Series", 40, CTitle);
+		addColumnNumeric("si", "SeriesID", -8);
+		addColumnText("pa", "\"Part in Series\"", -4);
+		addColumnText("sep", "Series||' '||\"Part in Series\"", 40, "\"Series #\"");
+		addColumnTextWithLength("st", "Story", 45, CTitle);
+		addColumnNumeric("stid", "StoryID", -7);
+		addColumnNumeric("stra", "Stories.Rating", 3, "SRating");
+		addColumnTextWithLength("stge", "GStory.Genre", 30, CNoCase, "SGenre");
+		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, CNoCase);
+		addColumnTextWithLength("btst", "replace(Title || ' [' || ifnull(Story,'!void!') || ']',' [!void!]','')", 60, CTitle, "\"Title [Story]\"");
+		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, "BSRating");
+		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, CNoCase, "BSGenre");
+		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, CNoCase, "\"BSGenre(s)\"");
+		addColumnTextWithLength("astg", "Stories", 45, CNoCase);
+		addColumnTextWithLength("btastg", "replace(Title || ' [' || ifnull(Stories,'!void!') || ']',' [!void!]','')", 60, CTitle, "\"Title [Stories]\"");
+		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, CNoCase);
+		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, CNoCase);
+		addColumnTextWithLength("so", "Source", 35, CNoCase);
+		addColumnNumeric("soid", "SourceID", -8);
+		addColumnTextWithLength("ps", "ps.Pseudonyms", 25, CNoCase);
+		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25, CNoCase);
+		addColumnNumeric("psmid", "PSMainID", -9, "PSMainID");
 
 #define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
 
@@ -1532,18 +1437,18 @@ public:
 #define OTD_DAYS "CAST(strftime('%J'," OTD_FIXED ") AS REAL)"
 
 		// Columns for more formats of Date Read:
-		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "DOW");
+		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, "DOW");
 		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
-					  5, Tables(&t.datesRead), "DoW");
-		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "Month");
-		addColumnNumeric("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, Tables(&t.datesRead), "Year");
-		addColumnText("dym", "substr(\"Date Read\",1,7)", 7, Tables(&t.datesRead), "YMonth");
-		addColumnText("dymd", "substr(\"Date Read\",1,10)", 10, Tables(&t.datesRead), "YMDay");
-		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, Tables(&t.datesRead), "Time");
-		addColumnNumeric("sec", DR_SECS, -11, Tables(&t.datesRead), "Timestamp");
-		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, Tables(&t.datesRead, &t.books), "RDelay");
-		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, Tables(&t.books, &t.originalTitles), "TDelay");
+					  5, "DoW");
+		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, "Month");
+		addColumnNumeric("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, "Year");
+		addColumnText("dym", "substr(\"Date Read\",1,7)", 7, "YMonth");
+		addColumnText("dymd", "substr(\"Date Read\",1,10)", 10, "YMDay");
+		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, "Time");
+		addColumnNumeric("sec", DR_SECS, -11, "Timestamp");
+		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, "RDelay");
+		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, "TDelay");
 
 		// Some columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
 		// Will also display sensible values for all other supported formats.
@@ -1560,41 +1465,41 @@ public:
 #define DRR_DAYS "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
 // We keep these macros defined so they can be used elsewhere as well.
 
-		addColumnText("drrf", DRR_FIRST, 10, Tables(&t.datesRead), "DRRFirst");
-		addColumnText("drrl", DRR_LAST,  10, Tables(&t.datesRead), "DRRLast");
-		addColumnText("drrm", DRR_MID,   10, Tables(&t.datesRead), "DRRMiddle");
-		addColumnText("drrr", DRR_RAND,  10, Tables(&t.datesRead), "DRRRandom");
-		addColumnNumeric("drrd", DRR_DAYS, -7, Tables(&t.datesRead), "DRRDays");
+		addColumnText("drrf", DRR_FIRST, 10, "DRRFirst");
+		addColumnText("drrl", DRR_LAST,  10, "DRRLast");
+		addColumnText("drrm", DRR_MID,   10, "DRRMiddle");
+		addColumnText("drrr", DRR_RAND,  10, "DRRRandom");
+		addColumnNumeric("drrd", DRR_DAYS, -7, "DRRDays");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
 		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
 
 #define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
-		addColumnNumeric("lag", "round(" LAG ", 1)", -5, Tables(&t.datesRead), "Lag");
-		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  -4, Tables(&t.datesRead), "Lag");
+		addColumnNumeric("lag", "round(" LAG ", 1)", -5, "Lag");
+		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  -4, "Lag");
 #undef LAG
 
 #define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
-		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          -4, Tables(&t.datesRead), "DInd");
-		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   -4, Tables(&t.datesRead), "MInd");
-		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, Tables(&t.datesRead), "YInd");
+		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          -4, "DInd");
+		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   -4, "MInd");
+		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, "YInd");
 #undef XIND
 
 #define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
 #define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
 #define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
-		addColumnNumeric("ap", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
-		addColumnNumeric("al", XLAG("AuthorID"),   -5, Tables(), "ALag");
-		addColumnNumeric("ac", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
+		addColumnNumeric("ap", XPERIOD("AuthorID"),-7, "APeriod");
+		addColumnNumeric("al", XLAG("AuthorID"),   -5, "ALag");
+		addColumnNumeric("ac", XCOUNT("AuthorID"), -4, "ACnt");
 
-		addColumnNumeric("gp", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
-		addColumnNumeric("gl", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
-		addColumnNumeric("gc", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
+		addColumnNumeric("gp", XPERIOD("BookGenres.GenreID"), -7, "GPeriod");
+		addColumnNumeric("gl", XLAG("BookGenres.GenreID"),    -5, "GLag");
+		addColumnNumeric("gc", XCOUNT("BookGenres.GenreID"),  -4, "GCnt");
 
-		addColumnNumeric("sp", XPERIOD("SourceID"),-7, Tables(&t.datesRead), "SPeriod");
-		addColumnNumeric("sl", XLAG("SourceID"),   -5, Tables(&t.datesRead), "SLag");
-		addColumnNumeric("sc", XCOUNT("SourceID"), -4, Tables(), "SCnt");
+		addColumnNumeric("sp", XPERIOD("SourceID"),-7, "SPeriod");
+		addColumnNumeric("sl", XLAG("SourceID"),   -5, "SLag");
+		addColumnNumeric("sc", XCOUNT("SourceID"), -4, "SCnt");
 #undef XCOUNT
 #undef XLAG
 #undef XPERIOD
@@ -1605,13 +1510,13 @@ public:
 		
 		// Special-purpose "virtual" columns, these are not generally usable:
 		//
-		addColumnNumeric("btc", "TitleCount", -5, Tables(), "Count"); // for listSametitle
-		addColumnNumeric("brc", "ReadCount", -5, Tables(), "Reads");  // for listRereads
+		addColumnNumeric("btc", "TitleCount", -5, "Count"); // for listSametitle
+		addColumnNumeric("brc", "ReadCount", -5, "Reads");  // for listRereads
 		// These are for the book count actions.
-		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, Tables(), "Books");
-		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, Tables(), "Pages");
-		addColumnNumericAggregate("bcw", "SUM(Words)", -9, Tables(), "Words");
-		addColumnNumericAggregate("bckw", "(SUM(Words)+500)/1000", -6, Tables(), "Kwords");
+		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, "Books");
+		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, "Pages");
+		addColumnNumericAggregate("bcw", "SUM(Words)", -9, "Words");
+		addColumnNumericAggregate("bckw", "(SUM(Words)+500)/1000", -6, "Kwords");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -2189,44 +2094,16 @@ public:
 
 	std::string encodeSqlFromInput(std::string const& sql) const { return toUtf8(sql); }
 
-	enum class Table { // The main tables, used to select listing source.
-		books,
-		authors,
-		originalTitles,
-		genres,
-		series,
-		sources,
-		bookCategory,
-		language,
-		stories,
+	enum AuxTableOptions : unsigned {
+		IJF_DefaultsOnly = 0x00,
+		IJF_Stories = 0x01,
+		IJF_Series = 0x02,
+		IJF_OrigTitle = 0x04,
+		Skip_AuthorBooks = 0x08,
+		Skip_Stories = 0x10,
+		Starts_With_Authors = 0x20, // Normally start with books as first table.
+		Skip_DatesRead = 0x40,
 	};
-
-	struct TableData {
-		const char* tableName;
-		TableInfo&  tableInfo;
-	};
-	
-	TableData m_tableData[9] = { // Same order as Table!
-		{ "Books", m_tableInfos.books },
-		{ "Authors", m_tableInfos.authors },
-		{ "OriginalTitles", m_tableInfos.originalTitles },
-		{ "Genres GBook", m_tableInfos.gbook },
-		{ "Series", m_tableInfos.series },
-		{ "Sources", m_tableInfos.sources },
-		{ "BookCategory", m_tableInfos.bookCategory },
-		{ "Language L_book", m_tableInfos.l_book },
-		{ "Stories", m_tableInfos.stories },
-	};
-
-	const char* getTableName(Table table)
-	{
-		return m_tableData[(int)table].tableName;
-	}
-
-	TableInfo& getTableInfo(Table table)
-	{
-		return m_tableData[(int)table].tableInfo;
-	}
 
 	enum class SelectOption {
 		normal,
@@ -2237,11 +2114,11 @@ public:
 		std::stringstream m_sstr;
 		Columns m_orderBy;
 	public:
-		Litt& litt;
+		Litt const & litt;
 		std::vector<int> columnWidths; // Only set for column mode.
 		std::vector<bool> columnRight; // Only set for column mode.
 
-		OutputQuery(Litt& litt) 
+		OutputQuery(Litt const & litt) 
 			: litt(litt) 
 		{}
 
@@ -2394,208 +2271,38 @@ public:
 			if (cond) add(line);
 		}
 
-		void initTablesAndColumns(Table const startTable)
+		void addIfColumns(const char* columns, const char* line) 
 		{
-			// First determine tables relationships according to start table and which table link/id fields are taken from
-			//
-			auto& t = litt.m_tableInfos;
-			auto& bi = litt.getColumn("bi")->tables;
-			auto& ai = litt.getColumn("ai")->tables;
-
-			t.l_ot.parent = &t.originalTitles;
-			t.gstory.parent = &t.storyGenres;
-			t.psmid.parent = &t.authors;
-			t.ps.parent = &t.authors;
-			t.psf.parent = &t.authors;
-			t.stng.parent = &t.bookStories;
-
-			TableInfo* const authorBooksVal = (startTable == Table::authors) ? nullptr : &t.authorbooks;
-			ai.reset(authorBooksVal);
-			litt.getColumn("ap")->tables.reset(&t.datesRead, authorBooksVal);
-			litt.getColumn("al")->tables.reset(&t.datesRead, authorBooksVal);
-			litt.getColumn("ac")->tables.reset(authorBooksVal);
-
-			if (startTable != Table::language) {
-				t.l_book.parent = &t.books;
-			}
-
-			TableInfo* catIdTable = nullptr;
-			if (startTable != Table::bookCategory) {
-				t.bookCategory.parent = &t.books;
-				catIdTable = &t.books;
-			}
-			litt.getColumn("catid")->tables.reset(catIdTable);
-
-			if (startTable != Table::genres) {
-				t.gbook.parent = &t.bookGenres;
-			}
-
-			TableInfo* siTable = nullptr;
-			if (startTable != Table::series) {
-				t.series.parent = &t.bookSeries;
-				siTable = &t.bookSeries;
-			}
-			litt.getColumn("si")->tables.reset(siTable);
-
-			TableInfo* soInitTable = nullptr;
-			if (startTable != Table::sources) {
-				t.sources.parent = &t.datesRead;
-				t.sr.parent = &t.datesRead;
-				soInitTable = &t.datesRead;
-			}
-			litt.getColumn("soid")->tables.reset(soInitTable);
-			litt.getColumn("sc")->tables.reset(soInitTable);
-
-			TableInfo* stIdTable = nullptr;
-			if (startTable != Table::stories) {
-				t.bookStories.parent = &t.authorbooks;
-				t.stories.parent = &t.bookStories;
-				t.storyGenres.parent = &t.bookStories;
-				t.stgg.parent = &t.bookStories;
-				t.astg.parent = &t.authorbooks;
-				if (startTable != Table::genres) { 
-					t.gr.parent = &t.bookGenres; 
-				}
-				if (startTable != Table::authors) { 
-					t.authors.parent = &t.authorbooks;
-					t.ar.parent = &t.authorbooks; 
-				}
-				stIdTable = &t.bookStories;
-			}
-			litt.getColumn("stid")->tables.reset(stIdTable);
-
-			switch (startTable) {
-			case Table::books:
-			case Table::bookCategory:
-			case Table::language:
-			case Table::originalTitles:
-				if (startTable == Table::bookCategory || startTable == Table::language) {
-					bi.reset(&t.books);
-					t.originalTitles.parent = &t.books;
-					t.authorbooks.parent = &t.books;
-					t.datesRead.parent = &t.books;
-					t.bookGenres.parent = &t.books;
-					t.bookSeries.parent = &t.books;
-					t.ng.parent = &t.books;
-					t.dg.parent = &t.books;
-					t.gg.parent = &t.books;
-					t.bstg.parent = &t.books;
+			std::string sn;
+			for (const char* c = columns; ; ++c) {
+				if (*c == '.' || *c == '\0') {
+					auto ci = litt.getColumn(sn);
+					if (ci->usedInQuery || (ci->lengthColumn && ci->lengthColumn->usedInQuery)) { 
+						add(line); 
+						break;
+					}
+					if (*c == '\0') { break; }
+					sn.clear();
 				}
 				else {
-					bi.reset();
-				}
-				break;
-
-			case Table::authors:
-				bi.reset(&t.authorbooks);
-				t.books.parent = &t.authorbooks;
-				t.originalTitles.parent = &t.authorbooks;
-				t.datesRead.parent = &t.authorbooks;
-				t.bookSeries.parent = &t.authorbooks;
-				t.bookGenres.parent = &t.authorbooks;
-				t.ng.parent = &t.authorbooks;
-				t.dg.parent = &t.authorbooks;
-				t.gg.parent = &t.authorbooks;
-				t.bstg.parent = &t.authorbooks;
-				break;
-
-			case Table::series:
-				bi.reset(&t.bookSeries);
-				t.books.parent = &t.bookSeries;
-				t.authorbooks.parent = &t.bookSeries;
-				t.originalTitles.parent = &t.bookSeries;
-				t.datesRead.parent = &t.bookSeries;
-				t.bookGenres.parent = &t.bookSeries;
-				t.ng.parent = &t.bookSeries;
-				t.dg.parent = &t.bookSeries;
-				t.gg.parent = &t.bookSeries;
-				t.bstg.parent = &t.bookSeries;
-				break;
-
-			case Table::genres:
-				bi.reset(&t.bookGenres);
-				t.books.parent = &t.bookGenres;
-				t.authorbooks.parent = &t.bookGenres;
-				t.originalTitles.parent = &t.bookGenres;
-				t.datesRead.parent = &t.bookGenres;
-				t.bookSeries.parent = &t.bookGenres;
-				t.ng.parent = &t.bookGenres;
-				t.dg.parent = &t.bookGenres;
-				t.gg.parent = &t.bookGenres;
-				t.bstg.parent = &t.bookGenres;
-				break;
-
-			case Table::sources:
-				bi.reset(&t.datesRead);
-				t.books.parent = &t.datesRead;
-				t.authorbooks.parent = &t.datesRead;
-				t.originalTitles.parent = &t.datesRead;
-				t.bookGenres.parent = &t.datesRead;
-				t.bookSeries.parent = &t.datesRead;
-				t.ng.parent = &t.datesRead;
-				t.dg.parent = &t.datesRead;
-				t.gg.parent = &t.datesRead;
-				t.bstg.parent = &t.datesRead;
-				break;
-
-			case Table::stories:
-				bi.reset(&t.bookStories);
-				ai.reset(&t.bookStories);
-				t.books.parent = &t.bookStories;
-				t.originalTitles.parent = &t.bookStories;
-				t.authors.parent = &t.bookStories;
-				t.authorbooks.parent = &t.bookStories;
-				t.datesRead.parent = &t.bookStories;
-				t.bookGenres.parent = &t.bookStories;
-				t.bookSeries.parent = &t.bookStories;
-				t.ng.parent = &t.bookStories;
-				t.dg.parent = &t.bookStories;
-				t.gg.parent = &t.bookStories;
-				t.ar.parent = &t.bookStories;
-				t.gr.parent = &t.storyGenres;
-				t.astg.parent = &t.bookStories;
-				t.bstg.parent = &t.bookStories;
-				break;
-				
-			default:
-				throw std::logic_error("initTablesAndColumns: Invalid startUpTable");
-			}
-
-			// Then apply used columns to the tables.
-			//
-			for (auto& node : litt.m_columnInfos) {
-				ColumnInfo& ci = node.second;
-				if (ci.usedInQuery) {
-					for (TableInfo* ti : ci.tables) {
-						TableInfo* cur = ti; // May be null.
-						while (cur != nullptr) {
-							cur->used = true;
-							cur = cur->parent;
-						}
-					}
+					sn.push_back(*c);
 				}
 			}
 		}
 
-		// Needed when listing output multiple times in same LITT session (like when listing items for book input!)
-		// Note that usedInResult is used/checked and reset in addOrderBy. Cannot do that here since addAuxTables
-		// is called multiple times to generate a single query in some cases.
-		void resetTablesAndColumns()
+		void addIfColumns(const char* columns, std::string const & line)
 		{
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.reset();
-			}
-			for (auto& node : litt.m_columnInfos) {
-				node.second.usedInQuery = false;
-			}
+			addIfColumns(columns, line.c_str());
 		}
 
-		void addAuxTablesRaw(Table startTable = Table::books, unsigned indentSize = 0)
+		void addAuxTables(AuxTableOptions opt = IJF_DefaultsOnly, unsigned indentSize = 0)
 		{
-			litt.getTableInfo(startTable).included = true; // Do this here so it's done also if addAuxTablesMultipleCalls is called.
-			std::string const indent(indentSize, ' ');
+			std::string indent(indentSize, ' ');
+			auto serJoin = (opt & IJF_Series)    ? "" : "LEFT";
+			auto stoJoin = (opt & IJF_Stories)   ? "" : "LEFT";
+			auto ortJoin = (opt & IJF_OrigTitle) ? "" : "LEFT";
 
-			// Virtual table queries.
+			// Some helper queries
 
 			auto ng = "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)";
 			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)";
@@ -2618,101 +2325,106 @@ public:
 				         "GROUP BY AuthorID)";
 			auto ps = "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)";
 			auto psf = "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)";
+			
+			// Factor out common column combinations for easier maintenance
 
-			auto include = [&](TableInfo& table, std::string sql) {
-				if (table.used && !table.included) {
-					add(indent + sql);
-					table.included = true;
+#define BS_SHARED  "btst.bsra"
+#define BOT_SHARED "bdod.bdo"
+
+#define B_COLS     "bt.bd.by.drbd.ra.laid.la.own.beb.isbn.is10.is13.catid.cat.pgs.wds.wpp.kw.btastg." BS_SHARED "." BOT_SHARED
+
+#define PS_COLS    "ps.psf.psmid"
+#define A_COLS     "fn.ln.nn." PS_COLS
+#define AW_COLS_DR "ap.al"
+#define AW_COLS    AW_COLS_DR ".ac"
+
+#define ST_GE_COLS "stge.bsge"
+#define ST_GG_COLS "stgg.bsgg"
+#define B_ST_COLS  "stid.stng." ST_GE_COLS "." ST_GG_COLS
+#define ST_COLS    "st.stra." BS_SHARED
+
+#define ASTG_COLS  "astg.btastg"
+
+#define AB_COLS    AW_COLS "." B_ST_COLS "." ST_COLS "." ASTG_COLS 
+
+#define DR_COLS    "dr.dw.dwl.dm.dy.dym.dymd.ti.sec.lag.lagi.dind.mind.yind.drbd.drrf.drrl.drrm.drrr.drrd"
+
+#define SOW_COLS   "sp.sl.sc"
+#define DR_SO_COLS "soid.so.sr." SOW_COLS
+
+#define GW_COLS_DR "gp.gl"
+#define GW_COLS    GW_COLS_DR ".gc"
+#define GE_COLS    "ge.bsge"
+#define G_COLS     "gi.gr." GE_COLS "." GW_COLS
+#define GG_COLS    "gg.bsgg"
+
+#define SE_COLS    "se.sep"
+#define S_COLS     "si.pa." SE_COLS
+#define OT_COLS    "ot.otli.otis.oi10.oi13.otd.oty.otla." BOT_SHARED
+
+#define A_AB_COLS  "bi.ng.dg.bstg." OT_COLS "." AB_COLS "." B_COLS "." DR_COLS "." DR_SO_COLS "." G_COLS "." GG_COLS "." S_COLS
+#define B_AB_COLS  "ai.ar."                     AB_COLS "." A_COLS
+#define DR_F_COLS  DR_COLS "." DR_SO_COLS "." AW_COLS_DR "." GW_COLS_DR
+
+			// Add the needed tables/queries according to included columns.
+
+			if ((opt & Starts_With_Authors) != 0) { // Start with Authors
+				if ((opt & Skip_AuthorBooks) == 0)
+				addIfColumns(A_AB_COLS,              indent + "JOIN AuthorBooks USING(AuthorID)");
+				addIfColumns(B_COLS,                 indent + "JOIN Books USING(BookID)");
+			}
+			else { // Starts with Books.
+				if ((opt & Skip_AuthorBooks) == 0)
+				addIfColumns(B_AB_COLS,              indent + "JOIN AuthorBooks USING(BookID)");
+				addIfColumns(A_COLS,                 indent + "JOIN Authors USING(AuthorID)");
+			}
+
+			addIfColumns("cat",                      indent + "JOIN BookCategory USING(CategoryID)");
+
+			addIfColumns("la",                       indent + "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
+
+			addIfColumns("ng",                       indent + "JOIN " + ng + " USING(BookID)");
+
+			addIfColumns("ar",                       indent + "JOIN " + ar + " USING(AuthorID)");
+
+			if ((opt & Skip_DatesRead) == 0)
+			addIfColumns(DR_F_COLS,                  indent + "JOIN DatesRead USING(BookID)");
+			addIfColumns("dg",                       indent + "JOIN " + dg + " USING(BookID)");
+
+			addIfColumns("so",                       indent + "JOIN Sources USING(SourceID)");
+			addIfColumns("sr",                       indent + "JOIN " + sr + " USING(SourceID)");
+
+			addIfColumns(G_COLS,                     indent + "JOIN BookGenres USING(BookID)");
+			addIfColumns(GE_COLS,                    indent + "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
+			addIfColumns(GG_COLS,                    indent + "JOIN " + gg + " USING(BookID)");
+			addIfColumns("gr",                       indent + "JOIN " + gr + " USING(GenreID)");
+
+			addIfColumns(OT_COLS,                    indent + ortJoin + " JOIN OriginalTitles USING(BookID)");
+			addIfColumns("otla",                     indent + ortJoin + " JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
+
+			addIfColumns(S_COLS,                     indent + serJoin + " JOIN BookSeries USING(BookID)");
+			addIfColumns(SE_COLS,                    indent + serJoin + " JOIN Series USING(SeriesID)");
+
+			if ((opt & Skip_Stories) == 0) {
+				if (litt.m_hasBookStories) {
+					addIfColumns(B_ST_COLS "." ST_COLS, 
+						                             indent +  stoJoin + " JOIN BookStories USING(BookID,AuthorID)");
+					addIfColumns(ST_COLS,            indent +  stoJoin + " JOIN Stories USING(StoryID)");
 				}
-			};
-
-			auto& t = litt.m_tableInfos;
-
-			switch (startTable) {
-			case Table::bookCategory:
-				include(t.books, "JOIN Books USING(CategoryID)");
-				break;
-			case Table::language:
-				include(t.books, "JOIN Books USING(LangID)");
-				break;
-			case Table::sources:
-				include(t.datesRead, "JOIN DatesRead USING(SourceID)");
-				break;
-			case Table::genres:
-				include(t.bookGenres, "JOIN BookGenres USING(GenreID)");
-				break;
-			case Table::stories:
-				include(t.bookStories, "JOIN BookStories USING(StoryID)");
-				include(t.authorbooks, "JOIN AuthorBooks USING(BookID,AuthorID)");
-				break;
-			case Table::authors:
-				include(t.authorbooks, "JOIN AuthorBooks USING(AuthorID)");
-				break;
-			case Table::series:
-				include(t.bookSeries, "JOIN BookSeries USING(SeriesID)");
-				break;
+				else { // old story table
+					addIfColumns("stid.st",          indent +  stoJoin + " JOIN Stories USING(AuthorID, BookID)");
+				}
 			}
+			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN StoryGenres USING(StoryID)");
+			addIfColumns(ST_GE_COLS,                 indent + stoJoin + " JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
+			addIfColumns(ST_GG_COLS,                 indent + "LEFT JOIN " + stgg + " USING(StoryID)");
+			addIfColumns("stng",                     indent + "LEFT JOIN " + stng + " USING(BookID,StoryID)");
+			addIfColumns(ASTG_COLS,                  indent + "LEFT JOIN " + astg + " USING(AuthorID,BookID)");
+			addIfColumns("bstg",                     indent + "LEFT JOIN " + bstg + " USING(BookID)");
 
-			include(t.books, "JOIN Books USING(BookID)");
-			include(t.authorbooks, "JOIN AuthorBooks USING(BookID)");
-			include(t.authors, "JOIN Authors USING(AuthorID)");
-			include(t.bookCategory, "JOIN BookCategory USING(CategoryID)");
-			include(t.l_book, "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
-
-			include(t.ng, "JOIN " + std::string(ng) + " USING(BookID)");
-			include(t.ar, "JOIN " + std::string(ar) + " USING(AuthorID)");
-
-			include(t.datesRead, "JOIN DatesRead USING(BookID)");
-			include(t.dg,        "JOIN " + std::string(dg) + " USING(BookID)");
-
-			include(t.sources, "JOIN Sources USING(SourceID)");
-			include(t.sr,      "JOIN " + std::string(sr) + " USING(SourceID)");
-
-			include(t.bookGenres, "JOIN BookGenres USING(BookID)");
-			include(t.gbook,      "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
-			include(t.gg,         "JOIN " + std::string(gg) + " USING(BookID)");
-
-			include(t.originalTitles, "LEFT JOIN OriginalTitles USING(BookID)");
-			include(t.l_ot,           "LEFT JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
-
-			include(t.bookSeries, "LEFT JOIN BookSeries USING(BookID)");
-			include(t.series,     "LEFT JOIN Series USING(SeriesID)");
-
-			if (litt.m_hasBookStories) {
-				include(t.bookStories, "LEFT JOIN BookStories USING(BookID,AuthorID)");
-				include(t.stories,     "LEFT JOIN Stories USING(StoryID)");
-			}
-			else { // old story table
-				include(t.stories,     "LEFT JOIN Stories USING(AuthorID, BookID)");
-			}
-			include(t.storyGenres,     "LEFT JOIN StoryGenres USING(StoryID)");
-			include(t.gstory,          "LEFT JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
-			include(t.stgg,            "LEFT JOIN " + std::string(stgg) + " USING(StoryID)");
-			include(t.stng,            "LEFT JOIN " + std::string(stng) + " USING(BookID,StoryID)");
-			include(t.astg,            "LEFT JOIN " + std::string(astg) + " USING(AuthorID,BookID)");
-			include(t.bstg,            "LEFT JOIN " + std::string(bstg) + " USING(BookID)");
-
-			// Would be after gg above, but need to be after StoryGenres for stories listing.
-			include(t.gr, "JOIN " + std::string(gr) + " USING(GenreID)");
-
-			include(t.psmid, "LEFT JOIN " + std::string(psmid) + " psmid ON (psmAID = Authors.AuthorID)");
-			include(t.ps,    "LEFT JOIN " + std::string(ps)    + " ps ON (ps.MainID = Authors.AuthorID)");
-			include(t.psf,   "LEFT JOIN " + std::string(psf)   + " psf ON (psf.PseudonymID = Authors.AuthorID)");
-		}
-
-		void addAuxTables(Table startTable = Table::books, unsigned indentSize = 0)
-		{
-			initTablesAndColumns(startTable);
-			addAuxTablesRaw(startTable, indentSize);
-			resetTablesAndColumns();
-		}
-
-		void addAuxTablesMultipleCalls(Table startTable = Table::books, unsigned indentSize = 0)
-		{
-			addAuxTablesRaw(startTable, indentSize);
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.included = false;
-			}
+			addIfColumns("psmid",                    indent + "LEFT JOIN " + psmid + " psmid ON (psmAID = Authors.AuthorID)");
+			addIfColumns("ps",                       indent + "LEFT JOIN " + ps   + " ps ON (ps.MainID = Authors.AuthorID)");
+			addIfColumns("psf",                      indent + "LEFT JOIN " + psf + " psf ON (psf.PseudonymID = Authors.AuthorID)");
 		}
 
 		void addOrderBy()
@@ -2742,11 +2454,6 @@ public:
 				if (litt.m_offset > 0) {
 					m_sstr << " OFFSET " << litt.m_offset;
 				}
-			}
-
-			// Needed when called multiple times in same LITT session (like when listing items for book input!)
-			for (auto& node : litt.m_columnInfos) {
-				node.second.usedInResult = false;
 			}
 		}
 
@@ -3285,12 +2992,21 @@ public:
 		}
 	}
 
-
-	void runListData(const char* defColumns, const char* defOrderBy, Table startTable = Table::books, SelectOption selectOption = SelectOption::normal)
+	void runSingleTableOutputCmd(const char* defColumns, const char* table, const char* defOrderBy)
 	{
 		OutputQuery query(*this);
-		query.initSelect(defColumns, getTableName(startTable), defOrderBy, selectOption);
-		query.addAuxTables(startTable);
+		query.initSelect(defColumns, table, defOrderBy);
+		query.addWhere();
+		query.addOrderBy();
+		runOutputQuery(query);
+	}
+
+	void runListData(const char* defColumns, const char* defOrderBy, AuxTableOptions opt = IJF_DefaultsOnly, SelectOption selectOption = SelectOption::normal)
+	{
+		OutputQuery query(*this);
+		auto table = ((opt & Starts_With_Authors) == 0) ? "Books" : "Authors";
+		query.initSelect(defColumns, table , defOrderBy, selectOption);
+		query.addAuxTables(opt);
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -3301,10 +3017,10 @@ public:
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
 		if (action == "a") {
-			runListData("ai.nn.30", "ai", Table::authors); 
+			runListData("ai.nn.30", "ai", Starts_With_Authors); // Will only use Authors with these columns.
 		}
 		else {
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi", Table::authors);
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi", Starts_With_Authors);
 		}
 	}
 
@@ -3313,18 +3029,18 @@ public:
 		appendToWhereCondition(LogOp_AND, (getWhereCondition("psf.*") + LogOp_OR + getWhereCondition("ps.*"))); 
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
-		runListData("psmid.ai.nn.ps.psf", "psmid.ps.desc.ln", Table::authors);
+		runListData("psmid.ai.nn.ps.psf", "psmid.ps.desc.ln", Starts_With_Authors);
 	}
 
 	void listBooks(std::string const & action, std::string const & title)
 	{
 		if (action == "b") {
 			addActionWhereCondition("bt", title);
-			runListData("bi.bt.60", "bi", Table::books);
+			runListData("bi.bt.60", "bi");  // Will only use Books with these columns.
 		}
 		else {
 			addActionWhereCondition("btst", title);
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.ln.fn", Table::books);
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.ln.fn");
 		}
 	}
 
@@ -3332,10 +3048,10 @@ public:
 	{
 		addActionWhereCondition("se", series);
 		if (action == "s") {
-			runListData("si.se.70", "si", Table::series);
+			runSingleTableOutputCmd("si.se.70", "Series", "si");
 		}
 		else {
-			runListData("se.ra.pa.bt.dr.bi.nn", "se.pa.dr.bi.ln.fn", Table::series);
+			runListData("se.ra.pa.bt.dr.bi.nn", "se.pa.dr.bi.ln.fn", IJF_Series);
 		}
 	}
 
@@ -3343,44 +3059,45 @@ public:
 	{
 		addActionWhereCondition("ge", genre);
 		if (action == "g") {
-			runListData("gi_n.ge.50", "ge", Table::genres);
+			runSingleTableOutputCmd("gi_n.ge.50", "Genres GBook", "ge");
 		}
 		else {
-			runListData("gg.bi.bsra.btst.dr.nn", "gg.dr.bi.ln.fn", Table::genres);
+			runListData("gg.bi.bsra.btst.dr.nn", "gg.dr.bi.ln.fn");
 		}
 	}
 
 	void listOriginalTitles()
 	{
 		addActionWhereCondition("ot", 0);
-		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", Table::originalTitles);
+		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", IJF_OrigTitle);
 	}
 
 	void listStories()
 	{
 		addActionWhereCondition("st", 0);
 		if (m_hasBookStories) {
-			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
+			m_selectDistinct = true;
+			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", IJF_Stories);
 		}
 		else { // Old version
-			runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", Table::stories);
+			runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", IJF_Stories);
 		}
 	}
 
 	void listStories(std::string story)
 	{
 		addActionWhereCondition("st", story);
-		runListData("stid.st", "stid.st", Table::stories);
+		runListData("stid.st", "stid.st", IJF_Stories);
 	}
 
 	void listSources(std::string const & action, std::string const & sourceName)
 	{
 		addActionWhereCondition("so", sourceName);
 		if (action == "so") {
-			runListData("soid.so.50", "so", Table::sources);
+			runSingleTableOutputCmd("soid.so.50", "Sources", "so");
 		}
 		else {
-			runListData("so.bi.bt.dr.nn", "so.dr.bi.ln.fn", Table::sources);
+			runListData("so.bi.bt.dr.nn", "so.dr.bi.ln.fn");
 		}
 	}
 
@@ -3388,10 +3105,10 @@ public:
 	{
 		addActionWhereCondition("cat", catName);
 		if (action == "c") {
-			runListData("catid.cat.30", "catid", Table::bookCategory);
+			runSingleTableOutputCmd("catid.cat.30", "BookCategory", "catid");
 		}
 		else {
-			runListData("cat.bi.bt.dr.nn", "cat.dr.bi.ln.fn", Table::bookCategory);
+			runListData("cat.bi.bt.dr.nn", "cat.dr.bi.ln.fn");
 		}
 	}
 
@@ -3399,10 +3116,10 @@ public:
 	{
 		addActionWhereCondition("la", catName);
 		if (action == "l") {
-			runListData("laid_n.la", "laid_n", Table::language);
+			runSingleTableOutputCmd("laid_n.la", "Language L_book", "laid_n");
 		}
 		else {
-			runListData("la.bi.bt.dr.nn", "la.dr.bi.ln.fn", Table::language);
+			runListData("la.bi.bt.dr.nn", "la.dr.bi.ln.fn");
 		}
 	}
 
@@ -3467,9 +3184,9 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
 		query.addIf(m_hasBookStories, "JOIN BookStories USING(StoryID)");
 		query.add("JOIN Books USING(BookID)");
-		m_tableInfos.authorbooks.included = true; // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
-		m_tableInfos.stories.included = true; // Already have Stories content from above so skip to avoid ambigous column error.
-		query.addAuxTables();
+		query.addAuxTables(AuxTableOptions(
+			Skip_AuthorBooks | // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
+			Skip_Stories));    // Already have Stories content from above so skip to avoid ambigous column error.
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
@@ -3530,7 +3247,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		}
 	}
 
-	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy, Table startTable = Table::books)
+	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		std::string ccol = getCountColumn();
 		auto selCols = columns + std::string(".") + ccol;
@@ -3539,8 +3256,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
 
 		OutputQuery query(*this);
-		query.initSelect(selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
-		query.addAuxTables(startTable);
+		query.initSelect(selCols.c_str(), "Books", (ccol + ".desc").c_str());
+		query.addAuxTables(opt);
 		query.addWhere();
 		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
 		query.addHaving();
@@ -3548,7 +3265,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		runOutputQuery(query);
 	}
 
-	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy, Table startTable = Table::books)
+	void listYearlyBooksCounts(int count, int firstYear, int lastYear, const char* snColSelect, const char* snColGroupBy, AuxTableOptions opt = IJF_DefaultsOnly)
 	{
 		unsigned cwidth = 0u;
 		switch (m_count) {
@@ -3572,10 +3289,9 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
-			if (year == firstYear) q.initTablesAndColumns(startTable); // Need to call after getWhereCondition, once is enough since similar cond for whole loop.
 			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
-			q.adf("FROM %s", getTableName(startTable));
-			q.addAuxTablesMultipleCalls(startTable);
+			q.add("FROM BOOKS");
+			q.addAuxTables(opt);
 			q.adf("WHERE %s", ycond.c_str());
 			q.adf("GROUP BY %s", gby->nameDef.c_str());
 			q.addHaving();
@@ -3583,7 +3299,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			q.adf("LIMIT %i;", count);
 			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");\n", year, year, year);
 		} q.a("\n");
-		q.resetTablesAndColumns();
 		q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
 		q.add("DETACH DATABASE mdb");
 		runOutputQuery(q);
@@ -3684,16 +3399,14 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		// Uses a temp table instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
 		q.add("DROP TABLE IF EXISTS TEMP.tmpDr;");
 		q.add("CREATE TEMP TABLE tmpDr AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
-		
+
 		q.init();
 		q.initOrderBy(period.c_str(), true);
 		q.add("SELECT Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
 		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("    FROM Books JOIN tmpDr USING(BookID)");
-		q.initTablesAndColumns(Table::books);
-		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 4);
+		q.addAuxTables(Skip_DatesRead, 4);
 		q.addWhere(4);
 		q.add("   )");
 		q.add("  GROUP BY " + period);
@@ -3706,9 +3419,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
 		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("     FROM Books JOIN tmpDr USING(BookID)");
-		q.initTablesAndColumns(Table::books); // Need to call again to pick up new tables from c.definition, same startTable so should be safe!
-		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 5);
+		q.addAuxTables(Skip_DatesRead, 5);
 		q.add("     WHERE " + ccond + ")");
 		q.add("  GROUP BY " + period);
 		if (!m_havingCondition.empty()) { 
@@ -3722,7 +3433,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WcS));
 		}
 		q.addOrderBy();
-		q.resetTablesAndColumns();
 		runOutputQuery(q);
 	}
 
@@ -4547,25 +4257,25 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 			listBookCounts(arg(0), arg(1) == "1", "cat", "catid");
 		}
 		else if (action == "lbc") {
-			listBookCounts(arg(0), arg(1) == "1", "la", "laid");
+			listBookCounts(arg(0), arg(1) == "1", "la", "laid", IJF_OrigTitle);
 		}
 		else if (action == "obc") {
-			listBookCounts(arg(0), arg(1) == "1", "otla", "otli", Table::originalTitles);
+			listBookCounts(arg(0), arg(1) == "1", "otla", "otli", IJF_OrigTitle);
 		}
 		else if (action == "abcy" || action == "gbcy" || action == "sbcy" || action == "cbcy" || action == "lbcy" || action == "obcy") {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
-			auto startTable = Table::books;
+			auto opt = IJF_DefaultsOnly;
 			switch (action[0]) {
 				case 'g': snSel = "ge"; snGby = "gi"; break;
 				case 's': snSel = "so"; snGby = "soid"; break;
 				case 'c': snSel = "cat"; snGby = "catid"; break;
-				case 'l': snSel = "la"; snGby = "laid"; break;
-				case 'o': snSel = "otla"; snGby = "otli"; startTable = Table::originalTitles; break;
+				case 'l': snSel = "la"; snGby = "laid"; opt = IJF_OrigTitle; break;
+				case 'o': snSel = "otla"; snGby = "otli"; opt = IJF_OrigTitle; break;
 			}
-			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, startTable);
+			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, opt);
 		}
 		else if (action == "brd") {
 			listBooksReadPerDate(arg(0));

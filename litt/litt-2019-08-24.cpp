@@ -673,13 +673,6 @@ namespace LittDefs
 		TableInfo* parent = nullptr; // Parent table, i.e. table that will need to be included in the current query if this table is. May be null.
 		bool used = false;           // Is the table used in the (output) query?
 		bool included = false;       // Is the table already included in the query?
-
-		void reset()
-		{
-			parent = nullptr;
-			used = false;
-			included = false;
-		}
 	};
 
 	struct Tables {
@@ -713,7 +706,6 @@ namespace LittDefs
 
 		union {
 			TableInfo arrView[11 + 7 + 13];
-			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
 				TableInfo books;
@@ -753,6 +745,11 @@ namespace LittDefs
 				TableInfo psf;
 			};
 		};
+
+		void resetTables()
+		{
+			memset(this, 0, sizeof(*this)); // *this = TableInfos{}; Safe, but more code generated!
+		}
 	};
 
 	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
@@ -2402,6 +2399,8 @@ public:
 			auto& bi = litt.getColumn("bi")->tables;
 			auto& ai = litt.getColumn("ai")->tables;
 
+			litt.getTableInfo(startTable).included = true;
+
 			t.l_ot.parent = &t.originalTitles;
 			t.gstory.parent = &t.storyGenres;
 			t.psmid.parent = &t.authors;
@@ -2582,17 +2581,21 @@ public:
 		// is called multiple times to generate a single query in some cases.
 		void resetTablesAndColumns()
 		{
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.reset();
-			}
+			litt.m_tableInfos.resetTables();
 			for (auto& node : litt.m_columnInfos) {
 				node.second.usedInQuery = false;
 			}
 		}
 
+		void resetTablesIncluded()
+		{
+			for (auto& ti : litt.m_tableInfos.arrView) {
+				ti.included = false;
+			}
+		}
+
 		void addAuxTablesRaw(Table startTable = Table::books, unsigned indentSize = 0)
 		{
-			litt.getTableInfo(startTable).included = true; // Do this here so it's done also if addAuxTablesMultipleCalls is called.
 			std::string const indent(indentSize, ' ');
 
 			// Virtual table queries.
@@ -2705,14 +2708,6 @@ public:
 			initTablesAndColumns(startTable);
 			addAuxTablesRaw(startTable, indentSize);
 			resetTablesAndColumns();
-		}
-
-		void addAuxTablesMultipleCalls(Table startTable = Table::books, unsigned indentSize = 0)
-		{
-			addAuxTablesRaw(startTable, indentSize);
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.included = false;
-			}
 		}
 
 		void addOrderBy()
@@ -3564,7 +3559,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 
 		OutputQuery q(*this);
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
-		q.initColumnWidths();
 		q.add("ATTACH DATABASE ':memory:' AS mdb;");
 		q.add("CREATE TABLE mdb.Res (\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
 		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
@@ -3572,10 +3566,11 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
-			if (year == firstYear) q.initTablesAndColumns(startTable); // Need to call after getWhereCondition, once is enough since similar cond for whole loop.
+			if (year == firstYear) q.initTablesAndColumns(startTable);
 			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
 			q.adf("FROM %s", getTableName(startTable));
-			q.addAuxTablesMultipleCalls(startTable);
+			q.addAuxTablesRaw(startTable);
+			q.resetTablesIncluded();
 			q.adf("WHERE %s", ycond.c_str());
 			q.adf("GROUP BY %s", gby->nameDef.c_str());
 			q.addHaving();
@@ -3691,9 +3686,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
 		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("    FROM Books JOIN tmpDr USING(BookID)");
-		q.initTablesAndColumns(Table::books);
 		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 4);
+		q.addAuxTables(Table::books, 4);
 		q.addWhere(4);
 		q.add("   )");
 		q.add("  GROUP BY " + period);
@@ -3706,9 +3700,8 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
 		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("     FROM Books JOIN tmpDr USING(BookID)");
-		q.initTablesAndColumns(Table::books); // Need to call again to pick up new tables from c.definition, same startTable so should be safe!
 		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 5);
+		q.addAuxTables(Table::books, 5); 
 		q.add("     WHERE " + ccond + ")");
 		q.add("  GROUP BY " + period);
 		if (!m_havingCondition.empty()) { 
@@ -3722,7 +3715,6 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WcS));
 		}
 		q.addOrderBy();
-		q.resetTablesAndColumns();
 		runOutputQuery(q);
 	}
 
