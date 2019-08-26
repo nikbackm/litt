@@ -1,6 +1,8 @@
-﻿/** LITT - now for C++! ***********************************************************************************************
+﻿/* LITT - now for C++! ==========================================================================================================
 
 Changelog:
+ * 2019-08-26: Sort series, bookCategory and language by dr.bi.ln.fn. (Most useful, since these are shown in aa/bb by default)
+ * 2019-08-26: Some bugs (mainly) detected by using VS2019 fixed.
  * 2019-08-24: Changed gg listing columns.
  * 2019-08-24: Added st listing for simple stories, renamed old st listing to stt.
  * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
@@ -222,8 +224,7 @@ Changelog:
  * 2017-05-20: First tests started. Not using Modern C++ so far though, not for SQLite parts at least.
  * 2017-05-19: Got inpired by Kenny Kerr's PluralSight course "SQlite with Modern C++".
  * Previous:   Refer to the (old)litt.btm changelog.
-
-**********************************************************************************************************************/
+ */
 
 #include "stdafx.h"
 
@@ -714,7 +715,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 13];
+			TableInfo arrView[11 + 7 + 13] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -2184,7 +2185,7 @@ public:
 	{
 		return std::stoi(index < m_actionArgs.size()
 			? m_actionArgs[index]
-			: input(fmt("Enter %s", name, R"x(\d+)x", iopt).c_str(), iopt));
+			: input(fmt("Enter %s", name).c_str(), R"x(\d+)x", iopt).c_str());
 	}
 
 	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
@@ -3338,7 +3339,7 @@ public:
 			runListData("si.se.70", "si", Table::series);
 		}
 		else {
-			runListData("se.ra.pa.bt.dr.bi.nn", "se.pa.dr.bi.ln.fn", Table::series);
+			runListData("se.ra.pa.bt.dr.bi.nn", "dr.bi.ln.fn", Table::series);
 		}
 	}
 
@@ -3393,7 +3394,7 @@ public:
 			runListData("catid.cat.30", "catid", Table::bookCategory);
 		}
 		else {
-			runListData("cat.bi.bt.dr.nn", "cat.dr.bi.ln.fn", Table::bookCategory);
+			runListData("cat.bi.bt.dr.nn", "dr.bi.ln.fn", Table::bookCategory);
 		}
 	}
 
@@ -3404,7 +3405,7 @@ public:
 			runListData("laid_n.la", "laid_n", Table::language);
 		}
 		else {
-			runListData("la.bi.bt.dr.nn", "la.dr.bi.ln.fn", Table::language);
+			runListData("la.bi.bt.dr.nn", "dr.bi.ln.fn", Table::language);
 		}
 	}
 
@@ -3471,6 +3472,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 		query.add("JOIN Books USING(BookID)");
 		m_tableInfos.authorbooks.included = true; // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
 		m_tableInfos.stories.included = true; // Already have Stories content from above so skip to avoid ambigous column error.
+		m_tableInfos.bookStories.included = true; // See above.
 		query.addAuxTables();
 		query.addWhere();
 		query.addOrderBy();
@@ -3538,7 +3540,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 		auto selCols = columns + std::string(".") + ccol;
 		if (!countCond.empty()) { addCountCondToHavingCondition(ccol.c_str(), countCond); }
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
-		getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
+		(void)getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
 
 		OutputQuery query(*this);
 		query.initSelect(selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
@@ -4235,8 +4237,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	{
 		if (auto bookId = bidargi(0)) {
 			auto genreId = gidargi(1);
-			// Check that genreId exists for book.
-			selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
+			auto checkExists = selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
 				fmt("GenreID %llu for BookID %llu", genreId, bookId).c_str());
 			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
 				if (confirm(fmt("Change '%s' => '%s' for '%s'", 
@@ -4258,8 +4259,7 @@ ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(S
 	{
 		if (auto storyId = stidargi(0)) {
 			auto genreId = gidargi(1);
-			// Check that genreId exists for book.
-			selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
+			auto checkExists = selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
 				fmt("GenreID %llu for StoryID %llu", genreId, storyId).c_str());
 			if (auto newGenreId = gidargi(2, "New GenreID", optional)) {
 				if (confirm(fmt("Change '%s' => '%s' for '%s'",
