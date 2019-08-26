@@ -3339,7 +3339,7 @@ public:
 			runListData("si.se.70", "si", Table::series);
 		}
 		else {
-			runListData("se.ra.pa.bt.dr.bi.nn", "dr.bi.ln.fn", Table::series);
+			runListData("bi.sep.nn.ra.bt.dr", "dr.bi.ln.fn", Table::series);
 		}
 	}
 
