@@ -1,0 +1,478 @@
+LITT Changelog:
+===============
+
+ * 2019-08-27: Moved the changelog to "Changelog.txt" instead of having it in "litt.cpp".
+               Also added contents of oldlitt.btm changelog here at the bottom!
+ * 2019-08-27: Changes in story virtual columns to make them more logical and useful:
+               - Renamed stng => bstng = authors (ng) for book+story (b+st)
+               - Added stng = authors (ng) for story (in all books the story appears in)
+               - Added stnc = author count for story (in all books the story appears in)
+               - Renamed astg => bastg = Stories (stg) for book+author (b+a)
+                 * Also renamed btastg => btbastg = bt + bastg
+               - Added bastc (story count for book+author)
+               - Added astg = Stories for author
+               - Added stbc (story book count) and stbg (story books)
+               - Added astc (author story count) and bstc (book story count)
+              Added some more virtual count columns:
+               - nc (book author count)
+               - dc (date read count)
+              Fixed some bugs in virtual story columns, needs distinct to get either book or author.
+ * 2019-08-27: Got rid of support for old Stories tables and switched to using #define:d string literals
+               in addAuxTables, saved over 4k in code size.
+ * 2019-08-27: Using these SQLite compile time options from https://www.sqlite.org/compile.html:
+               SQLITE_DQS=0
+               SQLITE_THREADSAFE=0
+               SQLITE_DEFAULT_MEMSTATUS=0
+               SQLITE_LIKE_DOESNT_MATCH_BLOBS
+               SQLITE_MAX_EXPR_DEPTH=0
+               SQLITE_OMIT_DECLTYPE
+               SQLITE_OMIT_DEPRECATED
+               SQLITE_OMIT_PROGRESS_CALLBACK
+               SQLITE_OMIT_SHARED_CACHE
+               SQLITE_USE_ALLOCA
+ * 2019-08-27: Updated to SQLite 3.29.
+ * 2019-08-26: Sort series, bookCategory and language by dr.bi.ln.fn. (Most useful, since these are shown in aa/bb by default)
+ * 2019-08-26: Some bugs (mainly) detected by using VS2019 fixed.
+ * 2019-08-24: Changed gg listing columns.
+ * 2019-08-24: Added st listing for simple stories, renamed old st listing to stt.
+ * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
+               This makes the former as flexible as the latter, while still being as simple/efficient in the base case,
+               i.e. they include no unneeded tables.
+ * 2019-08-21: Added virtual columns ar, gr and sr for Author, Genre and Source average book ratings. 
+ * 2019-08-21: No need to automatically join DatesRead table for windows function columns ac and gc.
+ * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
+ * 2019-08-21: Don't count stories with same title as the book they appear in for titleStory listing.
+ * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
+ * 2019-06-03: Added virtual column "sep" that includes both series and part.
+ * 2019-05-10: The -x option now implies -y option.
+               Command actions now respect the -x option! 
+               Command actions no longer print changes when -q is specified.
+ * 2019-05-10: Justified "Part in series" to right. 
+               Documented addColumns format.
+               Added -qd for showing default columns.
+ * 2019-05-10: Added --colsep option to customize column separator in columns display mode.
+ * 2019-04-19: Extended reot to list different translations of the same book. E.g. English and Swedish of a Polish original.
+ * 2019-04-18: Added reot action to list re-read translated books.
+ * 2019-03-19: Added --limit and --offset options for adding LIMIT and OFFSET clauses.
+ * 2019-03-19: No longer automatically quotes custom/named columns, so can use SQL functions like random() in them.
+               Bug fix: Can now have more than one custom/named column in -o option without crashing!
+ * 2019-03-12: Changed handling of output errors, avoid noisy error messages when output (pipe) is terminated/closed.
+ * 2019-03-11: Added set-own.
+ * 2019-03-01: Check format for publication dates also in addBook.
+ * 2019-02-28: Added --drr option to select dates from date range values in book count listings.
+ * 2019-02-28: Now displays the generated SQL automatically when there's an SQL execution error.
+ * 2019-02-27: Changed fitWidth; "auto" now means fitting will be used only for console output and when the console
+               width is smaller than the sum of all column widths. The meaning of "on" and "off" remain the same.
+ * 2019-02-27: Added "notnull" operator for where condition.
+ * 2019-02-27: Added columns for displaying ISBN10 and ISBN13, will also error-check ISBN values first.
+ * 2019-02-27: Added set-bd and set-otd.
+ * 2019-02-27: Removed LEFT join for BookCategory, all cats added a few days ago!
+ * 2019-02-26: Added new columns for showing DR range values.
+ * 2019-02-26: Added set-so for changing a book/DR source.
+ * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
+ * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
+               - "yyyy-mm-dd hh:mm"
+               - "yyyy-mm-dd"
+               - "yyyy-mm-dd~" (approximately)
+               - "yyyy-mm-dd..yyyy-mm-dd" (firstDate to lastDate, inclusive range)
+ * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
+               This could cause genres to go missing from a book if an existing story was used in addBook.
+               Fixed by replacing selectRowValue with selectRowValue*s*.
+ * 2019-02-25: Added column "bdo" that shows otDate if exists otherwise Date, i.e. the oldest date overall.
+ * 2019-02-25: add-st now adds genre(s) for the added story and book.
+ * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
+ * 2019-02-25: Fixed bug in set-ot - would delete existing otISBN and otDate for OriginalTitle! 
+               Needed to use UPSERT instead of INSERT OR REPLACE since we are not setting all columns for OT.
+ * 2018-11-12: set-ot need to set the new OT fields. (Just included the mandatory langID for now, as add-b is supposed to
+               set everything already and all almost all current data is already up to date)
+ * 2018-10-29: Added sameisbn action to show books with same ISBN. Will show collections/packs of multiple books.
+ * 2018-10-22: Added a constructor for ColumnInfo so default member initializers can be used with VS2013.
+               Also clearer code at call sites that way.
+ * 2018-10-19: listOriginalTitles: Add otLa, use ng and gg instead of nn and ge.
+ * 2018-10-17: Cleaned up the help for the list book count actions. Got rid of redundant column "prc".
+ * 2018-10-17: Added column "bdod" that shows difference between book and original title first publication dates.
+ * 2018-10-17: addBook now supports language change and new OT columns.
+ * 2018-10-16: Added actions "lbc/lbcy" and "obc/obcy" to count languages and original languages.
+ * 2018-10-16: Language now has its own table. Added ISBD, Date and Language to OriginalTitles.
+ * 2018-10-15: wk => kw everywhere, be consistent!
+ * 2018-10-14: Added "kw" column. Updated help and aux for forgotten new columns.
+ * 2018-10-14: Added column "drbd" (RDelay) that shows difference between Date read and first publication date
+               in days.
+ * 2018-10-14: Can now compare columns with each other in where conditions. 
+               If the second operand is a short column name, then the corresponding column
+               will be used instead of the short name literal.
+ * 2018-10-14: Added "lte" and "gte" operators for where conditions. Replaced "ne" and "nq" with "neq".
+ * 2018-10-13: Added "bd" and "by" columns for first publication date and year of book.
+ * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
+ * 2018-10-13: Added "wpp" column; words per page.
+ * 2018-10-13: Can now count(sum) pages and words in addition to books in "book-count" listings
+               with the new --cnt:b|p|w option.
+ * 2018-10-11: addBook now supports ISBN, category, pages and words.
+ * 2018-10-11: Can now list and add book categories.
+ * 2018-10-10: Added ISBN, Category (+id), Pages and Words columns.
+ * 2018-10-10: Can now start listings from Authors table in addition to Books. 
+               Better for pseudonyms, can avoid DISTINCT. Better when listing authors too for that matter.
+ * 2018-10-10: Added support for pseudonyms.
+ * 2018-10-07: Can now input rating and genre(s) for new stories, also multiple genres for new books.
+ * 2018-10-07: Removed the redundant (short) add/set actions.
+ * 2018-10-06: Factored out gidargi.
+ * 2018-10-06: Can now specify zero newGID for set-g and set-stg also in interactive mode.
+ * 2018-10-06: Added "set-str" and "set-stg".
+ * 2018-10-06: Added ratings to titleStory listing.
+ * 2018-10-06: Gave a label to bs-columns. Use the new story columns by default in some listings.
+ * 2018-10-06: Renamed ast, btast, bst => astg, btastg, bstg
+ * 2018-10-06: Added rating and genre to Stories.
+               New actions: add-stg
+               New columns: btst, stra, stge, stgg, bsra, bsge, bsgg
+ * 2018-10-06: Added one more level to the help so the standard one can be shorter.
+ * 2018-10-06: The -q option implies -y option.
+ * 2018-10-05: Changed from LEFT to INNER joins for source and genre as every book will always have these.
+ * 2018-10-03: Renamed short name for series part from "spa" to "pa".
+ * 2018-10-01: Added "dym" and "dymd" for yyyy-mm and yyyy-mm-dd of Date read.
+ * 2018-10-01: Added "dy" for Year of Date read. ("dm" now used in addAuxTables as well for DatesRead!)
+ * 2018-09-27: EXPLAIN QUERY PLAN (-x) output now uses the newer SQLite eqp format.
+ * 2018-09-22: Decrease BookID width from 6 to 4.
+ * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
+ * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
+               as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
+               used in the SELECT.
+ * 2018-09-22: Added some columns based on window functions for nicer stats.
+ * 2018-09-22: Renamed short name for series part from "sp" to "spa" to make room for window function column.
+ * 2018-09-22: Verifies (also in Release build) that no duplicate short columns are added.
+ * 2018-09-22: Documented -x option, added -x2 for just EXPLAIN, disabled fit width when -x is used.
+ * 2018-09-22: dwl now returns NULL on invalid dates to be consistent with dw and dm.
+ * 2018-09-19: Improved virtual columns "sec" and "ti" so they can tolerate (some!) imperfect date values without returning NULL.
+ * 2018-09-19: Fixed column definition for "brym" so it does not matches the days as well! (In case of trailing -PO after day).
+ * 2018-09-07: Added "set-r" for setting the rating of a book.
+               Use fputs instead of puts for online help to avoid extra newlines.
+			   Include rating in some default listings.
+			   Improved ANSI; now always resets to default at the end of a column. But only if column uses custom values.
+ * 2018-09-06: addAuxTables: "stng" required AuthorBooks to be included.
+ * 2018-09-04: Added rating column to Books.
+ * 2018-03-30: Added virtual column "dm" for month of date read.
+ * 2017-11-28: Changed input color to Cyan to fit with black background. 
+               Added optional environment variable LITT_INPUT_COLOR to specify input color.
+ * 2017-10-30: Removed extra, unneeded ANSI output (caused extra line with Y).
+ * 2017-09-07: Can now specify ORDER BY columns (with -o) by actual column name in addition to the short name.
+ * 2017-08-21: Added "nrange" operator for -w options.
+ * 2017-08-07: Uses GetLocalTime instead of GetSystemTime.
+ * 2017-07-24: rereads: Order by "bi" instead of "brc". listGenre: use "gg" and "btast" instead of "ge" and "bt".
+ * 2017-07-12: Added "nand" & "nor" operators to where conditions as well.
+ * 2017-07-10: Switched (AuthorID,BookID) in AuthorBooks and BookStories to (BookID,AuthorID). This works better
+               for the queries since they mostly start joining from BookID. Fixed performance issue with titlestory
+               when using WITHOUT ROWID tables where appropriate.
+ * 2017-07-10: "execute" now supports -x option.
+ * 2017-07-08: Split Stories table into Stories and BookStories tables.
+               - Added virtual column "stng".
+               - Changed story (st) default order.
+ * 2017-07-05: Action "bb" now uses "btast" for where condition instead of "bt".
+ * 2017-07-04: Added "and" & "or" operators to where conditions to more conveniently match multiple values for a column.
+ * 2017-07-03: Added virtual column "bst" for showing stories a book.
+ * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "btast" instead of "bt".
+ * 2017-07-03: Added virtual columns "ast" and "btast" for showing author's stories (bookwise) and title combined with stories.
+ * 2017-07-03: Actions "aa" and "bb" by default uses virtual column "gg" instead of "ge".
+ * 2017-07-03: Bug fix in "ng" virtual column definition, ltrim must be done before group_concat!
+ * 2017-07-02: Added "gg" virtual column for aggregated genres.
+ * 2017-07-02: Added "add-bg" for adding a genre to a book.
+ * 2017-06-30: Added "execute" SQL.
+ * 2017-06-30: Added -y option.
+ * 2017-06-30: set-ot can now delete too.
+ * 2017-06-30: b2s => set-s, added option to remove a book from a series too.
+ * 2017-06-29: Added "add-dr", removed "add" from set-dr and set-g and "delete" from set-g.
+ * 2017-06-29: add-b now allows for more flexible input (DR mainly). Will also ask before discarding edits.
+ * 2017-06-28: Added "add-st" and "add-so". Harmonized and extended the simple add actions (a,g,s,so).
+ * 2017-06-22: Re-organized and fixed the online help again. Action ybc* => *bcy to match *bc action.
+ * 2017-06-22: Added length short names for rest of the text columns. Makes sure the needed tables are joined for length sns.
+ * 2017-06-21: Re-organized the online help.
+ * 2017-06-21: Added option -e<encoding> to specify output encoding. Will be used when stdout is redirected.
+ * 2017-06-21: Can now use cons-dlt/dgt also with other than "sec" column, useful for ID columns at least. Also now works to
+               compare with negative difference values.
+ * 2017-06-19: Added "fit width" option -f[on|off|auto|<widthValue>] for column display mode, where default is auto, 
+               meaning will be used where appropriate. Specifying a custom widthValue is same as "on", but will use specified
+               width instead of the console window width or the default value for when there is no console.
+ * 2017-06-19: Made listing output more consistent. Uses nn instead of ln.fn by default, changed some default column widths and
+               default columns sizes used by runSingleTableOutputCmd.
+ * 2017-06-17: b2s now uses OR REPLACE so it's easier to fix wrong series part! 
+               Also made it possible to use non-int part values.
+ * 2017-06-16: Added set-ot (to tiresome to use DB Browser!)
+ * 2017-06-16: Removed artifical 2001-10 start in brd. (Will now get a few "fake" hits from 1998-2001, but fine.)
+ * 2017-06-16: Fixed output from getPeriodColumns; does not print a newline if there are no columns, takes BOM and utf-8 into
+               account, just like output from the query.
+ * 2017-06-16: Now listBooksReadPerPeriod supports all dates instead of limiting to 2002 and newer.
+               Done by simply using substr instead of strftime where possible. Requires YYYY-MM-DD [HH:MM] 
+               date format though so less general now, cannot have dates as timestamps. Not an issue of course.
+ * 2017-06-16: brmy action now takes firstYear and lastYear as parameters instead of the pretty useless date condition used
+               to select a specific month.
+ * 2017-06-16: Can now give max number of characters to compare in cons when comparing with prev row value.
+ * 2017-06-14: Simplified samestory. Removed hacks for "Forever Yours"!
+               Removed unnecessary SELECT DISTINCT by default in many places.
+               Simplified titlestory a little, removed unneeded AuthorBooks, so no need for distinct.
+ * 2017-06-14: Added the id values to addAuxTables, might want to select those too! Removed all table names from column names in
+               in columnInfo:s. (Not only Books.BookID as last time).
+ * 2017-06-13: Speeded up ybca/g/s by using temporary memory tables instead of nested queries. Greatest speedup came from
+               being able to use rowId:s for joining year tables instead of generating RowNumbers in year queries via 
+               count(*) hack.
+               No longer needs to specify a value for --ansi off sub-option, always sets to disabled.
+               ybca/g/s now calculates lastYear from firstYear instead of calculating both from current year.
+ * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
+ * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
+ * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
+               behöva det för "ambiguity".
+ * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
+               specify trailing and/or preceding ".*" to match the whole value.
+               Converts regex values to utf-8 before using them.
+ * 2017-06-08: Added ANSI color support via --ansi option.
+ * 2017-06-07: Now uses blue text on input.
+ * 2017-06-05: Can escape options value separators with the escape character '!'. Is also used to escape itself. ("re!" => "ren")
+               Also made option parser more robust in general, will no longer allow empty option values (which end parsing!).
+ * 2017-06-05: Bug fix: Should not ORDER BY the label either, will fail if the column with the label is not included in SELECT
+               even if the column definition itself works as ORDER BY. So label should really only be used as the "AS" value
+               in SELECT. Also when referring to cons columns since cons only see the returned column names as it's done now.
+ * 2017-06-05: Allow to specify column width zero also for -s, already worked for -a and -c. Zero width useful for e.g. sec!
+               Also avoids printing the column at all when width = 0 (don't want the column separator shown then either!)
+               (Will still get an unneeded column separator if the first column is zero-width though)
+ * 2017-06-04: Added time range (diff smaller/greater) to consecutive row matching.
+               Added new sec (virtual) column containing "Date Read" as TotalSeconds (since 1970).
+               Bug fix: Need to check for "dw.dwl.ti.sec" too when adding DatesRead in addAuxTables.
+ * 2017-06-03: Added consecutive row matching according to user-selected criteria.
+ * 2017-06-02: Added samestory and titlestory. Calculates column widths automatically if missing.
+ * 2017-06-02: Can now input the same author several times for the same book (in case s/he contributes several stories).
+               This also worked on oldlitt, but that was only because it ignored errors from individual rows (because
+               it was running by piping to sqlite shell), and it still showed error messages.
+ * 2017-06-01: Input methods now complete and somewhat tested too! Many improvements compared to oldlitt!
+ * 2017-05-29: Added listSourceBookcounts (sbc)
+ * 2017-05-29: abc and gbc now supports generic where conditions!
+ * 2017-05-29: Added HTML and tabs display output modes. Decided to skip csv and line modes.
+ * 2017-05-29: Added the "range" operator to -w options as well. 
+ * 2017-05-29: Can now search for things containing "'"!
+ * 2017-05-28: Listing of books per period now working and better than before, can add use WHERE in addition to HAVING 
+               for the total. Also moved HAVING to the columns instead, more usable that way! 
+ * 2017-05-27: Now have column and list display modes working. File output format is utf-8 with bom (bom for V/VIEW).
+ * 2017-05-26: Decided to use exceptions for error handling after all!
+ * 2017-05-24: Decided to use WriteConsoleW for writing (converted) utf-8 output. Least problems and faster too.
+ * 2017-05-22: Have now decided to finish it and no longer depend on TCC and the SQLite shell. Also for a faster LITT!
+ * 2017-05-20: First tests started. Not using Modern C++ so far though, not for SQLite parts at least.
+ * 2017-05-19: Got inpired by Kenny Kerr's PluralSight course "SQlite with Modern C++".
+
+
+
+
+
+
+ * Previous:   Refer to the (old)litt.btm changelog include below:
+
+:: ************************************** Changelog **************************************************
+:: * 2017-05-08
+::   - Added set-g option for setting/changing genre for a book.
+::   - aa now includes genre by default
+:: * 2016-09-24
+::   - Removed "Add another book?" after adding a book.
+:: * 2015-08-27
+::   - Added gbc option.
+:: * 2015-08-24
+::   - Added more Genre help. Fixed Genre bug. (gi did not work when not ge specified too)
+:: * 2015-08-18
+::   - Added new "one-off" setGenre.
+:: * 2015-08-17
+::   - Added listing support for Genre. Started to add Genre to new book.
+::   - Added support for adding new Genres and setting genres for new books.
+:: * 2015-08-11
+::   - Fixes for @isdigit change in TCC 18, it now returs 1 for empty parameters. 
+::     Uses own @isnumber function instead.
+:: * 2014-02-17
+::   - Added virtual columninfo for time; tiCI.
+:: * 2013-12-28
+::   - Bug fix: Forgot to use @unquote for %dr% passed on the command line as set-bs argument.
+:: * 2013-10-12
+::   - addBook: Can now list sources (sameas last name) while entering book info.
+:: * 2013-10-05
+::   - Bug fix: @unquote needed for dr in setBookSource for dr:s containing spaces (like when time is included)
+:: * 2013-09-29
+::   - Bug fix: listAuthor did not work when called from addBook (needed to re-add action as param)
+::     - At the same time, clears aid after listing authors (when not a number)
+:: * 2013-09-23
+::   - Removed "extra" from all whereCond-related names.
+::   - Neatified parsing loop in bookPerPeriod.
+::   - resetWhereCond now takes new column(s) and parsedValue as optional args (avoid having to use variable to set dr in bpp).
+::   - Avoids having "%=" in SET statements using bppCol*
+::   - Bug fix: bpp now works also when using "ln" in the custom columns (Had to qualify Books.BookID in SELECT to avoid
+::     ambiguous column name error from SQLITE (3.7, works in 3.8+).
+:: * 2013-09-21
+::   - Generalized brm and bry to use common sub-routine (brp) which can also be used for several other functions
+::     like brmy, brym, brwd etc.
+::     * echoAuxTables now supports an optional indent argument (needed to align -q output for brp-subqueries)
+::     * removed brdOld (use the version history instead if needed)
+::     * createOrderBy takes an new optional argument for allowing ordering by custom columns (added by brp)
+::     * added resetExtraWhereCond routine (to allow calling extractExtraWhereCond many times in brp).
+::     * brp allows changing ORDER BY and column widths.
+::     * Uses a less collision-prone loop variable in echoIfCols!
+::   - Observations during coding: (learnt by hard experience!)
+::     * Avoid having the same loop variable (for or do) in nested loops! If you do, then it seems to matter
+::       whether the variable has a trailing % or not. DO works better with, FOR without.
+::     * The _do_loop variable does not seem to work to well with nested DO loops. Which is understandable, to work
+::       correctly the variable would need to know which DO-loop that evaluates it!
+::     * Do add % to the loop variable declaration in FOR as the docs say, strange things might happen otherwise!
+:: * 2013-09-17
+::   - Added virtual column abc to listAuthorBookCounts.
+::   - Added bRRs (include re-reads) second optional parameter to listAuthorBookCounts.
+::   - Bug fix: Invalid DateReads (BE, PO etc.) no longer listed as 'Lördag' with dwl, but are left empty ''.
+::   - Bug fix: Had to change "@if[defined..." back to "iff defined..." in extractExtraWhereCond, otherwise commas in the
+::     variables to be combined would mess with the @if! :(
+:: * 2013-09-16
+::   - Bug fix (likely due to listdata): listauthors did not work if fn.ln columns not included as Author tables where not
+::     included in the query, even if the fields where included in WHERE. Was fixed by using extractExtraWhereCond for adding
+::     the action parameters to the query instead of hand-coding it (extractExtraWhereCond makes sure the referenced columns
+::     are "included"). 
+::   - Now supports "" strings in all query values (-w and action main parameters). (Just added @unquotes[] to getwf in 
+::     extractExtraWhereCond) NOTE: If "" is used then the WHOLE param value should ne inside them, no "..."* values will work!
+::   - The wild-card handling for action main parameters is now done generically for every action, it's not hand-coded only for 
+::     a/aa and b/bb only.
+::   - extractExtraWhereCond now takes a LOGOP (and/or) parameter, needs to use AND when called for action main param(s), OR for -w.
+::     It also needs to add "(" ")" around %extraWhereCondParsed% when AND/OR:ing another condition (would not work too well when adding
+::     main params(s) whereCond otherwise).
+::   - Added two more run-aliases to factor out common code.
+:: * 2013-09-13
+::   - Added -x (EXPLAIN QUERY PLAN) option.
+::   - listbook bb now includes Source (so that bb alias don't have to).
+::   - Added more flexible and usable rereads and sametitle actions. The old ones still around as *Old.
+::     * Added virtual column btc for use (only) in (list)sametitle.
+::     * Added virtual column brc for use (only) in (list)rereads.
+::   - Added virtual column dg which groups dr.
+::   - Renamed virtual column nng to ng, so that there's no overlap with nn.
+::   - Renamed lang column (short-name) to la, so that there's no overlap with ng.
+::   - listData: Does not need to include Authors tabel for stories (st), AuthorBooks is enough.
+::   - Factored out the book aux tables listings/echos from listData for re-use elsewhere.
+::   - Group columns ng and dg now generically usable by being included in echoBookAuxTables and by using sub-queries
+::     with own group by:s to get their values.
+::   - Got rid of separate variables for WHERE and HAVING for parsed -w values. (Always use either now, and whole -w goes there)
+::   - Made the parameter(s) for @makeWhereCond[] optional.
+::   - Removed undocumented and obsolete -t switch from parseSingleOption.
+::   - Got rid of echoAlways, no longer needed (due to echoBookAuxTables) for lining up code and getting justified -q output.
+::   - Improved formatting/layout a little.
+:: * 2013-09-12
+::   - Now possible to use -a to add new columns also when -c is used (useful when alias uses -c and you want to
+::     add more columns on the command line).
+::   - Uses runSqlOutputCmd for running the pre-defined queries (all, bflat, etc.)
+::   - Uses new routine extractCountConditionForColumn for abc and brd.
+::   - Cleaned up query for abc, removed unneeded outer select.
+::   - bb and abc now uses nn instead of ln.fn by default.
+:: * 2013-09-11
+::   - Lade till virtuell kolumn "nng" som innehåller "FirstName LastName" för ALLA författare för en bok.
+::   - Lade samtidigt till virtuell kolumn "nn" som innehåller "FirstName LastName".
+::   - Lade samtidigt till kolumn listnings-namn (används som "AS label" i SELECT) till columnInfo
+::   - Lade till "isempty" WHERE operator.
+::   - drm och dry stöder nu -wdrc for Count("Date Read") via drcCI
+::   - Använder nu nya "listdata" för aa, bb, ss och soo listningar. (Undviker duplicerad kod.)
+::   - Använder runSqlOutputCmd för enrads-listningar (a, b, s, so) (Lite smidigare)
+::   - Uppdaterade hjälptexten.
+::   - Diverse mindre ändringar/korrigeringar. (t.ex @makeWhereCond[] => @likearg[] i brm och bry)
+:: * 2013-09-10
+::   - Lade till booksReadPerMonth (brm) och booksReadPerYear (bry)
+::   - Replaced Y with TYPE when listing query code.
+:: * 2013-09-09
+::   - Använder CalcDR i booksReadPerDate, som räknar datum med klockslag mellan 00:00 och 06:00 till föregående dag. Detta för att räkna 
+::     dessa till dagen "innan" vid brd-listningar.
+::   - Strippar även bort klockslaget från datumet vid brd, annars skulle det ju inte funka alls! (Ifall jag inte läser ut två böcker vid
+::     samma tidpunkt - på minuten när!)
+::   - Behåller "brdOld" för tillfället för jämförelser.
+:: * 2013-09-07
+::   - Matar nu in BookSourceId "för hand" när en ny bok läggs till. (Lättare så, eftersom jag oftast använder 36 eller 52
+::     ändå. Den speciella setBookSource proceduren funkar heller inte när det finns mellanrum i %dr%, klockslaget
+::     lämnas bort vide anrop, så det borde fixas när den behövs.
+:: * 2013-09-03
+::   - Lade till dwl för Veckodag (med bokstäver)
+::   - Added support for dw (Date Read DOW) calculated column (can be used as a real column).
+::     - At the same time, uses TPIPE to handle * => % conversion and CP1252 => UTF-8, since that
+::       makes it far easier to manage % in dynamic query strings. (Letting TPIPE handle utf8 conversion here
+::       instead of ICONV saves a pipe and makes it faster. Or at least no slower than it was before TPIPE was added)
+::     - Also added btl, lnl och fnl at the same time, which is length(Field	), can be fun.
+::     - Also added isColNumeric to the colummInfos, so we can determine if the WHERE params should have '' around it or not.
+::       Useful, since strftime() works well only WITH '', while length() works the other way around.
+::   - Lägger nu till HH:MM till "Date Read" för att klara fallet när en bok läses om samma dag som också andra
+::     läses och ändå alltid sortera i rätt ordning.
+:: * 2013-08-26
+::   - Added booksReadPerDate (brd) view command
+:: * 2013-04-01
+::   - Removed hard-coded path to db-file.
+::   - Removed unoptional (and unnecessary) chcp 1252
+::   - Disables DuplicateBugs at startup and restores the setting at the end.
+:: * 2013-03-31
+::   - Removed unneeded trailing &:s. Fixed position of ";" in addBook. (Seems to have worked anyway though!)
+:: * 2013-03-17
+::   - Added b* action, renamed bbb action to bb*.
+::   - Now aa* only lists %arg%* instead of *%arg%*, ditto for a*, b* and bb*.
+:: * 2013-03-05
+::   - Removed "Own" and "Bough e-book" from default result columns for listbook and listauthor. (Source covers both anyway!)
+:: * 2013-01-25
+::   - edited the help a little (made shorter)
+::   - added option "-q" for dumping SQLITE commands instead of doing anything with them.
+::   - BUG FIX: extractExtraWhereCond now only outputs the short column names and not the values to match for them as well.
+::              otherwise the values might well contain additional short column names => extraneous tables used in query.
+::   - "NOT LIKE" conditions (ne, nq) now allows NULL values to pass the test.
+::   - added option "-u" to list only DISTICT values.
+::   - added new where cond cmp operator "isnull".
+::   - BUG FIX: listBook must include author tables if st (story) is used.
+::   - Removed echoIfCol, always uses echoIfCols instead to avoid extra testing.
+:: * 2012-12-14
+::   - listauthors (a) now lists by AuthorID by default instead of LastName.
+:: * 2012-11-05
+::   - Now uses "%MYDOCS%\litt\litt.sqlite" as default db instead of "c:\user\litt\litt.sqlite"
+:: * 2012-10-14
+::   - BUG FIX: parseOptions use i as loop variable, and so does extractExtraWhereCond. This causes erratic problems! Like
+::              infinite loops with some whereConds.
+::   - Now also allows "ne" as cmdOper for whereCond since I cannot remember if it's nq or ne :)
+:: * 2012-08-09
+::   - Can now have manu -a options (additional columns)
+::   - Now checks if ALL batch params/args are options (not only from start and from end until there are no more).
+::     This makes it possible to have options anywhere, for example between the command arg (aa) and the command value (last name).
+::   - Allows use of "-" as command argument (special-case in option parsing).
+:: * 2012-02-01
+::   - always include author tables in listauthors (OBVIOUSLY!)
+:: * 2011-12-27
+::   - lade till mera options: twomore, rereads, sametitle
+:: * 2011-12-05
+::   - "nq" operator använder nu "NOT LIKE" istället för "<>" (support wildcards)
+::   - createOrderBy lägger nu inte till kolumner (till variabler som påverkar inkluderade tabeller och
+::     således resultatet) som inte används. Dvs använder selColumns i stället för defArg ifall det är satt.
+:: * 2011-12-03/4
+::   - Kan nu ange ett start bookId for set-bs kommandot, så börjar det gå igenom alla böcker/dateread utan bs från det.
+:: * 2011-11-21
+::   - BUG FIX: Måste enabla & när man anropas setBookSource från addBook! Också problem med unset ot, konstigt?
+:: * 2011-07-02
+::   - Can now list authors when adding book so you don't have to know the authorID before.
+:: * 2011-01-14
+::   - Now uses MYSQLITE.EXE for output, which adds proper padding for UTF8-sequences longer than one BYTE.
+::     This also makes sure no UTF8 byte sequence is cut in two for column output so ICONC -c does not have to be used.
+:: * 2011-01-02
+::   - Added -s[colSize] option to change the default column sizes (useful for columns included by default for an action)
+:: * 2010-12-24
+::   - listauthor (aa) använder nu samma QUERY som listbook (bb)
+:: * 2010-12-18
+::   - ICONV för att convertera mellan utf-8, utf-16 och cp1252. Endast i set-bs för tillfället.
+:: * 2010-12-14
+::   - Implementerade setBookSource och började lägga till Source värden för böcker.
+:: * 2010-12-11
+::   - Lade till addAuthor (så det fungerar)
+:: * 2010-12-08/09
+::   - Började ändra gamla datum till "hyfsade" gissningar och slutledningar enligt gamla brev etc.
+::   - Lägger nu till äldre (tidigare "glömda" böcker) med "nya" bokID istället för att shifta rum åt dem
+::     enligt gissning på när del lästes. Använder i stället "flytande" DateRead för att visa deras "ålder".
+:: * 2010-12-04
+::   - Fick äntligen add-book att fungera
+:: * 2010-11-30: 
+::   - started this log :)
+::   - Now @unquotes[] given search args (author, title, series, story) so spaces can be includes.
+::   - @makeWhereCond[] now protects itself against comma:s in arguments.
+:: --------------------------------------------------------------------------------------------------
+:: * 2001/2 (runt jul/nyår)
+::   - Lade till DateRead (till Books, inte som skild tabell som nu). Första bok med "riktigt" DateRead kanske 
+::     "Stjärnor utan svindel" (ID 480 läst 13-01-2002)? Lade också till det för böcker lästa tidigare enligt kvalificerade
+::    gissningar (köp/leveransdatum från bokus etc) ända tillbaka till ID 453 i rad) (ID 470 blev dock utan, no info available)
+:: * "2001-07-16" (mycket ungefärligt) Lades också till DR för tidigare böcker än 453 när någorlunda god info (bokus o.dy.) fanns.
+::   - Började med BookID from (ID 453 2001-07-16 Goodkind Terry Faith of the Fallen). Tidigare böcker förlorade
+::     "läsordning" och är till synes sorterade enligt författens LastName (ln.fn band samman books med authors
+::     och var primärnyckel).
+:: * 1997 (däromkring) Började med Litteratur databasen i Paradox i samband med kursen i Databaser.
+:: * 1994 vår/sommar - började använda Paradox på KKC.
+:: ***************************************************************************************************
+
