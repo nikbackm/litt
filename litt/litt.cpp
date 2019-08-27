@@ -1,6 +1,17 @@
 ﻿/* LITT - now for C++! ==========================================================================================================
 
 Changelog:
+ * 2019-08-27: Using these SQLite compile time options from https://www.sqlite.org/compile.html:
+               SQLITE_DQS=0
+               SQLITE_THREADSAFE=0
+               SQLITE_DEFAULT_MEMSTATUS=0
+               SQLITE_LIKE_DOESNT_MATCH_BLOBS
+               SQLITE_MAX_EXPR_DEPTH=0
+               SQLITE_OMIT_DECLTYPE
+               SQLITE_OMIT_DEPRECATED
+               SQLITE_OMIT_PROGRESS_CALLBACK
+               SQLITE_OMIT_SHARED_CACHE
+               SQLITE_USE_ALLOCA
  * 2019-08-27: Updated to SQLite 3.29.
  * 2019-08-26: Sort series, bookCategory and language by dr.bi.ln.fn. (Most useful, since these are shown in aa/bb by default)
  * 2019-08-26: Some bugs (mainly) detected by using VS2019 fixed.
