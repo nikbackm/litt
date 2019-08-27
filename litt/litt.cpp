@@ -1,6 +1,20 @@
 ﻿/* LITT - now for C++! ==========================================================================================================
 
 Changelog:
+ * 2019-08-27: Changes in story virtual columns to make them more logical and useful:
+               - Renamed stng => bstng = authors (ng) for book+story (b+st)
+               - Added stng = authors (ng) for story (in all books the story appears in)
+               - Added stnc = author count for story (in all books the story appears in)
+               - Renamed astg => bastg = Stories (stg) for book+author (b+a)
+                 * Also renamed btastg => btbastg = bt + bastg
+               - Added bastc (story count for book+author)
+               - Added astg = Stories for author
+               - Added stbc (story book count) and stbg (story books)
+               - Added astc (author story count) and bstc (book story count)
+              Added some more virtual count columns:
+               - nc (book author count)
+               - dc (date read count)
+              Fixed some bugs in virtual story columns, needs distinct to get either book or author.
  * 2019-08-27: Got rid of support for old Stories tables and switched to using #define:d string literals
                in addAuxTables, saved over 4k in code size.
  * 2019-08-27: Using these SQLite compile time options from https://www.sqlite.org/compile.html:
@@ -21,7 +35,7 @@ Changelog:
  * 2019-08-24: Added st listing for simple stories, renamed old st listing to stt.
  * 2019-08-24: Changed design for listings, now uses the same driver for both single- and double-letter listings.
                This makes the former as flexible as the latter, while still being as simple/efficient in the base case,
-			   i.e. they include no unneeded tables.
+               i.e. they include no unneeded tables.
  * 2019-08-21: Added virtual columns ar, gr and sr for Author, Genre and Source average book ratings. 
  * 2019-08-21: No need to automatically join DatesRead table for windows function columns ac and gc.
  * 2019-08-21: Order rereads, reot and ot listings by dr.bi by default instead of bi, ln and ot.
@@ -29,11 +43,11 @@ Changelog:
  * 2019-08-20: Added -h0 option to explicitly display level 0 help (Also shown when no arguments are given).
  * 2019-06-03: Added virtual column "sep" that includes both series and part.
  * 2019-05-10: The -x option now implies -y option.
-			   Command actions now respect the -x option! 
-			   Command actions no longer print changes when -q is specified.
+               Command actions now respect the -x option! 
+               Command actions no longer print changes when -q is specified.
  * 2019-05-10: Justified "Part in series" to right. 
                Documented addColumns format.
-			   Added -qd for showing default columns.
+               Added -qd for showing default columns.
  * 2019-05-10: Added --colsep option to customize column separator in columns display mode.
  * 2019-04-19: Extended reot to list different translations of the same book. E.g. English and Swedish of a Polish original.
  * 2019-04-18: Added reot action to list re-read translated books.
@@ -56,12 +70,12 @@ Changelog:
  * 2019-02-26: Changed set-dr; oldDr is now optional if dr-count for book = 1. Can also refer to it by index.
  * 2019-02-26: Now uses the same DR-format all the time; removed addf-b and addf-dr. Supported DR formats are:
                - "yyyy-mm-dd hh:mm"
-			   - "yyyy-mm-dd"
-			   - "yyyy-mm-dd~" (approximately)
-			   - "yyyy-mm-dd..yyyy-mm-dd" (firstDate to lastDate, inclusive range)
+               - "yyyy-mm-dd"
+               - "yyyy-mm-dd~" (approximately)
+               - "yyyy-mm-dd..yyyy-mm-dd" (firstDate to lastDate, inclusive range)
  * 2019-02-25: Fixed bug in selectRowIdValues, it assumed selectRowValue returned values from multiple rows!
                This could cause genres to go missing from a book if an existing story was used in addBook.
-			   Fixed by replacing selectRowValue with selectRowValue*s*.
+               Fixed by replacing selectRowValue with selectRowValue*s*.
  * 2019-02-25: Added column "bdo" that shows otDate if exists otherwise Date, i.e. the oldest date overall.
  * 2019-02-25: add-st now adds genre(s) for the added story and book.
  * 2019-02-25: Fixed bug in "stge" definition - wrong order for collation and label! 
@@ -84,7 +98,7 @@ Changelog:
                in days.
  * 2018-10-14: Can now compare columns with each other in where conditions. 
                If the second operand is a short column name, then the corresponding column
-			   will be used instead of the short name literal.
+               will be used instead of the short name literal.
  * 2018-10-14: Added "lte" and "gte" operators for where conditions. Replaced "ne" and "nq" with "neq".
  * 2018-10-13: Added "bd" and "by" columns for first publication date and year of book.
  * 2018-10-13: Added "bcwk" column for kilo-words, easier too read so!
@@ -119,7 +133,7 @@ Changelog:
  * 2018-09-22: Justifies (most) numeric columns from the right, including id:s.
  * 2018-09-22: Uses the label in ORDER BY if the column is included in SELECT (needed for window functions,
                as SQLITE does not like that they are repeated in the ORDER BY. Works fine in ORDER BY if not
-			   used in the SELECT.
+               used in the SELECT.
  * 2018-09-22: Added some columns based on window functions for nicer stats.
  * 2018-09-22: Renamed short name for series part from "sp" to "spa" to make room for window function column.
  * 2018-09-22: Verifies (also in Release build) that no duplicate short columns are added.
@@ -411,10 +425,10 @@ Column short name values:
     oi10, oi13       - otISBN value in ISBN10 and ISBN13 formats.  (NULL if check sum wrong)
     pgs, wds         - Book pages and words
     wpp, kw          - Words per page and kilo-words
-    ln, fn, ai       - Author last and first name, AuthorID
-    nn, ng           - Author full name, Aggregated full name(s) per book
+    ln, fn, nn, ai   - Author last and first name, author full name, AuthorID
+    nc, ng           - Author count and author(s) for book
     ge, gi, gg       - Genre, GenreID, Genre(s) for book
-    dr, dg           - Date read, Aggregated dates
+    dr, dc, dg       - Date read, Date read count, Date read(s).
     drrf, drrl, drrm - First, last and middle date of a DR range
     drrr, drrd       - A random date in a DR range and the number of days in it
     dw, dwl          - Day of week numeral and Day of week string for Date read
@@ -426,11 +440,15 @@ Column short name values:
     st, stid, stra   - Story, StoryID, Story rating
     ar, gr, sr       - Average rating for Author, Genre, Source
     btst             - Title combined with story (if there is one)
+    stbc, stbg       - Book count and book(s) for story
+    stnc, stng       - Author count and author(s) for story
     stge, stgg       - Genre and Genre(s) for story
     bsra, bsge, bsgg - Rating, Genre and Genre(s) for story or book (if there is no story)
-    astg, bstg       - Stories for author and Stories for book
-    btastg           - Title combined with stories for author
-    stng             - Authors for story
+    astc, astg       - Story count and stories for author
+    bstc, bstg       - Story count and stories for book
+    bastc, bastg     - Story count and stories for book+author.
+    btbastg          - Title combined with stories for book+author
+    bstng            - Authors for book+story
     se, si, pa, sep  - Series, SeriesID, Part in Series, Series + Part
     so, soid         - Source, SourceID
     ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
@@ -729,7 +747,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 13] = {};
+			TableInfo arrView[11 + 7 + 23] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -755,22 +773,33 @@ namespace LittDefs
 				TableInfo storyGenres;
 
 				// Virtual tables
+				TableInfo nc;
 				TableInfo ng;
+				TableInfo dc;
 				TableInfo dg;
 				TableInfo gg;
 				TableInfo ar;
 				TableInfo gr;
 				TableInfo sr;
 				TableInfo stgg;
-				TableInfo astg;
-				TableInfo bstg;
+				TableInfo stnc;
 				TableInfo stng;
+				TableInfo stbc;
+				TableInfo stbg;
+				TableInfo bastc;
+				TableInfo bastg;
+				TableInfo astc;
+				TableInfo astg;
+				TableInfo bstc;
+				TableInfo bstg;
+				TableInfo bstng;
 				TableInfo psmid;
 				TableInfo ps;
 				TableInfo psf;
 			};
 		};
 	};
+	static_assert(sizeof(TableInfos::arrView) == sizeof(TableInfos), "check arrView size!");
 
 	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
 	struct ColumnInfo {
@@ -1481,6 +1510,7 @@ public:
 		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, Tables(&t.books), "BYear");
 		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, Tables(&t.originalTitles), "otYear");
 		addColumnTextWithLength("dr", "\"Date Read\"", 10, Tables(&t.datesRead), CDefault);
+		addColumnNumeric("dc", "DRCnt", 5, Tables(&t.dc));
 		addColumnTextWithLength("dg", "\"Date(s)\"", 30, Tables(&t.dg), CDefault);
 		addColumnTextWithLength("fn", "\"First Name\"", 15, Tables(&t.authors), CNoCase);
 		addColumnTextWithLength("ge", "GBook.Genre", 30, Tables(&t.gbook), CNoCase);
@@ -1488,6 +1518,7 @@ public:
 		addColumnNumeric("gi", "BookGenres.GenreID", -7, Tables(&t.bookGenres));
 		addColumnNumeric("gi_n", "GenreID", -7, Tables());
 		addColumnTextWithLength("ln", "\"Last Name\"", 20, Tables(&t.authors), CLastName); 
+		addColumnNumeric("nc", "AuthorCnt", 6, Tables(&t.nc));
 		addColumnTextWithLength("ng", "\"Author(s)\"", 50, Tables(&t.ng), CNoCase);
 		addColumnTextWithLength("nn", A_NAME, 25, Tables(&t.authors), CNoCase, "Author");
 		addColumnNumeric("laid", "Books.LangID", 6, Tables(&t.books));
@@ -1522,14 +1553,22 @@ public:
 		addColumnNumeric("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
 		addColumnTextWithLength("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
 		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
+		addColumnNumeric("stbc", "\"BCnt\"", 4, Tables(&t.stbc));
+		addColumnTextWithLength("stbg", "\"StoryBooks(s)\"", 50, Tables(&t.stbg), CNoCase);
+		addColumnNumeric("stnc", "\"ACnt\"", 4, Tables(&t.stnc));
+		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
 		addColumnTextWithLength("btst", APPEND_OPT_COL("Title", "Story"), 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
 		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
 		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
 		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
-		addColumnTextWithLength("astg", "Stories", 45, Tables(&t.astg), CNoCase);
-		addColumnTextWithLength("btastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.astg), CTitle, "\"Title [Stories]\"");
+		addColumnNumeric("bastc", "SCnt", 4, Tables(&t.bastc));
+		addColumnTextWithLength("bastg", "Stories", 45, Tables(&t.bastg), CNoCase);
+		addColumnTextWithLength("btbastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.bastg), CTitle, "\"Title [Stories]\"");
+		addColumnNumeric("astc", "AStoryCnt", 5, Tables(&t.astc));
+		addColumnTextWithLength("astg", "\"Author Stories\"", 100, Tables(&t.astg), CNoCase);
+		addColumnNumeric("bstc", "BStoryCnt", 5, Tables(&t.bstc));
 		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
-		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
+		addColumnTextWithLength("bstng", "\"Book+Story author(s)\"", 50, Tables(&t.bstng), CNoCase);
 		addColumnTextWithLength("so", "Source", 35, Tables(&t.sources), CNoCase);
 		addColumnNumeric("soid", "SourceID", -8, Tables());
 		addColumnTextWithLength("ps", "ps.Pseudonyms", 25, Tables(&t.ps), CNoCase);
@@ -2410,6 +2449,7 @@ public:
 			if (cond) add(line);
 		}
 
+		// NOTE: We assume the tableInfos are reset whenever startTable is changed to something else than the last call.
 		void initTablesAndColumns(Table const startTable)
 		{
 			// First determine tables relationships according to start table and which table link/id fields are taken from
@@ -2418,161 +2458,113 @@ public:
 			auto& bi = litt.getColumn("bi")->tables;
 			auto& ai = litt.getColumn("ai")->tables;
 
+			auto setBookParent = [&](TableInfo* bookTi) {
+				bi.reset(bookTi);
+				t.books.parent = bookTi;
+				t.originalTitles.parent = bookTi;
+				t.authorbooks.parent = bookTi;
+				t.bookGenres.parent = bookTi;
+				t.datesRead.parent = bookTi;
+				t.bookSeries.parent = bookTi;
+				t.nc.parent = bookTi;
+				t.ng.parent = bookTi;
+				t.dc.parent = bookTi;
+				t.dg.parent = bookTi;
+				t.gg.parent = bookTi;
+				t.bstc.parent = bookTi;
+				t.bstg.parent = bookTi;
+				bookTi->parent = nullptr; // No parent, might cause loop.
+			};
+
+			auto setAuthorParent = [&](TableInfo* authorTi) {
+				ai.reset(authorTi);
+				t.authors.parent = authorTi;
+				t.ar.parent = authorTi;
+				t.astc.parent = authorTi;
+				t.astg.parent = authorTi;
+				authorTi->parent = nullptr; // No parent, might cause loop.
+			};
+
+			auto setBookAuthorParent = [&t](TableInfo* baTi) {
+				t.bastc.parent = baTi;
+				t.bastg.parent = baTi;
+			};
+
 			t.l_ot.parent = &t.originalTitles;
 			t.gstory.parent = &t.storyGenres;
 			t.psmid.parent = &t.authors;
 			t.ps.parent = &t.authors;
 			t.psf.parent = &t.authors;
-			t.stng.parent = &t.bookStories;
+			t.bstng.parent = &t.bookStories;
 
-			TableInfo* const authorBooksVal = (startTable == Table::authors) ? nullptr : &t.authorbooks;
-			ai.reset(authorBooksVal);
+			auto const authorBooksVal = (startTable != Table::authors) ? &t.authorbooks : nullptr;
 			litt.getColumn("ap")->tables.reset(&t.datesRead, authorBooksVal);
 			litt.getColumn("al")->tables.reset(&t.datesRead, authorBooksVal);
 			litt.getColumn("ac")->tables.reset(authorBooksVal);
 
-			if (startTable != Table::language) {
-				t.l_book.parent = &t.books;
-			}
+			t.l_book.parent = (startTable != Table::language) ? &t.books : nullptr;
 
-			TableInfo* catIdTable = nullptr;
-			if (startTable != Table::bookCategory) {
-				t.bookCategory.parent = &t.books;
-				catIdTable = &t.books;
-			}
-			litt.getColumn("catid")->tables.reset(catIdTable);
+			t.bookCategory.parent = (startTable != Table::bookCategory) ? &t.books : nullptr;;
+			litt.getColumn("catid")->tables.reset(t.bookCategory.parent);
 
-			if (startTable != Table::genres) {
-				t.gbook.parent = &t.bookGenres;
-			}
+			t.gbook.parent = (startTable != Table::genres) ? &t.bookGenres : nullptr;
 
-			TableInfo* siTable = nullptr;
-			if (startTable != Table::series) {
-				t.series.parent = &t.bookSeries;
-				siTable = &t.bookSeries;
-			}
-			litt.getColumn("si")->tables.reset(siTable);
+			t.series.parent = (startTable != Table::series) ? &t.bookSeries : nullptr;
+			litt.getColumn("si")->tables.reset(t.series.parent);
 
-			TableInfo* soInitTable = nullptr;
-			if (startTable != Table::sources) {
-				t.sources.parent = &t.datesRead;
-				t.sr.parent = &t.datesRead;
-				soInitTable = &t.datesRead;
-			}
-			litt.getColumn("soid")->tables.reset(soInitTable);
-			litt.getColumn("sc")->tables.reset(soInitTable);
+			t.sources.parent = (startTable != Table::sources) ? &t.datesRead : nullptr;
+			t.sr.parent = t.sources.parent;
+			litt.getColumn("soid")->tables.reset(t.sources.parent);
+			litt.getColumn("sc")->tables.reset(t.sources.parent);
 
-			TableInfo* stIdTable = nullptr;
+			_ASSERT(t.stories.parent == nullptr || t.stories.parent == &t.bookStories);
 			if (startTable != Table::stories) {
+				setBookAuthorParent(&t.authorbooks);
 				t.bookStories.parent = &t.authorbooks;
 				t.stories.parent = &t.bookStories;
 				t.storyGenres.parent = &t.bookStories;
 				t.stgg.parent = &t.bookStories;
-				t.astg.parent = &t.authorbooks;
+				t.stnc.parent = &t.bookStories;
+				t.stng.parent = &t.bookStories;
+				t.stbc.parent = &t.bookStories;
+				t.stbg.parent = &t.bookStories;
 				if (startTable != Table::genres) { 
 					t.gr.parent = &t.bookGenres; 
 				}
 				if (startTable != Table::authors) { 
-					t.authors.parent = &t.authorbooks;
-					t.ar.parent = &t.authorbooks; 
+					setAuthorParent(&t.authorbooks);
 				}
-				stIdTable = &t.bookStories;
 			}
-			litt.getColumn("stid")->tables.reset(stIdTable);
+			litt.getColumn("stid")->tables.reset(t.stories.parent);
 
 			switch (startTable) {
 			case Table::books:
+			case Table::originalTitles:
+				bi.reset();
+				break;
 			case Table::bookCategory:
 			case Table::language:
-			case Table::originalTitles:
-				if (startTable == Table::bookCategory || startTable == Table::language) {
-					bi.reset(&t.books);
-					t.originalTitles.parent = &t.books;
-					t.authorbooks.parent = &t.books;
-					t.datesRead.parent = &t.books;
-					t.bookGenres.parent = &t.books;
-					t.bookSeries.parent = &t.books;
-					t.ng.parent = &t.books;
-					t.dg.parent = &t.books;
-					t.gg.parent = &t.books;
-					t.bstg.parent = &t.books;
-				}
-				else {
-					bi.reset();
-				}
+				setBookParent(&t.books);
 				break;
-
 			case Table::authors:
-				bi.reset(&t.authorbooks);
-				t.books.parent = &t.authorbooks;
-				t.originalTitles.parent = &t.authorbooks;
-				t.datesRead.parent = &t.authorbooks;
-				t.bookSeries.parent = &t.authorbooks;
-				t.bookGenres.parent = &t.authorbooks;
-				t.ng.parent = &t.authorbooks;
-				t.dg.parent = &t.authorbooks;
-				t.gg.parent = &t.authorbooks;
-				t.bstg.parent = &t.authorbooks;
+				setBookParent(&t.authorbooks);
+				ai.reset();
 				break;
-
 			case Table::series:
-				bi.reset(&t.bookSeries);
-				t.books.parent = &t.bookSeries;
-				t.authorbooks.parent = &t.bookSeries;
-				t.originalTitles.parent = &t.bookSeries;
-				t.datesRead.parent = &t.bookSeries;
-				t.bookGenres.parent = &t.bookSeries;
-				t.ng.parent = &t.bookSeries;
-				t.dg.parent = &t.bookSeries;
-				t.gg.parent = &t.bookSeries;
-				t.bstg.parent = &t.bookSeries;
+				setBookParent(&t.bookSeries);
 				break;
-
 			case Table::genres:
-				bi.reset(&t.bookGenres);
-				t.books.parent = &t.bookGenres;
-				t.authorbooks.parent = &t.bookGenres;
-				t.originalTitles.parent = &t.bookGenres;
-				t.datesRead.parent = &t.bookGenres;
-				t.bookSeries.parent = &t.bookGenres;
-				t.ng.parent = &t.bookGenres;
-				t.dg.parent = &t.bookGenres;
-				t.gg.parent = &t.bookGenres;
-				t.bstg.parent = &t.bookGenres;
+				setBookParent(&t.bookGenres);
 				break;
-
 			case Table::sources:
-				bi.reset(&t.datesRead);
-				t.books.parent = &t.datesRead;
-				t.authorbooks.parent = &t.datesRead;
-				t.originalTitles.parent = &t.datesRead;
-				t.bookGenres.parent = &t.datesRead;
-				t.bookSeries.parent = &t.datesRead;
-				t.ng.parent = &t.datesRead;
-				t.dg.parent = &t.datesRead;
-				t.gg.parent = &t.datesRead;
-				t.bstg.parent = &t.datesRead;
+				setBookParent(&t.datesRead);
 				break;
-
 			case Table::stories:
-				bi.reset(&t.bookStories);
-				ai.reset(&t.bookStories);
-				t.books.parent = &t.bookStories;
-				t.originalTitles.parent = &t.bookStories;
-				t.authors.parent = &t.bookStories;
-				t.authorbooks.parent = &t.bookStories;
-				t.datesRead.parent = &t.bookStories;
-				t.bookGenres.parent = &t.bookStories;
-				t.bookSeries.parent = &t.bookStories;
-				t.ng.parent = &t.bookStories;
-				t.dg.parent = &t.bookStories;
-				t.gg.parent = &t.bookStories;
-				t.ar.parent = &t.bookStories;
+				setBookAuthorParent(&t.bookStories);
+				setAuthorParent(&t.bookStories);
+				setBookParent(&t.bookStories);
 				t.gr.parent = &t.storyGenres;
-				t.astg.parent = &t.bookStories;
-				t.bstg.parent = &t.bookStories;
 				break;
-				
 			default:
 				throw std::logic_error("initTablesAndColumns: Invalid startUpTable");
 			}
@@ -2613,19 +2605,35 @@ public:
 
 			// Virtual table queries.
 
-			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)"
-			#define DG "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)"
-			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)"
+			#define NC "(SELECT BookID, count(AuthorID) AS AuthorCnt FROM AuthorBooks GROUP BY BookID)"
+			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM AuthorBooks JOIN Authors USING(AuthorID) GROUP BY BookID)"
+
+			#define DC "(SELECT BookID, count(\"Date read\") AS 'DRCnt' FROM DatesRead GROUP BY BookID)"
+			#define DG "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM DatesRead GROUP BY BookID)"
+
+			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres JOIN Genres USING(GenreID) GROUP BY BookID)"
 
 			#define AR "(SELECT AuthorID, avg(Rating) AS ARating FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)"
 			#define GR "(SELECT GenreID,  avg(Rating) AS GRating FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)"
 			#define SR "(SELECT SourceID, avg(Rating) AS SRating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)"
 
+			#define UNIQ_STORY_BOOKS "(SELECT DISTINCT StoryID,BookID FROM BookStories)"
+			#define UNIQ_STORY_AUTHORS "(SELECT DISTINCT StoryID,AuthorID FROM BookStories)"
+
 			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)"
+			#define STNC "(SELECT StoryID, count(AuthorID) AS ACnt FROM " UNIQ_STORY_AUTHORS " GROUP BY StoryID)"
+			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " UNIQ_STORY_AUTHORS " JOIN Authors USING(AuthorID) GROUP BY StoryID)"
+			#define STBC "(SELECT StoryID, count(StoryID) AS BCnt FROM " UNIQ_STORY_BOOKS " GROUP BY StoryID)"
+			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " UNIQ_STORY_BOOKS " JOIN Books USING(BookID) GROUP BY StoryID)"
+
 			#define STORYTABLES "Stories JOIN BookStories USING(StoryID)"
-			#define ASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " STORYTABLES " GROUP BY AuthorID, BookID)"
-			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " STORYTABLES " GROUP BY BookID)"
-			#define STNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)"
+			#define BASTC "(SELECT AuthorID, BookID, count(StoryID) AS SCnt FROM BookStories GROUP BY AuthorID, BookID)"
+			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " STORYTABLES " GROUP BY AuthorID, BookID)"
+			#define ASTC "(SELECT AuthorID, count(StoryID) AS AStoryCnt FROM " UNIQ_STORY_AUTHORS " GROUP BY AuthorID)"
+			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories JOIN " UNIQ_STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
+			#define BSTC "(SELECT BookID, count(StoryID) AS BStoryCnt FROM " UNIQ_STORY_BOOKS " GROUP BY BookID)"
+			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories JOIN " UNIQ_STORY_BOOKS "USING(StoryID) GROUP BY BookID)"
+			#define BSTNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Book+Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)"
 
 			#define PSMID "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM" \
 				          "  (SELECT AuthorID, CASE AuthorID WHEN psp.PseudonymID THEN psp.MainID WHEN psm.MainID THEN psm.MainID ELSE NULL END AS psmain" \
@@ -2675,10 +2683,12 @@ public:
 			include(t.bookCategory, "JOIN BookCategory USING(CategoryID)");
 			include(t.l_book, "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
 
+			include(t.nc, "JOIN " NC " USING(BookID)");
 			include(t.ng, "JOIN " NG " USING(BookID)");
 			include(t.ar, "JOIN " AR " USING(AuthorID)");
 
 			include(t.datesRead, "JOIN DatesRead USING(BookID)");
+			include(t.dc, "JOIN " DC " USING(BookID)");
 			include(t.dg,        "JOIN " DG " USING(BookID)");
 
 			include(t.sources, "JOIN Sources USING(SourceID)");
@@ -2699,8 +2709,16 @@ public:
 			include(t.storyGenres,     "LEFT JOIN StoryGenres USING(StoryID)");
 			include(t.gstory,          "LEFT JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
 			include(t.stgg,            "LEFT JOIN " STGG " USING(StoryID)");
-			include(t.stng,            "LEFT JOIN " STNG " USING(BookID,StoryID)");
-			include(t.astg,            "LEFT JOIN " ASTG " USING(AuthorID,BookID)");
+			include(t.stnc,            "LEFT JOIN " STNC " USING(StoryID)");
+			include(t.stng,            "LEFT JOIN " STNG " USING(StoryID)");
+			include(t.stbc,            "LEFT JOIN " STBC " USING(StoryID)");
+			include(t.stbg,            "LEFT JOIN " STBG " USING(StoryID)");
+			include(t.bstng,           "LEFT JOIN " BSTNG " USING(BookID,StoryID)");
+			include(t.bastc,           "LEFT JOIN " BASTC " USING(AuthorID,BookID)");
+			include(t.bastg,           "LEFT JOIN " BASTG " USING(AuthorID,BookID)");
+			include(t.astc,            "LEFT JOIN " ASTC " USING(AuthorID)");
+			include(t.astg,            "LEFT JOIN " ASTG " USING(AuthorID)");
+			include(t.bstc,            "LEFT JOIN " BSTC " USING(BookID)");
 			include(t.bstg,            "LEFT JOIN " BSTG " USING(BookID)");
 
 			// Would be after GG above, but need to be after StoryGenres for stories listing.
@@ -3374,7 +3392,7 @@ public:
 			runListData("stid.st", "stid.st", Table::stories);
 		}
 		else {
-			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
+			runListData("bi.bt.ra.dr.stid.st.stra.bstng.stgg", "dr.bi.stid", Table::stories);
 		}
 	}
 
