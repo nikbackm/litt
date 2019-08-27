@@ -1,6 +1,8 @@
 ﻿/* LITT - now for C++! ==========================================================================================================
 
 Changelog:
+ * 2019-08-27: Got rid of support for old Stories tables and switched to using #define:d string literals
+               in addAuxTables, saved over 4k in code size.
  * 2019-08-27: Using these SQLite compile time options from https://www.sqlite.org/compile.html:
                SQLITE_DQS=0
                SQLITE_THREADSAFE=0
@@ -1258,7 +1260,6 @@ class Litt {
 	TableInfos m_tableInfos;
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
-	bool m_hasBookStories = false; // To keep backwards compatibility with older litt-db:s (LDIFF!).
 	Output m_output;
 
 	int const consoleCodePage = GetConsoleCP();
@@ -1880,7 +1881,6 @@ public:
 		}
 		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
 		executeSql("PRAGMA temp_store = 2", nullptr, nullptr, false); // memory
-		m_hasBookStories = hasRowValue("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BookStories'");
 
 		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
 			if (sqlite3_create_collation(conn, name, SQLITE_UTF8, nullptr, xCompare) != SQLITE_OK)
@@ -2613,29 +2613,29 @@ public:
 
 			// Virtual table queries.
 
-			auto ng = "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)";
-			auto dg = "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)";
-			auto gg = "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)";
+			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM Books JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID) GROUP BY BookID)"
+			#define DG "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM Books JOIN DatesRead USING(BookID) GROUP BY BookID)"
+			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM Books JOIN BookGenres USING(BookID) JOIN Genres USING(GenreID) GROUP BY BookID)"
 
-			auto ar = "(SELECT AuthorID, avg(Rating) AS ARating FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)";
-			auto gr = "(SELECT GenreID,  avg(Rating) AS GRating FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)";
-			auto sr = "(SELECT SourceID, avg(Rating) AS SRating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)";
+			#define AR "(SELECT AuthorID, avg(Rating) AS ARating FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)"
+			#define GR "(SELECT GenreID,  avg(Rating) AS GRating FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)"
+			#define SR "(SELECT SourceID, avg(Rating) AS SRating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)"
 
-			auto stgg = "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)";
-			std::string storyTables = litt.m_hasBookStories ? "Stories JOIN BookStories USING(StoryID)" : "Stories";
-			auto astg = "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " + storyTables + " GROUP BY AuthorID, BookID)";
-			auto bstg = "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " + storyTables + " GROUP BY BookID)";
-			auto stng = "(SELECT BookID, StoryID, " A_NAMES " AS 'Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)";
+			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)"
+			#define STORYTABLES "Stories JOIN BookStories USING(StoryID)"
+			#define ASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " STORYTABLES " GROUP BY AuthorID, BookID)"
+			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM " STORYTABLES " GROUP BY BookID)"
+			#define STNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)"
 
-			auto psmid = "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM"
-				         "  (SELECT AuthorID, CASE AuthorID WHEN psp.PseudonymID THEN psp.MainID WHEN psm.MainID THEN psm.MainID ELSE NULL END AS psmain"
-				         "   FROM Authors LEFT JOIN Pseudonyms psm ON(psm.MainID = Authors.AuthorID) LEFT JOIN Pseudonyms psp ON(psp.PseudonymID = Authors.AuthorID)"
-				         "   WHERE psmain IS NOT NULL)"
-				         "GROUP BY AuthorID)";
-			auto ps = "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)";
-			auto psf = "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)";
+			#define PSMID "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM" \
+				          "  (SELECT AuthorID, CASE AuthorID WHEN psp.PseudonymID THEN psp.MainID WHEN psm.MainID THEN psm.MainID ELSE NULL END AS psmain" \
+				          "   FROM Authors LEFT JOIN Pseudonyms psm ON(psm.MainID = Authors.AuthorID) LEFT JOIN Pseudonyms psp ON(psp.PseudonymID = Authors.AuthorID)" \
+				          "   WHERE psmain IS NOT NULL)" \
+				          "GROUP BY AuthorID)"
+			#define PS "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)"
+			#define PSF "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)"
 
-			auto include = [&](TableInfo& table, std::string sql) {
+			auto include = [&](TableInfo& table, const char* sql) {
 				if (table.used && !table.included) {
 					add(indent + sql);
 					table.included = true;
@@ -2675,18 +2675,18 @@ public:
 			include(t.bookCategory, "JOIN BookCategory USING(CategoryID)");
 			include(t.l_book, "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
 
-			include(t.ng, "JOIN " + std::string(ng) + " USING(BookID)");
-			include(t.ar, "JOIN " + std::string(ar) + " USING(AuthorID)");
+			include(t.ng, "JOIN " NG " USING(BookID)");
+			include(t.ar, "JOIN " AR " USING(AuthorID)");
 
 			include(t.datesRead, "JOIN DatesRead USING(BookID)");
-			include(t.dg,        "JOIN " + std::string(dg) + " USING(BookID)");
+			include(t.dg,        "JOIN " DG " USING(BookID)");
 
 			include(t.sources, "JOIN Sources USING(SourceID)");
-			include(t.sr,      "JOIN " + std::string(sr) + " USING(SourceID)");
+			include(t.sr,      "JOIN " SR " USING(SourceID)");
 
 			include(t.bookGenres, "JOIN BookGenres USING(BookID)");
 			include(t.gbook,      "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
-			include(t.gg,         "JOIN " + std::string(gg) + " USING(BookID)");
+			include(t.gg,         "JOIN " GG " USING(BookID)");
 
 			include(t.originalTitles, "LEFT JOIN OriginalTitles USING(BookID)");
 			include(t.l_ot,           "LEFT JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
@@ -2694,26 +2694,21 @@ public:
 			include(t.bookSeries, "LEFT JOIN BookSeries USING(BookID)");
 			include(t.series,     "LEFT JOIN Series USING(SeriesID)");
 
-			if (litt.m_hasBookStories) {
-				include(t.bookStories, "LEFT JOIN BookStories USING(BookID,AuthorID)");
-				include(t.stories,     "LEFT JOIN Stories USING(StoryID)");
-			}
-			else { // old story table
-				include(t.stories,     "LEFT JOIN Stories USING(AuthorID, BookID)");
-			}
+			include(t.bookStories,     "LEFT JOIN BookStories USING(BookID,AuthorID)");
+			include(t.stories,         "LEFT JOIN Stories USING(StoryID)");
 			include(t.storyGenres,     "LEFT JOIN StoryGenres USING(StoryID)");
 			include(t.gstory,          "LEFT JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
-			include(t.stgg,            "LEFT JOIN " + std::string(stgg) + " USING(StoryID)");
-			include(t.stng,            "LEFT JOIN " + std::string(stng) + " USING(BookID,StoryID)");
-			include(t.astg,            "LEFT JOIN " + std::string(astg) + " USING(AuthorID,BookID)");
-			include(t.bstg,            "LEFT JOIN " + std::string(bstg) + " USING(BookID)");
+			include(t.stgg,            "LEFT JOIN " STGG " USING(StoryID)");
+			include(t.stng,            "LEFT JOIN " STNG " USING(BookID,StoryID)");
+			include(t.astg,            "LEFT JOIN " ASTG " USING(AuthorID,BookID)");
+			include(t.bstg,            "LEFT JOIN " BSTG " USING(BookID)");
 
-			// Would be after gg above, but need to be after StoryGenres for stories listing.
-			include(t.gr, "JOIN " + std::string(gr) + " USING(GenreID)");
+			// Would be after GG above, but need to be after StoryGenres for stories listing.
+			include(t.gr, "JOIN " GR " USING(GenreID)");
 
-			include(t.psmid, "LEFT JOIN " + std::string(psmid) + " psmid ON (psmAID = Authors.AuthorID)");
-			include(t.ps,    "LEFT JOIN " + std::string(ps)    + " ps ON (ps.MainID = Authors.AuthorID)");
-			include(t.psf,   "LEFT JOIN " + std::string(psf)   + " psf ON (psf.PseudonymID = Authors.AuthorID)");
+			include(t.psmid, "LEFT JOIN " PSMID " psmid ON (psmAID = Authors.AuthorID)");
+			include(t.ps,    "LEFT JOIN " PS " ps ON (ps.MainID = Authors.AuthorID)");
+			include(t.psf,   "LEFT JOIN " PSF " psf ON (psf.PseudonymID = Authors.AuthorID)");
 		}
 
 		void addAuxTables(Table startTable = Table::books, unsigned indentSize = 0)
@@ -3379,12 +3374,7 @@ public:
 			runListData("stid.st", "stid.st", Table::stories);
 		}
 		else {
-			if (m_hasBookStories) {
-				runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
-			}
-			else { // Old version
-				runListData("bi.bt.dr.stid.st.nn", "dr.bi.stid", Table::stories);
-			}
+			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
 		}
 	}
 
@@ -3480,7 +3470,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 		OutputQuery query(*this);
 		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
 		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
-		query.addIf(m_hasBookStories, "JOIN BookStories USING(StoryID)");
+		query.add("JOIN BookStories USING(StoryID)");
 		query.add("JOIN Books USING(BookID)");
 		m_tableInfos.authorbooks.included = true; // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
 		m_tableInfos.stories.included = true; // Already have Stories content from above so skip to avoid ambigous column error.
@@ -3497,7 +3487,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
 		query.initColumnWidths();
 		query.initSelectBare();
-		query.a(fmt(
+		query.a(
 R"(B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
 BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
 CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
@@ -3513,14 +3503,14 @@ FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date read" AS "B
 JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRating,
       StoryID, Story, Stories.Rating AS SRating, 
       "Date read" AS "Story read", Source AS "Story source", 
-      ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories%s
+      ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories JOIN BookStories USING(StoryID)
 	JOIN Books USING(BookID)
 	JOIN Authors USING(AuthorID)
 	JOIN DatesRead USING(BookID)
 	JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story AND B.BookID <> S.BookID
-ORDER BY Dupe DESC, "Book read")", m_hasBookStories ? " JOIN BookStories USING(StoryID)" : "").c_str());
+ORDER BY Dupe DESC, "Book read")");
 		runOutputQuery(query);
 	}
 
