@@ -1,6 +1,7 @@
 ﻿/* LITT - now for C++! ==========================================================================================================
 
 Changelog:
+ * 2019-08-27: Updated to SQLite 3.29.
  * 2019-08-26: Sort series, bookCategory and language by dr.bi.ln.fn. (Most useful, since these are shown in aa/bb by default)
  * 2019-08-26: Some bugs (mainly) detected by using VS2019 fixed.
  * 2019-08-24: Changed gg listing columns.
