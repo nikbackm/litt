@@ -1807,7 +1807,13 @@ public:
 
 			auto getOperand = [&col, this](std::string val) -> std::string {
 				auto valCol = m_columnInfos.find(val);
-				return (valCol != m_columnInfos.end()) ? valCol->second.nameDef : col->getLikeArg(std::move(val));
+				if (valCol != m_columnInfos.end()) {
+					valCol->second.usedInQuery = true;
+					return valCol->second.nameDef;
+				}
+				else {
+					return col->getLikeArg(std::move(val));
+				}
 			};
 
 			val = getOperand(val);

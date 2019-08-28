@@ -1,6 +1,8 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-28: Bug fix: If a column was used as second operand in WHERE then it was not
+               included in used columns.
  * 2019-08-28: Can now use -c option with xbc listings and not get tables for the default
                columns joined in the query.
  * 2019-08-28: Added SQLite compile option SQLITE_TEMP_STORE=3 (always memory) and removed 
