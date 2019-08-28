@@ -1,6 +1,7 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-28: OutputQuery now uses std::string instead of std::stringstream for building query.
  * 2019-08-28: addAuxTables now uses JOIN or LEFT JOIN depending on startTable.
  * 2019-08-28: Added more count virtual columns:
                * abc, abcr, agc - Author book count, with re-reads, and genre count

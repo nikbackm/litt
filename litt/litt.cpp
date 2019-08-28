@@ -2065,7 +2065,7 @@ public:
 	};
 
 	class OutputQuery {
-		std::stringstream m_sstr;
+		std::string m_query;
 		Columns m_orderBy;
 	public:
 		Litt& litt;
@@ -2074,35 +2074,37 @@ public:
 
 		OutputQuery(Litt& litt) 
 			: litt(litt) 
-		{}
+		{
+			m_query.reserve(5000);
+		}
 
 		void init()
 		{
 			if (litt.m_explainQuery > 0) {
-				m_sstr << "EXPLAIN ";
-				if (litt.m_explainQuery == 1) m_sstr << "QUERY PLAN ";
+				m_query += "EXPLAIN ";
+				if (litt.m_explainQuery == 1) m_query += "QUERY PLAN ";
 			}
 		}
 
 		void addDistinct(SelectOption selectOption)
 		{
 			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
-				m_sstr << "DISTINCT ";
+				m_query += "DISTINCT ";
 			}
 		}
 
 		void initSelectBare(SelectOption selectOption = SelectOption::normal)
 		{
 			init();
-			m_sstr << "SELECT ";
+			m_query += "SELECT ";
 			addDistinct(selectOption);
 		}
 
 		void initWithSelectBare(const char* with, SelectOption selectOption = SelectOption::normal)
 		{
 			init();
-			m_sstr << "WITH\n" << with << "\n";
-			m_sstr << "SELECT ";
+			m_query.append("WITH\n").append(with).append("\n");
+			m_query += "SELECT ";
 			addDistinct(selectOption);
 		}
 
@@ -2117,9 +2119,9 @@ public:
 		void addCol(ColumnInfo const * ci)
 		{
 			ci->usedInResult = true;
-			m_sstr << ci->nameDef;
+			m_query += ci->nameDef;
 			if (!ci->label.empty()) {
-				m_sstr << " AS " << ci->label;
+				m_query.append(" AS ").append(ci->label);
 			}
 		}
 
@@ -2129,7 +2131,7 @@ public:
 			appendTo(selCols, litt.m_additionalColumns);
 			for (unsigned i = 0; i < selCols.size(); ++i) {
 				if (i != 0) {
-					m_sstr << ",";
+					m_query += ",";
 				}
 				auto ci = selCols[i].first;
 				addCol(ci);
@@ -2155,7 +2157,7 @@ public:
 			showDefaultColumns(defColumns, defOrderBy);
 			initSelectBare(selectOption);
 			addColums(defColumns);
-			m_sstr << "\nFROM " << from;
+			m_query.append("\nFROM ").append(from);
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			initOrderBy(defOrderBy);
 		}
@@ -2165,7 +2167,7 @@ public:
 			showDefaultColumns(defColumns, defOrderBy);
 			initWithSelectBare(with, selectOption);
 			addColums(defColumns);
-			m_sstr << "\nFROM " << from;
+			m_query.append("\nFROM ").append(from);
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			initOrderBy(defOrderBy);
 		}
@@ -2183,30 +2185,30 @@ public:
 		void addWhere(int indentSize = 0)
 		{
 			if (!litt.m_whereCondition.empty()) {
-				m_sstr << "\n" << std::string(indentSize, ' ') << "WHERE " << litt.m_whereCondition;
+				m_query.append("\n").append(std::string(indentSize, ' ')).append("WHERE ").append(litt.m_whereCondition);
 			}
 		}
 
 		void addHaving()
 		{
 			if (!litt.m_havingCondition.empty()) {
-				m_sstr << "\nHAVING " << litt.m_havingCondition;
+				m_query.append("\nHAVING ").append(litt.m_havingCondition);
 			}
 		}
 
 		void a(const char* str)
 		{
-			m_sstr << str;
+			m_query += str;
 		}
 
 		void a(std::string const & str)
 		{
-			m_sstr << str;
+			m_query += str;
 		}
 
 		void add(const char* line)
 		{
-			m_sstr << "\n" << line;
+			m_query.append("\n").append(line);
 		}
 
 		void add(std::string const & line)
@@ -2571,29 +2573,29 @@ public:
 		void addOrderBy()
 		{
 			if (!m_orderBy.empty()) { 
-				m_sstr << "\nORDER BY ";
+				m_query += "\nORDER BY ";
 				for (unsigned i = 0; i < m_orderBy.size(); ++i) {
 					if (i != 0) {
-						m_sstr << ",";
+						m_query += ",";
 					}
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
 					// Use label if column is used in result(select), otherwise, have to use the name/def.
 					// For window function based columns the latter may cause an out of memory error for some reason!
 					// But only if the column is also included in the result, if the column is only used in order by it works!
-					m_sstr << (ci->usedInResult ? ci->labelName() : ci->nameDef);
+					m_query += (ci->usedInResult ? ci->labelName() : ci->nameDef);
 					if (ci->collation != nullptr) {
-						m_sstr << " COLLATE " << ci->collation;
+						m_query.append(" COLLATE ").append(ci->collation);
 					}
 					if (order == ColumnSortOrder::Desc) {
-						m_sstr << " DESC"; // ASC is default.
+						m_query.append(" DESC"); // ASC is default.
 					}
 				}
 			}
 			if (litt.m_limit > 0) {
-				m_sstr << "\nLIMIT " << litt.m_limit;
+				m_query.append("\nLIMIT ").append(std::to_string(litt.m_limit));
 				if (litt.m_offset > 0) {
-					m_sstr << " OFFSET " << litt.m_offset;
+					m_query.append(" OFFSET ").append(std::to_string(litt.m_offset));
 				}
 			}
 
@@ -2605,7 +2607,7 @@ public:
 
 		std::string getSql() const
 		{
-			return litt.encodeSqlFromInput(m_sstr.str());
+			return litt.encodeSqlFromInput(m_query);
 		}
 	}; // OutputQuery
 
