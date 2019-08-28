@@ -2446,101 +2446,111 @@ public:
 			#define SOBC "(SELECT SourceID, count(BookID) AS SOBC FROM (SELECT DISTINCT SourceID, BookID FROM DatesRead) GROUP BY SourceID)"
 			#define SEBC "(SELECT SeriesID, count(BookID) AS SEBC FROM BookSeries GROUP BY SeriesID)"
 
-			auto include = [&](TableInfo& table, const char* sql) {
+			auto includeImpl = [&](TableInfo& table, const char* join, const char* sql) {
 				if (table.used && !table.included) {
-					add(indent + sql);
+					add(indent); a(join); a(" "); a(sql);
 					table.included = true;
 				}
+			};
+			auto include = [&](TableInfo& table, const char* sql) { 
+				includeImpl(table, "JOIN", sql); 
+			};
+			auto includeLeft = [&](TableInfo& table, const char* sql) { 
+				includeImpl(table, "LEFT JOIN", sql); 
+			};
+			auto includeLeftIf = [&](TableInfo& table, const char* sql, Table leftJoinUnlessThis) { 
+				includeImpl(table, startTable == leftJoinUnlessThis ? "JOIN" : "LEFT JOIN", sql); 
 			};
 
 			auto& t = litt.m_tableInfos;
 
 			switch (startTable) {
 			case Table::bookCategory:
-				include(t.books, "JOIN Books USING(CategoryID)");
+				include(t.books, "Books USING(CategoryID)");
 				break;
 			case Table::language:
-				include(t.books, "JOIN Books USING(LangID)");
+				include(t.books, "Books USING(LangID)");
 				break;
 			case Table::sources:
-				include(t.datesRead, "JOIN DatesRead USING(SourceID)");
+				include(t.datesRead, "DatesRead USING(SourceID)");
 				break;
 			case Table::genres:
-				include(t.bookGenres, "JOIN BookGenres USING(GenreID)");
+				include(t.bookGenres, "BookGenres USING(GenreID)");
 				break;
 			case Table::stories:
-				include(t.bookStories, "JOIN BookStories USING(StoryID)");
-				include(t.authorbooks, "JOIN AuthorBooks USING(BookID,AuthorID)");
+				include(t.bookStories, "BookStories USING(StoryID)");
+				include(t.authorbooks, "AuthorBooks USING(BookID,AuthorID)");
 				break;
 			case Table::authors:
-				include(t.authorbooks, "JOIN AuthorBooks USING(AuthorID)");
+				include(t.authorbooks, "AuthorBooks USING(AuthorID)");
 				break;
 			case Table::series:
-				include(t.bookSeries, "JOIN BookSeries USING(SeriesID)");
+				include(t.bookSeries, "BookSeries USING(SeriesID)");
 				break;
 			}
 
-			include(t.books, "JOIN Books USING(BookID)");
-			include(t.cbc, "JOIN " CBC " USING(CategoryID)");
-			include(t.authorbooks, "JOIN AuthorBooks USING(BookID)");
-			include(t.authors, "JOIN Authors USING(AuthorID)");
-			include(t.bookCategory, "JOIN BookCategory USING(CategoryID)");
-			include(t.l_book, "JOIN Language L_book ON(Books.LangID = L_book.LangID)");
-			include(t.lbc, "JOIN " LBC " USING(LangID)");
+			include(t.books, "Books USING(BookID)");
+			include(t.cbc, CBC " USING(CategoryID)");
+			include(t.authorbooks, "AuthorBooks USING(BookID)");
+			include(t.authors, "Authors USING(AuthorID)");
+			include(t.bookCategory, "BookCategory USING(CategoryID)");
+			include(t.l_book, "Language L_book ON(Books.LangID = L_book.LangID)");
+			include(t.lbc, LBC " USING(LangID)");
 
-			include(t.nc,  "JOIN " NC   " USING(BookID)");
-			include(t.ng,  "JOIN " NG   " USING(BookID)");
-			include(t.ar,  "JOIN " AR   " USING(AuthorID)");
-			include(t.abc, "JOIN " ABC  " USING(AuthorID)");
-			include(t.abcr,"JOIN " ABCR " USING(AuthorID)");
-			include(t.agc, "JOIN " AGC  " USING(AuthorID)");
+			include(t.nc,  NC " USING(BookID)");
+			include(t.ng,  NG " USING(BookID)");
 
-			include(t.datesRead, "JOIN DatesRead USING(BookID)");
-			include(t.dc,        "JOIN " DC    " USING(BookID)");
-			include(t.dg,        "JOIN " DG    " USING(BookID)");
+			include(t.ar,  AR   " USING(AuthorID)");
+			include(t.abc, ABC  " USING(AuthorID)");
+			include(t.abcr,ABCR " USING(AuthorID)");
+			include(t.agc, AGC  " USING(AuthorID)");
 
-			include(t.sources, "JOIN Sources USING(SourceID)");
-			include(t.sor,     "JOIN " SOR " USING(SourceID)");
-			include(t.sobc,    "JOIN " SOBC " USING(SourceID)");
+			include(t.datesRead, "DatesRead USING(BookID)");
+			include(t.dc,        DC       " USING(BookID)");
+			include(t.dg,        DG       " USING(BookID)");
 
-			include(t.bookGenres, "JOIN BookGenres USING(BookID)");
-			include(t.gbook,      "JOIN Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
-			include(t.gg,         "JOIN " GG " USING(BookID)");
+			include(t.sources, "Sources USING(SourceID)");
+			include(t.sor,     SOR    " USING(SourceID)");
+			include(t.sobc,    SOBC   " USING(SourceID)");
 
-			include(t.originalTitles, "LEFT JOIN OriginalTitles USING(BookID)");
-			include(t.l_ot,           "LEFT JOIN Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)");
-			include(t.obc,            "LEFT JOIN " OBC   " obc ON OriginalTitles.LangID = obc.LangID");
+			include(t.bookGenres, "BookGenres USING(BookID)");
+			include(t.gbook,      "Genres GBook ON(BookGenres.GenreID = GBook.GenreID)");
+			include(t.gg,         GG " USING(BookID)");
 
-			include(t.bookSeries, "LEFT JOIN BookSeries USING(BookID)");
-			include(t.series,     "LEFT JOIN Series USING(SeriesID)");
-			include(t.ser,        "LEFT JOIN " SER " USING(SeriesID)");
-			include(t.sebc,       "LEFT JOIN " SEBC " USING(SeriesID)");
+			includeLeft(t.originalTitles, "OriginalTitles USING(BookID)");
+			includeLeftIf(t.l_ot,         "Language L_ot ON(OriginalTitles.LangID = L_ot.LangID)", Table::originalTitles);
+			includeLeftIf(t.obc,          OBC      " obc ON OriginalTitles.LangID = obc.LangID", Table::originalTitles);
 
-			include(t.bookStories,     "LEFT JOIN BookStories USING(BookID,AuthorID)");
-			include(t.stories,         "LEFT JOIN Stories USING(StoryID)");
-			include(t.storyGenres,     "LEFT JOIN StoryGenres USING(StoryID)");
-			include(t.gstory,          "LEFT JOIN Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)");
-			include(t.stgg,            "LEFT JOIN " STGG " USING(StoryID)");
-			include(t.stnc,            "LEFT JOIN " STNC " USING(StoryID)");
-			include(t.stng,            "LEFT JOIN " STNG " USING(StoryID)");
-			include(t.stbc,            "LEFT JOIN " STBC " USING(StoryID)");
-			include(t.stbg,            "LEFT JOIN " STBG " USING(StoryID)");
-			include(t.bstng,           "LEFT JOIN " BSTNG " USING(BookID,StoryID)");
-			include(t.bastc,           "LEFT JOIN " BASTC " USING(AuthorID,BookID)");
-			include(t.bastg,           "LEFT JOIN " BASTG " USING(AuthorID,BookID)");
-			include(t.astc,            "LEFT JOIN " ASTC " USING(AuthorID)");
-			include(t.astg,            "LEFT JOIN " ASTG " USING(AuthorID)");
-			include(t.bstc,            "LEFT JOIN " BSTC " USING(BookID)");
-			include(t.bstg,            "LEFT JOIN " BSTG " USING(BookID)");
+			includeLeftIf(t.bookSeries, "BookSeries USING(BookID)", Table::series);
+			includeLeft(t.series,       "Series USING(SeriesID)");
+			includeLeftIf(t.ser,        SER " USING(SeriesID)", Table::series);
+			includeLeftIf(t.sebc,       SEBC " USING(SeriesID)", Table::series);
+
+			includeLeftIf(t.bookStories, "BookStories USING(BookID,AuthorID)", Table::stories);
+			includeLeft(t.stories,       "Stories USING(StoryID)");
+			includeLeftIf(t.storyGenres, "StoryGenres USING(StoryID)", Table::stories);
+			includeLeftIf(t.gstory,      "Genres GStory ON(StoryGenres.GenreID = GStory.GenreID)", Table::stories);
+			includeLeftIf(t.stgg,        STGG " USING(StoryID)", Table::stories);
+			includeLeftIf(t.stnc,        STNC " USING(StoryID)", Table::stories);
+			includeLeftIf(t.stng,        STNG " USING(StoryID)", Table::stories);
+			includeLeftIf(t.stbc,        STBC " USING(StoryID)", Table::stories);
+			includeLeftIf(t.stbg,        STBG " USING(StoryID)", Table::stories);
+			includeLeftIf(t.bstng,       BSTNG " USING(BookID,StoryID)", Table::stories);
+			includeLeftIf(t.bastc,       BASTC " USING(AuthorID,BookID)", Table::stories);
+			includeLeftIf(t.bastg,       BASTG " USING(AuthorID,BookID)", Table::stories);
+			includeLeftIf(t.astc,        ASTC " USING(AuthorID)", Table::stories);
+			includeLeftIf(t.astg,        ASTG " USING(AuthorID)", Table::stories);
+			includeLeftIf(t.bstc,        BSTC " USING(BookID)", Table::stories);
+			includeLeftIf(t.bstg,        BSTG " USING(BookID)", Table::stories);
 
 			// Would be after GG above, but need to be after StoryGenres for stories listing.
-			include(t.gr,  "JOIN " GR  " USING(GenreID)");
-			include(t.gbc, "JOIN " GBC " USING(GenreID)");
-			include(t.gac, "JOIN " GAC " USING(GenreID)");
+			include(t.gr,  GR  " USING(GenreID)");
+			include(t.gbc, GBC " USING(GenreID)");
+			include(t.gac, GAC " USING(GenreID)");
 
-			include(t.psmid, "LEFT JOIN " PSMID " psmid ON (psmAID = Authors.AuthorID)");
-			include(t.ps,    "LEFT JOIN " PS " ps ON (ps.MainID = Authors.AuthorID)");
-			include(t.psf,   "LEFT JOIN " PSF " psf ON (psf.PseudonymID = Authors.AuthorID)");
+			includeLeft(t.psmid, PSMID " psmid ON (psmAID = Authors.AuthorID)");
+			includeLeft(t.ps,    PS    " ps ON (ps.MainID = Authors.AuthorID)");
+			includeLeft(t.psf,   PSF   " psf ON (psf.PseudonymID = Authors.AuthorID)");
 		}
 
 		void addAuxTables(Table startTable = Table::books, unsigned indentSize = 0)
