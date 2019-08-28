@@ -1,6 +1,13 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-28: Added more count virtual columns:
+               * abc, abcr, agc - Author book count, with re-reads, and genre count
+               * gbc, gac - Genre book count and author count
+               * cbc, sebc, sobc - Category, series and source book count
+               * lbc, obc - Language and original language book count
+               (Renamed sr to sor)
+               * ser - Average rating for series
  * 2019-08-28: Bug fix: If a column was used as second operand in WHERE then it was not
                included in used columns.
  * 2019-08-28: Can now use -c option with xbc listings and not get tables for the default
