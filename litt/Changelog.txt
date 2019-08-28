@@ -1,6 +1,10 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-28: Added SQLite compile option SQLITE_TEMP_STORE=3 (always memory) and removed 
+               code to set PRAGMA temp_store = 2.
+               Added SQlite compile option SQLITE_DEFAULT_FOREIGN_KEYS=1 (on) and removed
+               code to set PRAGMA foreign_keys = ON.
  * 2019-08-27: Moved the changelog to "Changelog.txt" instead of having it in "litt.cpp".
                Also added contents of oldlitt.btm changelog here at the bottom!
  * 2019-08-27: Changes in story virtual columns to make them more logical and useful:

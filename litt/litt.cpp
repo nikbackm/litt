@@ -1664,8 +1664,6 @@ public:
 		if (res != SQLITE_OK) {
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 		}
-		executeSql("PRAGMA foreign_keys = ON", nullptr, nullptr, false);
-		executeSql("PRAGMA temp_store = 2", nullptr, nullptr, false); // memory
 
 		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
 			if (sqlite3_create_collation(conn, name, SQLITE_UTF8, nullptr, xCompare) != SQLITE_OK)
