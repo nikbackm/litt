@@ -1,6 +1,7 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-28: OptionParser now allows empty option values (like -c) and separators at the end (=> eof).
  * 2019-08-28: OptionParser now uses std::string instead of std::stringstream.
  * 2019-08-28: OutputQuery now uses std::string instead of std::stringstream for building query.
  * 2019-08-28: addAuxTables now uses JOIN or LEFT JOIN depending on startTable.

@@ -116,7 +116,7 @@ Options:
                      * colC : Specify ANSI color for given column (either given as short name or full name).
                      * valC : Specify ANSI color for the given columns when the value of the given value
                               columns matches the included regex.
-							  
+
     --cnt:[b|p|w]    Specify what to count in book count listings. Default (b) is books.
                      Can also use p for pages, w for words or kw for kilo-words.
 
@@ -799,12 +799,12 @@ class OptionParser {
 	const char        m_delim;
 public:
 	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
-		: m_option(value), m_type(type), m_delim(delim)
+		: m_option(value), m_type(type), m_delim(delim), m_endOfOption(value.empty())
 	{}
 
 	bool empty() const
 	{
-		return m_endOfOption || m_option.empty();
+		return m_endOfOption;
 	}
 
 	bool getNext(std::string& next)
@@ -840,8 +840,7 @@ public:
 		if (str.empty()) { throw std::invalid_argument("Empty option values not allowed"); }
 
 		if (m_option.length() <= m_optionIndex)
-			if (m_option.empty() || m_option.back() != m_delim) // Don't set endOf if ending with delim.
-				m_endOfOption = true;
+			m_endOfOption = true;
 
 		next = std::move(str);
 		return true;
