@@ -3304,7 +3304,7 @@ ORDER BY Dupe DESC, "Book read")");
 		auto selCols = columns + std::string(".") + ccol;
 		if (!countCond.empty()) { addCountCondToHavingCondition(ccol.c_str(), countCond); }
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
-		(void)getColumns(selCols, ColumnsDataKind::width, true);  // In case -c option is used!
+		getColumn(snGroupBy)->usedInQuery = true;
 
 		OutputQuery query(*this);
 		query.initSelect(selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
