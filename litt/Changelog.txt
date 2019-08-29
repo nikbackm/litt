@@ -1,6 +1,9 @@
 LITT Changelog:
 ===============
 
+ * 2019-08-29: Now uses a switch for the action selection with constexpr action hashing!
+               Code size decreased 12.5KB (VS2019) and should be faster too hopefully! 
+               Smaller decrease on VS2017, less than 1KB, but was smaller already.
  * 2019-08-29: No need for m_endOfOption after last change!
  * 2019-08-28: OptionParser now allows empty option values (like -c) and separators at the end (=> eof).
  * 2019-08-28: OptionParser now uses std::string instead of std::stringstream.

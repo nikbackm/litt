@@ -4330,80 +4330,68 @@ ORDER BY Dupe DESC, "Book read")");
 		return idargi(index, name, cf(&Litt::selSource), getListSource(), iopt);
 	}
 
+	// Compute the action hash for use in action switch.
+	constexpr static unsigned short actionHash(const char* action)
+	{
+		/* // Commented out, as VS2017 litt.exe is 632 bytes smaller without it, no diff on VS2019.
+		// So that <c> and <cc> returns consecutive values to help optimize the jump table.
+		// Similar for h and h<1..2>
+		if (action[1] == 0)             return 10 * action[0];
+		if (action[2] == 0) {
+			if (action[0] == action[1]) return 10 * action[0] + 1;
+			if (action[0] == 'h')       return 10 * action[0] + (action[1] - ('0' - 1));
+		}
+		else {
+			// Consecutivize <c>bc and <>bcy
+			if (action[1] == 'b' && action[2] == 'c') {
+				const unsigned short offset = (action[3] == 0) ? 0 : 6; // Assume 'y' if not 0.
+				switch (action[0]) {
+				case 'a': return 1 + offset;
+				case 'g': return 2 + offset;
+				case 's': return 3 + offset;
+				case 'c': return 4 + offset;
+				case 'l': return 5 + offset;
+				case 'o': return 6 + offset;
+				}
+			}
+		}*/
+		// General case, enough for the above actions as well if we comment that code out.
+		unsigned short hash = 0;
+		while (*action) {
+			hash = 23 * (hash ^ (unsigned short)(*action++));
+		}
+		return hash;
+	}
+	
 	void executeAction() 
 	{
+		constexpr auto a = actionHash;
 		auto const& action = m_action;
-		if (action == "h" || action == "h0" || action == "h1" || action == "h2") {
-			int const level = (action.length() != 2) ? 2 : (action[1] - '0');
-			showHelp(level);
-		}
-		else if (action == "a" || action == "aa") {
-			listAuthors(action, arg(0), arg(1));
-		}
-		else if (action == "ps") {
-			listPseudonyms(arg(0), arg(1));
-		}
-		else if (action == "b" || action == "bb") {
-			listBooks(action, arg(0));
-		}
-		else if (action == "s" || action == "ss") {
-			listSeries(action, arg(0));
-		}
-		else if (action == "g" || action == "gg") {
-			listGenres(action, arg(0));
-		}
-		else if (action == "ot") {
-			listOriginalTitles();
-		}
-		else if (action == "st" || action == "stt") {
-			listStories(action, arg(0));
-		}
-		else if (action == "so" || action == "soo") {
-			listSources(action, arg(0));
-		}
-		else if (action == "c" || action == "cc") {
-			listBookCategories(action, arg(0));
-		}
-		else if (action == "l" || action == "ll") {
-			listBookLanguages(action, arg(0));
-		}
-		else if (action == "rereads") {
-			listRereads();
-		}
-		else if (action == "reot") {
-			listReot();
-		}
-		else if (action == "sametitle") {
-			listSametitle();
-		}
-		else if (action == "sameisbn") {
-			listSameISBN();
-		}
-		else if (action == "titlestory") {
-			listTitlestory();
-		}
-		else if (action == "samestory") {
-			listSamestory();
-		}
-		else if (action == "abc") {
-			listBookCounts(arg(0), arg(1) == "1", "nn.35", "ai");
-		}
-		else if (action == "gbc") {
-			listBookCounts(arg(0), arg(1) == "1", "ge.35", "gi");
-		}
-		else if (action == "sbc") {
-			listBookCounts(arg(0), true, "so.35", "soid"); // DR always included when SO is.
-		}
-		else if (action == "cbc") {
-			listBookCounts(arg(0), arg(1) == "1", "cat", "catid");
-		}
-		else if (action == "lbc") {
-			listBookCounts(arg(0), arg(1) == "1", "la", "laid");
-		}
-		else if (action == "obc") {
-			listBookCounts(arg(0), arg(1) == "1", "otla", "otli", Table::originalTitles);
-		}
-		else if (action == "abcy" || action == "gbcy" || action == "sbcy" || action == "cbcy" || action == "lbcy" || action == "obcy") {
+		switch (a(action.c_str())) {
+		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp((action.length()!=2) ? 2 : (action[1]-'0')); break;
+		case a("a"): case a("aa"):  listAuthors(action, arg(0), arg(1)); break;
+		case a("ps"):               listPseudonyms(arg(0), arg(1)); break;
+		case a("b"): case a("bb"):  listBooks(action, arg(0)); break;
+		case a("s"): case a("ss"):  listSeries(action, arg(0)); break;
+		case a("g"): case a("gg"):  listGenres(action, arg(0)); break;
+		case a("ot"):               listOriginalTitles(); break;
+		case a("st"):case a("stt"): listStories(action, arg(0)); break;
+		case a("so"):case a("soo"): listSources(action, arg(0)); break;
+		case a("c"): case a("cc"):  listBookCategories(action, arg(0)); break;
+		case a("l"): case a("ll"):  listBookLanguages(action, arg(0)); break;
+		case a("rereads"):    listRereads(); break;
+		case a("reot"):       listReot(); break;
+		case a("sametitle"):  listSametitle(); break;
+		case a("sameisbn"):   listSameISBN(); break;
+		case a("titlestory"): listTitlestory(); break;
+		case a("samestory"):  listSamestory(); break;
+		case a("abc"): listBookCounts(arg(0), arg(1) == "1", "nn.35", "ai"); break;
+		case a("gbc"): listBookCounts(arg(0), arg(1) == "1", "ge.35", "gi"); break;
+		case a("sbc"): listBookCounts(arg(0), true, "so.35", "soid"); break; // DR always included when SO is.
+		case a("cbc"): listBookCounts(arg(0), arg(1) == "1", "cat", "catid"); break;
+		case a("lbc"): listBookCounts(arg(0), arg(1) == "1", "la", "laid"); break;
+		case a("obc"): listBookCounts(arg(0), arg(1) == "1", "otla", "otli", Table::originalTitles); break;
+		case a("abcy"): case a("gbcy"): case a("sbcy"): case a("cbcy"): case a("lbcy"): case a("obcy"): {
 			auto count = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear = intarg(2, "lastYear", firstYear + 4);
@@ -4417,37 +4405,27 @@ ORDER BY Dupe DESC, "Book read")");
 				case 'o': snSel = "otla"; snGby = "otli"; startTable = Table::originalTitles; break;
 			}
 			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, startTable);
+			break;
 		}
-		else if (action == "brd") {
-			listBooksReadPerDate(arg(0));
-		}
-		else if (action == "brwd") {
-			listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1));
-		}
-		else if (action == "brm") {
-			listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1));
-		}
-		else if (action == "bry") {
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1));
-		}
-		else if (action == "brp") {
-			auto def = argm(0, "periodDef");
-			auto name = argm(1, "periodName");
-			listBooksReadPerPeriod(def, name, arg(2, WcS), getPeriodColumns(3));
-		}
-		else if (action == "brym") {
+		case a("brd"):  listBooksReadPerDate(arg(0)); break;
+		case a("brwd"): listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1)); break;
+		case a("brm"):  listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1)); break;
+		case a("bry"):  listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1)); break;
+		case a("brp"):  listBooksReadPerPeriod(argm(0,"periodDef"), argm(1,"periodName"), arg(2, WcS), getPeriodColumns(3)); break;
+		case a("brym"): {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 			std::vector<PeriodColumn> monthColumns;
 			for (int m = 1; m <= 12; ++m) {
 				char def[20]; sprintf_s(def, "dr.____-%02d-*", m);
-				monthColumns.push_back({ std::string(def), std::string(months[m-1]) });
+				monthColumns.push_back({ std::string(def), std::string(months[m - 1]) });
 			}
 			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
+			break;
 		}
-		else if (action == "brmy") {
+		case a("brmy"): {
 			auto st = getLocalTime();
 			auto firstYear = intarg(0, "firstYear", st.wYear);
-			auto lastYear  = intarg(1, "lastYear", st.wYear);
+			auto lastYear = intarg(1, "lastYear", st.wYear);
 			std::vector<PeriodColumn> yearColumns;
 			for (int y = firstYear; y <= lastYear; ++y) {
 				char def[10]; sprintf_s(def, "dr.%04d-*", y);
@@ -4455,74 +4433,31 @@ ORDER BY Dupe DESC, "Book read")");
 			}
 			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", firstYear, lastYear)));
 			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
+			break;
 		}
-		else if (action == "add-a") {
-			addAuthor();
-		}
-		else if (action == "add-g") {
-			executeSimpleAddAction("genre", &Litt::addGenre);
-		}
-		else if (action == "add-s") {
-			executeSimpleAddAction("series", &Litt::addSeries);
-		}
-		else if (action == "add-so") {
-			executeSimpleAddAction("book source", &Litt::addSource);
-		}
-		else if (action == "add-c") {
-			executeSimpleAddAction("book category", &Litt::addBookCategory);
-		}
-		else if (action == "add-b") {
-			addBook();
-		}
-		else if (action == "add-st") {
-			addStory();
-		}
-		else if (action == "set-s") {
-			setBookSeries();
-		}
-		else if (action == "add-bg") {
-			addBookGenre();
-		}
-		else if (action == "add-stg") {
-			addStoryGenre();
-		}
-		else if (action == "set-g") {
-			setBookGenre();
-		}
-		else if (action == "set-stg") {
-			setStoryGenre();
-		}
-		else if (action == "add-dr") {
-			addDateRead();
-		}
-		else if (action == "set-dr") {
-			setBookDateRead();
-		}
-		else if (action == "set-so") {
-			setBookSource();
-		}
-		else if (action == "set-ot") {
-			setOriginalTitle();
-		}
-		else if (action == "set-r") {
-			setRating();
-		}
-		else if (action == "set-str") {
-			setStoryRating();
-		}
-		else if (action == "set-bd") {
-			setBookPubDate();
-		}
-		else if (action == "set-otd") {
-			setBookOriginalTitlePubDate();
-		}
-		else if (action == "set-own") {
-			setBookOwned();
-		}
-		else if (action == "execute") {
-			executeUserSql();
-		}
-		else {
+		case a("add-a"):   addAuthor(); break;
+		case a("add-g"):   executeSimpleAddAction("genre", &Litt::addGenre); break;
+		case a("add-s"):   executeSimpleAddAction("series", &Litt::addSeries); break;
+		case a("add-so"):  executeSimpleAddAction("book source", &Litt::addSource); break;
+		case a("add-c"):   executeSimpleAddAction("book category", &Litt::addBookCategory); break;
+		case a("add-b"):   addBook(); break;
+		case a("add-st"):  addStory(); break;
+		case a("set-s"):   setBookSeries(); break;
+		case a("add-bg"):  addBookGenre(); break;
+		case a("add-stg"): addStoryGenre(); break;
+		case a("set-g"):   setBookGenre(); break;
+		case a("set-stg"): setStoryGenre(); break;
+		case a("add-dr"):  addDateRead(); break;
+		case a("set-dr"):  setBookDateRead(); break;
+		case a("set-so"):  setBookSource(); break;
+		case a("set-ot"):  setOriginalTitle(); break;
+		case a("set-r"):   setRating(); break;
+		case a("set-str"): setStoryRating(); break;
+		case a("set-bd"):  setBookPubDate(); break;
+		case a("set-otd"): setBookOriginalTitlePubDate(); break;
+		case a("set-own"): setBookOwned(); break;
+		case a("execute"): executeUserSql(); break;
+		default:
 			throw std::invalid_argument("Invalid action: " + action);
 		}
 	}
