@@ -794,28 +794,27 @@ using namespace Input;
 class OptionParser {
 	std::string       m_option;
 	unsigned          m_optionIndex = 0;
-	bool              m_endOfOption = false;
 	const char* const m_type;
 	const char        m_delim;
 public:
 	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
-		: m_option(value), m_type(type), m_delim(delim), m_endOfOption(value.empty())
+		: m_option(value), m_type(type), m_delim(delim)
 	{}
 
 	bool empty() const
 	{
-		return m_endOfOption;
+		return m_option.length() <= m_optionIndex;
 	}
 
 	bool getNext(std::string& next)
 	{
-		if (m_endOfOption) { return false; }
+		if (empty()) { return false; }
 
 		const int EscapeChar = '!';
 		bool escOn = false;
 
 		std::string str;
-		while(m_optionIndex < m_option.length()) {
+		do {
 			char const c = m_option[m_optionIndex++];
 			if (c == EscapeChar) {
 				if (escOn) { str.push_back(EscapeChar); }
@@ -834,13 +833,10 @@ public:
 				if (escOn) { throw std::invalid_argument("Illegal escape sequence"); }
 				str.push_back(c);
 			}
-		}
+		} while (!empty());
 
 		if (escOn) { throw std::invalid_argument("Incomplete escape sequence"); }
 		if (str.empty()) { throw std::invalid_argument("Empty option values not allowed"); }
-
-		if (m_option.length() <= m_optionIndex)
-			m_endOfOption = true;
 
 		next = std::move(str);
 		return true;
