@@ -199,6 +199,7 @@ Column short name values:
     so, soid         - Source, SourceID
     ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
     abc, abcr, agc   - Author book count, book count with re-reads and genre count
+    abcp, agcp       - Author book count and genre count with pseudonyms included for MainID
     gbc, gac         - Genre book count and author count
     cbc, sobc, sebc  - Category, source and series book count
     lbc, obc         - Language and original language book count
@@ -497,7 +498,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 34] = {};
+			TableInfo arrView[11 + 7 + 36] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -533,8 +534,10 @@ namespace LittDefs
 				TableInfo sor;
 				TableInfo ser;
 				TableInfo abc;
+				TableInfo abcp;
 				TableInfo abcr;
 				TableInfo agc;
+				TableInfo agcp;
 				TableInfo gbc;
 				TableInfo gac;
 				TableInfo cbc;
@@ -1340,8 +1343,10 @@ public:
 		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25, Tables(&t.psf), CNoCase);
 		addColumnNumeric("psmid", "PSMainID", -9, Tables(&t.psmid), "PSMainID");
 		addColumnNumeric("abc", "ABC", 4, Tables(&t.abc));
+		addColumnNumeric("abcp","ABCP",4, Tables(&t.abcp));
 		addColumnNumeric("abcr","ABCR",4, Tables(&t.abcr));
 		addColumnNumeric("agc", "AGC", 4, Tables(&t.agc));
+		addColumnNumeric("agcp","AGCP",4, Tables(&t.agcp));
 		addColumnNumeric("gbc", "GBC", 4, Tables(&t.gbc));
 		addColumnNumeric("gac", "GAC", 4, Tables(&t.gac));
 		addColumnNumeric("cbc", "CBC", 4, Tables(&t.cbc));
@@ -2266,8 +2271,10 @@ public:
 				t.astc.parent = authorTi;
 				t.astg.parent = authorTi;
 				t.abc.parent = authorTi;
+				t.abcp.parent = authorTi;
 				t.abcr.parent = authorTi;
 				t.agc.parent = authorTi;
+				t.agcp.parent = authorTi;
 				authorTi->parent = nullptr; // No parent, might cause loop.
 			};
 
@@ -2440,11 +2447,17 @@ public:
 			#define PS "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)"
 			#define PSF "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)"
 
-			#define ABC "(SELECT AuthorID, count(BookID) AS ABC FROM AuthorBooks GROUP BY AuthorID)"
+			#define AB_PSE "(SELECT * FROM AuthorBooks UNION ALL SELECT BookID, MainID AS AuthorID FROM AuthorBooks JOIN Pseudonyms ON AuthorBooks.AuthorID = Pseudonyms.PseudonymID)"
+
+			#define ABC  "(SELECT AuthorID, count(BookID) AS ABC FROM AuthorBooks GROUP BY AuthorID)"
+			#define ABCP "(SELECT AuthorID, count(BookID) AS ABCP FROM " AB_PSE " GROUP BY AuthorID)"
 			#define ABCR "(SELECT AuthorID, count(BookID) AS ABCR FROM AuthorBooks JOIN DatesRead USING(BookID) GROUP BY AuthorID)"
-			#define AGC "(SELECT AuthorID, count(DISTINCT GenreID) AS AGC FROM AuthorBooks JOIN BookGenres USING(BookID) GROUP BY AuthorID)"
+			#define AGC  "(SELECT AuthorID, count(DISTINCT GenreID) AS AGC FROM AuthorBooks JOIN BookGenres USING(BookID) GROUP BY AuthorID)"
+			#define AGCP "(SELECT AuthorID, count(DISTINCT GenreID) AS AGCP FROM " AB_PSE " JOIN BookGenres USING(BookID) GROUP BY AuthorID)"
+
 			#define GBC "(SELECT GenreID, count(BookID) AS GBC FROM BookGenres GROUP BY GenreID)"
 			#define GAC "(SELECT GenreID, count(DISTINCT AuthorID) AS GAC FROM AuthorBooks JOIN BookGenres USING(BookID) GROUP BY GenreID)"
+
 			#define CBC "(SELECT CategoryID, count(BookID) AS CBC FROM Books GROUP BY CategoryID)"
 			#define LBC "(SELECT LangID, count(BookID) AS LBC FROM Books GROUP BY LangID)"
 			#define OBC "(SELECT LangID, count(BookID) AS OBC FROM OriginalTitles GROUP BY LangID)"
@@ -2505,10 +2518,12 @@ public:
 			include(t.nc,  NC " USING(BookID)");
 			include(t.ng,  NG " USING(BookID)");
 
-			include(t.ar,  AR   " USING(AuthorID)");
-			include(t.abc, ABC  " USING(AuthorID)");
-			include(t.abcr,ABCR " USING(AuthorID)");
-			include(t.agc, AGC  " USING(AuthorID)");
+			include(t.ar,   AR   " USING(AuthorID)");
+			include(t.abc,  ABC  " USING(AuthorID)");
+			include(t.abcp, ABCP " USING(AuthorID)");
+			include(t.abcr, ABCR " USING(AuthorID)");
+			include(t.agc,  AGC  " USING(AuthorID)");
+			include(t.agcp, AGCP " USING(AuthorID)");
 
 			include(t.datesRead, "DatesRead USING(BookID)");
 			include(t.dc,        DC       " USING(BookID)");
