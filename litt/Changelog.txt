@@ -1,6 +1,7 @@
 LITT Changelog:
 ===============
 
+ * 2019-09-01: Change sort for bb so that it sorts by story (id) before author name.
  * 2019-08-30: Added virtual count columns for pseudonyms:
                * abcp - As abc with pseudonyms included for MainID
                * agcp - As agc with pseudonyms included for MainID

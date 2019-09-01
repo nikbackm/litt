@@ -3197,7 +3197,7 @@ public:
 		}
 		else {
 			addActionWhereCondition("btst", title);
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.ln.fn", Table::books);
+			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.stid.ln.fn", Table::books);
 		}
 	}
 
