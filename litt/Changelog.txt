@@ -1,6 +1,12 @@
 LITT Changelog:
 ===============
 
+ * 2019-09-02: Improved story listings. Now avoids duplicates by default.
+               * Use stng instead of bstng by default in stt listing. (Really no need for
+                 bstng so far, it will only differ from stng if a story has different authors
+                 in different books)
+               * Link Stories using storyBooks or storyAuthors instead of bookStories unless both
+                 are needed; that way we avoid duplicate rows for stories with multiple authors.
  * 2019-09-01: Change sort for bb so that it sorts by story (id) before author name.
  * 2019-08-30: Added virtual count columns for pseudonyms:
                * abcp - As abc with pseudonyms included for MainID

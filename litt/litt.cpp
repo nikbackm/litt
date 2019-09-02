@@ -498,7 +498,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 36] = {};
+			TableInfo arrView[11 + 7 + 2 + 36] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -514,7 +514,7 @@ namespace LittDefs
 				TableInfo l_book;
 				TableInfo l_ot;
 
-				// Other tables
+				// Link tables
 				TableInfo authorbooks;
 				TableInfo bookGenres;
 				TableInfo bookSeries;
@@ -522,6 +522,10 @@ namespace LittDefs
 				TableInfo datesRead;
 				TableInfo pseudonyms;
 				TableInfo storyGenres;
+
+				// Virtual link tables for stories
+				TableInfo storyBooks;
+				TableInfo storyAuthors;
 
 				// Virtual tables
 				TableInfo nc;
@@ -2366,9 +2370,10 @@ public:
 				break;
 			case Table::stories:
 				setBookAuthorParent(&t.bookStories);
-				setAuthorParent(&t.bookStories);
-				setBookParent(&t.bookStories);
+				setAuthorParent(&t.storyAuthors);
+				setBookParent(&t.storyBooks); 
 				setGenreParent(&t.storyGenres);
+				t.authorbooks.parent = &t.bookStories; // storyBooks will not do.
 				break;
 			default:
 				throw std::logic_error("initTablesAndColumns: Invalid startUpTable");
@@ -2421,22 +2426,22 @@ public:
 			#define SOR "(SELECT SourceID, avg(Rating) AS SORating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)"
 			#define SER "(SELECT SeriesID, avg(Rating) AS SERating FROM BookSeries  JOIN Books USING(BookID) GROUP BY SeriesID)"
 
-			#define UNIQ_STORY_BOOKS "(SELECT DISTINCT StoryID,BookID FROM BookStories)"
-			#define UNIQ_STORY_AUTHORS "(SELECT DISTINCT StoryID,AuthorID FROM BookStories)"
+			#define STORY_BOOKS "(SELECT DISTINCT StoryID,BookID FROM BookStories)"
+			#define STORY_AUTHORS "(SELECT DISTINCT StoryID,AuthorID FROM BookStories)"
 
 			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)"
-			#define STNC "(SELECT StoryID, count(AuthorID) AS ACnt FROM " UNIQ_STORY_AUTHORS " GROUP BY StoryID)"
-			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " UNIQ_STORY_AUTHORS " JOIN Authors USING(AuthorID) GROUP BY StoryID)"
-			#define STBC "(SELECT StoryID, count(StoryID) AS BCnt FROM " UNIQ_STORY_BOOKS " GROUP BY StoryID)"
-			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " UNIQ_STORY_BOOKS " JOIN Books USING(BookID) GROUP BY StoryID)"
+			#define STNC "(SELECT StoryID, count(AuthorID) AS ACnt FROM " STORY_AUTHORS " GROUP BY StoryID)"
+			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " STORY_AUTHORS " JOIN Authors USING(AuthorID) GROUP BY StoryID)"
+			#define STBC "(SELECT StoryID, count(StoryID) AS BCnt FROM " STORY_BOOKS " GROUP BY StoryID)"
+			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " STORY_BOOKS " JOIN Books USING(BookID) GROUP BY StoryID)"
 
 			#define STORYTABLES "Stories JOIN BookStories USING(StoryID)"
 			#define BASTC "(SELECT AuthorID, BookID, count(StoryID) AS SCnt FROM BookStories GROUP BY AuthorID, BookID)"
 			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " STORYTABLES " GROUP BY AuthorID, BookID)"
-			#define ASTC "(SELECT AuthorID, count(StoryID) AS AStoryCnt FROM " UNIQ_STORY_AUTHORS " GROUP BY AuthorID)"
-			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories JOIN " UNIQ_STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
-			#define BSTC "(SELECT BookID, count(StoryID) AS BStoryCnt FROM " UNIQ_STORY_BOOKS " GROUP BY BookID)"
-			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories JOIN " UNIQ_STORY_BOOKS "USING(StoryID) GROUP BY BookID)"
+			#define ASTC "(SELECT AuthorID, count(StoryID) AS AStoryCnt FROM " STORY_AUTHORS " GROUP BY AuthorID)"
+			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories JOIN " STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
+			#define BSTC "(SELECT BookID, count(StoryID) AS BStoryCnt FROM " STORY_BOOKS " GROUP BY BookID)"
+			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories JOIN " STORY_BOOKS "USING(StoryID) GROUP BY BookID)"
 			#define BSTNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Book+Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)"
 
 			#define PSMID "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM" \
@@ -2496,7 +2501,15 @@ public:
 				include(t.bookGenres, "BookGenres USING(GenreID)");
 				break;
 			case Table::stories:
+				if (t.storyBooks.used && t.storyAuthors.used) {
+					// Faster to just use bookStories directly in this case.
+					t.bookStories.used = true;
+				}
 				include(t.bookStories, "BookStories USING(StoryID)");
+				if (!t.bookStories.included) {
+					include(t.storyBooks, STORY_BOOKS " USING(StoryID)");
+					include(t.storyAuthors, STORY_AUTHORS " USING(StoryID)");
+				}
 				include(t.authorbooks, "AuthorBooks USING(BookID,AuthorID)");
 				break;
 			case Table::authors:
@@ -3236,7 +3249,7 @@ public:
 			runListData("stid.st", "stid.st", Table::stories);
 		}
 		else {
-			runListData("bi.bt.ra.dr.stid.st.stra.bstng.stgg", "dr.bi.stid", Table::stories);
+			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
 		}
 	}
 
