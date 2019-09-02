@@ -1,6 +1,7 @@
 LITT Changelog:
 ===============
 
+ * 2019-09-02: Now checks the ISBN when adding books. Has the option to accept invalid ones.
  * 2019-09-02: Generalized the br* listings, can now count authors, genres, stories, sources 
                and categories as well. This was done by extending the --cnt option values.
                Note that these new option values will not work with the *bc* listings and do not

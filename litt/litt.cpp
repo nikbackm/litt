@@ -1270,6 +1270,17 @@ class Litt {
 		sqlite3_result_null(context);
 	}
 
+	void inputIsbn(std::string& value, const char* prompt, InputOptions options = required)
+	{
+		do {
+			if (!value.empty()) { prefillInput(value); }
+			value = input(prompt, options);
+		} while (
+			!checkIsbn(value.c_str(), value.length()) && 
+			!confirm(fmt("Use invalid %s '%s'", prompt, value.c_str()))
+		);
+	}
+
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
 #define APPEND_OPT_COL(mand, opt) mand " || CASE WHEN " opt " IS NULL THEN '' ELSE (' [' || " opt " || ']') END"
@@ -3913,7 +3924,7 @@ ORDER BY Dupe DESC, "Book read")");
 		input(dateRead, "Date read", DateReadRegEx);
 		input(rating, "Rating", RatingRegEx);
 		input(sourceId, "Book SourceID", cf(&Litt::selSource), getListSource());
-		input(isbn, "ISBN");
+		inputIsbn(isbn, "ISBN");
 		input(date, "First publication date", PubDateRegEx);
 		input(catId, "Book CategoryID", cf(&Litt::selBookCategory), getListBookCategory());
 		input(pages, "Pages");
@@ -3930,7 +3941,7 @@ ORDER BY Dupe DESC, "Book read")");
 		input(langId, "LangID", cf(&Litt::selLanguage), getListLanguage());
 		input(origtitle, "Original title (optional)", optional);
 		if (!origtitle.empty()) {
-			input(otIsbn, "OT ISBN");
+			inputIsbn(otIsbn, "OT ISBN");
 			input(otDate, "OT first publication date", PubDateRegEx);
 			input(otLangId, "OT LangID", cf(&Litt::selLanguage), getListLanguage());
 		}
