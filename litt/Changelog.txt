@@ -1,6 +1,10 @@
 LITT Changelog:
 ===============
 
+ * 2019-09-02: Generalized the br* listings, can now count authors, genres, stories, sources 
+               and categories as well. This was done by extending the --cnt option values.
+               Note that these new option values will not work with the *bc* listings and do not
+               make sense for them either.
  * 2019-09-02: Improved story listings. Now avoids duplicates by default.
                * Use stng instead of bstng by default in stt listing. (Really no need for
                  bstng so far, it will only differ from stng if a story has different authors

@@ -36,6 +36,9 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
    abcy|gbcy|sbcy|cbcy|lbcy|obcy [rowCount] [firstYear] [lastYear]
                                        - Yearly book counts for author, genre, source, category, 
                                          language and original title language.
+
+   These listings additionally support the virtual columns bca, bcg, bcst, bcso and bcc paired with
+   the corresponding --cnt option values.
     
    brmy [firstYear] [lastYear]         - Over month/year plus Total.
    brym [yearCondition]                - Over year/month plus Total.
@@ -117,8 +120,14 @@ Options:
                      * valC : Specify ANSI color for the given columns when the value of the given value
                               columns matches the included regex.
 
-    --cnt:[b|p|w]    Specify what to count in book count listings. Default (b) is books.
+    --cnt:[b|p|w|kw] Specify what to count in book count listings. Default (b) is books.
                      Can also use p for pages, w for words or kw for kilo-words.
+                     For the br* listings these are also supported:
+                     * a  = authors
+                     * g  = genres
+                     * st = stories
+                     * so = sources
+                     * c  = categories
 
     --drr:[f|l|m|r]  Specify which date in a date range value (yyyy-mm-dd..yyyy-mm-dd) that will be
                      used in book count listings for date periods.
@@ -404,6 +413,11 @@ namespace LittDefs
 		pages,
 		words,
 		kwords,
+		authors,
+		genres,
+		stories,
+		sources,
+		categories,
 	};
 
 	enum class FitWidth {
@@ -1452,6 +1466,11 @@ public:
 		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, Tables(), "Pages");
 		addColumnNumericAggregate("bcw", "SUM(Words)", -9, Tables(), "Words");
 		addColumnNumericAggregate("bckw", "(SUM(Words)+500)/1000", -6, Tables(), "Kwords");
+		addColumnNumericAggregate("bca", "COUNT(AuthorID)", -6, Tables(), "Authors");
+		addColumnNumericAggregate("bcg", "COUNT(GenreID)", -6, Tables(), "Genres");
+		addColumnNumericAggregate("bcst", "COUNT(StoryID)", -6, Tables(), "Stories");
+		addColumnNumericAggregate("bcso", "COUNT(SourceID)", -6, Tables(), "Sources");
+		addColumnNumericAggregate("bcc", "COUNT(CategoryID)", -6, Tables(), "Categories");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1631,6 +1650,11 @@ public:
 							else if (what == "p") m_count = Count::pages;
 							else if (what == "w") m_count = Count::words;
 							else if (what == "kw") m_count = Count::kwords;
+							else if (what == "a") m_count = Count::authors;
+							else if (what == "g") m_count = Count::genres;
+							else if (what == "st") m_count = Count::stories;
+							else if (what == "so") m_count = Count::sources;
+							else if (what == "c") m_count = Count::categories;
 							else throw std::invalid_argument("Unrecognized cnt value: " + what);
 						}
 					}
@@ -3396,6 +3420,11 @@ ORDER BY Dupe DESC, "Book read")");
 		case Count::pages: return "bcp";
 		case Count::words: return "bcw";
 		case Count::kwords: return "bckw";
+		case Count::authors: return "bca";
+		case Count::genres: return "bcg";
+		case Count::stories: return "bcst";
+		case Count::sources: return "bcso";
+		case Count::categories: return "bcc";
 		default: throw std::logic_error("Invalid Count value: " + std::to_string((int)m_count));
 		}
 	}
@@ -3539,15 +3568,27 @@ ORDER BY Dupe DESC, "Book read")");
 		std::string const& cond,
 		std::vector<PeriodColumn> const& columns)
 	{
-		std::string sn = getCountColumn();
-		std::string whatCol; unsigned colWidths;
+		std::string whatCol; unsigned colWidths = 4u; std::string nonBookSn;
 		switch (m_count) {
-		case Count::books: whatCol = "BookID"; colWidths = 4u; break;
+		case Count::books: whatCol = "BookID"; break;
 		case Count::pages: whatCol = "Pages"; colWidths = 5u; break;
 		case Count::words: whatCol = "Words"; colWidths = 8u; break;
 		case Count::kwords: whatCol = "Words"; colWidths = 5u; break;
+		case Count::authors: nonBookSn = "ai"; break;
+		case Count::genres: nonBookSn = "gi"; break;
+		case Count::stories: nonBookSn = "stid"; break;
+		case Count::sources: nonBookSn = "soid";  break;
+		case Count::categories: nonBookSn = "catid"; break;
+		}
+		std::string distinct;
+		if (!nonBookSn.empty()) {
+			distinct = "DISTINCT ";
+			auto nonBookCol = getColumn(nonBookSn);
+			nonBookCol->usedInQuery = true;
+			whatCol = nonBookCol->nameDef;
 		}
 
+		std::string sn = getCountColumn();
 		std::string colOp = getColumn(sn)->nameDef;
 
 		period = quote(period);
@@ -3570,7 +3611,7 @@ ORDER BY Dupe DESC, "Book read")");
 		q.initOrderBy(period.c_str(), true);
 		q.add("SELECT Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
 		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
-		q.add("   (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
+		q.add("   (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("    FROM Books JOIN tmpDr USING(BookID)");
 		q.initTablesAndColumns(Table::books);
 		m_tableInfos.datesRead.included = true;
@@ -3585,7 +3626,7 @@ ORDER BY Dupe DESC, "Book read")");
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
 		q.add(" LEFT JOIN");
 		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
-		q.add("    (SELECT " + whatCol + ", " + periodFunc + " AS " + period);
+		q.add("    (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
 		q.add("     FROM Books JOIN tmpDr USING(BookID)");
 		q.initTablesAndColumns(Table::books); // Need to call again to pick up new tables from c.definition, same startTable so should be safe!
 		m_tableInfos.datesRead.included = true;
