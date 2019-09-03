@@ -207,8 +207,9 @@ Column short name values:
     se, si, pa, sep  - Series, SeriesID, Part in Series, Series + Part
     so, soid         - Source, SourceID
     ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
-    abc, abcr, agc   - Author book count, book count with re-reads and genre count
-    abcp, agcp       - Author book count and genre count with pseudonyms included for MainID
+    abc, abcp, abcr  - Author book count, with pseudonyms counted (for MainID) and with re-reads
+    agg, aggp        - Author genre(s) and with pseudonyms included (for MainID)
+    agc, agcp        - Author genre count and count with pseudonyms counted (for MainID)
     gbc, gac         - Genre book count and author count
     cbc, sobc, sebc  - Category, source and series book count
     lbc, obc         - Language and original language book count
@@ -512,7 +513,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 2 + 36] = {};
+			TableInfo arrView[11 + 7 + 2 + 38] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -554,6 +555,8 @@ namespace LittDefs
 				TableInfo abc;
 				TableInfo abcp;
 				TableInfo abcr;
+				TableInfo agg;
+				TableInfo aggp;
 				TableInfo agc;
 				TableInfo agcp;
 				TableInfo gbc;
@@ -1374,6 +1377,8 @@ public:
 		addColumnNumeric("abc", "ABC", 4, Tables(&t.abc));
 		addColumnNumeric("abcp","ABCP",4, Tables(&t.abcp));
 		addColumnNumeric("abcr","ABCR",4, Tables(&t.abcr));
+		addColumnTextWithLength("agg", "\"Author Genres\"",    135, Tables(&t.agg),  CNoCase);
+		addColumnTextWithLength("aggp","\"Author(p) Genres\"", 135, Tables(&t.aggp), CNoCase);
 		addColumnNumeric("agc", "AGC", 4, Tables(&t.agc));
 		addColumnNumeric("agcp","AGCP",4, Tables(&t.agcp));
 		addColumnNumeric("gbc", "GBC", 4, Tables(&t.gbc));
@@ -2312,6 +2317,8 @@ public:
 				t.abc.parent = authorTi;
 				t.abcp.parent = authorTi;
 				t.abcr.parent = authorTi;
+				t.agg.parent = authorTi;
+				t.aggp.parent = authorTi;
 				t.agc.parent = authorTi;
 				t.agcp.parent = authorTi;
 				authorTi->parent = nullptr; // No parent, might cause loop.
@@ -2488,15 +2495,28 @@ public:
 			#define PSF "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)"
 
 			#define AB_PSE "(SELECT * FROM AuthorBooks UNION ALL SELECT BookID, MainID AS AuthorID FROM AuthorBooks JOIN Pseudonyms ON AuthorBooks.AuthorID = Pseudonyms.PseudonymID)"
+			#define BS_PSE "(SELECT * FROM BookStories UNION ALL SELECT BookID, MainID AS AuthorID, StoryID FROM BookStories JOIN Pseudonyms ON BookStories.AuthorID = Pseudonyms.PseudonymID)"
 
 			#define ABC  "(SELECT AuthorID, count(BookID) AS ABC FROM AuthorBooks GROUP BY AuthorID)"
 			#define ABCP "(SELECT AuthorID, count(BookID) AS ABCP FROM " AB_PSE " GROUP BY AuthorID)"
 			#define ABCR "(SELECT AuthorID, count(BookID) AS ABCR FROM AuthorBooks JOIN DatesRead USING(BookID) GROUP BY AuthorID)"
-			#define AGC  "(SELECT AuthorID, count(DISTINCT GenreID) AS AGC FROM AuthorBooks JOIN BookGenres USING(BookID) GROUP BY AuthorID)"
-			#define AGCP "(SELECT AuthorID, count(DISTINCT GenreID) AS AGCP FROM " AB_PSE " JOIN BookGenres USING(BookID) GROUP BY AuthorID)"
+
+			#define AB_NOS "(SELECT * FROM AuthorBooks ab WHERE NOT EXISTS (SELECT 1 FROM BookStories bs WHERE bs.BookID = ab.BookID))"
+			#define AG_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_NOS " JOIN BookGenres USING(BookID))"
+			#define AG_S "(SELECT DISTINCT AuthorID, GenreID FROM BookStories JOIN StoryGenres USING(StoryID))"
+			#define AG   "(SELECT * FROM " AG_B " UNION SELECT * FROM " AG_S ")"
+			#define AGG  "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author Genres\" FROM " AG " JOIN Genres USING(GenreID) GROUP BY AuthorID)"
+			#define AGC  "(SELECT AuthorID, count(GenreID) AS AGC FROM " AG " GROUP BY AuthorID)"
+
+			#define AB_PSE_NOS "(SELECT * FROM " AB_PSE " ab WHERE NOT EXISTS (SELECT 1 FROM BookStories bs WHERE bs.BookID = ab.BookID))"
+			#define AG_PSE_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_PSE_NOS " JOIN BookGenres USING(BookID))"
+			#define AG_PSE_S "(SELECT DISTINCT AuthorID, GenreID FROM " BS_PSE " JOIN StoryGenres USING(StoryID))"
+			#define AG_PSE   "(SELECT * FROM " AG_PSE_B " UNION SELECT * FROM " AG_PSE_S ")"
+			#define AGGP "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author(p) Genres\" FROM " AG_PSE " JOIN Genres USING(GenreID) GROUP BY AuthorID)"
+			#define AGCP "(SELECT AuthorID, count(GenreID) AS AGCP FROM " AG_PSE " GROUP BY AuthorID)"
 
 			#define GBC "(SELECT GenreID, count(BookID) AS GBC FROM BookGenres GROUP BY GenreID)"
-			#define GAC "(SELECT GenreID, count(DISTINCT AuthorID) AS GAC FROM AuthorBooks JOIN BookGenres USING(BookID) GROUP BY GenreID)"
+			#define GAC "(SELECT GenreID, count(AuthorID) AS GAC FROM " AG " GROUP BY GenreID)"
 
 			#define CBC "(SELECT CategoryID, count(BookID) AS CBC FROM Books GROUP BY CategoryID)"
 			#define LBC "(SELECT LangID, count(BookID) AS LBC FROM Books GROUP BY LangID)"
@@ -2570,6 +2590,8 @@ public:
 			include(t.abc,  ABC  " USING(AuthorID)");
 			include(t.abcp, ABCP " USING(AuthorID)");
 			include(t.abcr, ABCR " USING(AuthorID)");
+			include(t.agg,  AGG  " USING(AuthorID)");
+			include(t.aggp, AGGP " USING(AuthorID)");
 			include(t.agc,  AGC  " USING(AuthorID)");
 			include(t.agcp, AGCP " USING(AuthorID)");
 
