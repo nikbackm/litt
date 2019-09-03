@@ -376,7 +376,7 @@ namespace Utils
 		if (hOut == INVALID_HANDLE_VALUE) { return false; }
 		DWORD dwMode = 0;
 		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
-		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // TODO: Only do this on supported Windows 10 editions?
+		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // We assume supported Win10 edition.
 	}
 
 	SYSTEMTIME getLocalTime()
@@ -1656,7 +1656,6 @@ public:
 							else {
 								throw std::invalid_argument("Unrecognized ansi sub-option: " + subOpt);
 							}
-							// TODO: header colors/style? just use defColor and bold?
 						}
 					}
 					else if (extName == "cnt") {
@@ -2781,7 +2780,7 @@ public:
 	};
 
 	bool m_ansiEnabled = false;
-	std::string m_ansiDefColor = "\x1b[30m"; // TODO: Make it use current console text color by default.
+	std::string m_ansiDefColor = "\x1b[0m";
 
 	std::vector<AnsiColumnColor> m_ansiColColors;
 	mutable std::vector<std::string> m_ansiColColorsIndexed;

@@ -1,6 +1,7 @@
 LITT Changelog:
 ===============
 
+ * 2019-09-03: ANSI now uses 0m as default color instead of 30m. (Removed last TODO:s)
  * 2019-09-03: Improvements in author/genre virtual columns.
                * Takes books with stories into account so authors don't get genres counted for
                  other authors genres. Affected agc, agcp and gac.
