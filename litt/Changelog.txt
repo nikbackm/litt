@@ -1,6 +1,8 @@
 LITT Changelog:
 ===============
-
+ * 2019-09-04: Modified (hacked) sqlite patternCompare function to support case sensitive 
+               like matches for "ÅÄÖ".
+               Added SQLite compile time option SQLITE_OMIT_LIKE_OPTIMIZATION due to above.
  * 2019-09-04: Added support for GLOB operator via glob and nglob in -w option.
  * 2019-09-03: ANSI now uses 0m as default color instead of 30m. (Removed last TODO:s)
  * 2019-09-03: Improvements in author/genre virtual columns.
