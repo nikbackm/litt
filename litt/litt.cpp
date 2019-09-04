@@ -146,7 +146,7 @@ selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
 addColumns format: Same as selColumns format.
 colOrder format: <shortName|actualName>[.asc|desc]{.<shortName|actualName>[.asc|desc]}
 whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
-          cmpOper: lt,lte,gt,gte,eq,neq,isnull,notnull,isempty ("LIKE" if none is given, isnull, notnull & isempty take no cmpArg)
+          cmpOper: lt,lte,gt,gte,eq,neq,glob,nglob,isnull,notnull,isempty ("LIKE" if none is given, isnull, notnull & isempty take no cmpArg)
           cmpOper: range,nrange - These take two cmpArgs, for start and stop of range (both inclusive)
           cmpOper: and,or,nand,nor - These will consume the rest of the whereCond terms and AND/OR/NAND/NOR them using LIKE/=.
 colSizes format: Same as selColumns format
@@ -448,9 +448,9 @@ namespace LittDefs
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
-	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false)
+	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false, bool glob = false)
 	{
-		std::replace(str.begin(), str.end(), Wc, '%');
+		if (!glob) std::replace(str.begin(), str.end(), Wc, '%');
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
@@ -619,9 +619,9 @@ namespace LittDefs
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
-		std::string getLikeArg(std::string val) const
+		std::string getLikeArg(std::string val, bool glob = false) const
 		{
-			return likeArg(std::move(val), type == ColumnType::numeric);
+			return likeArg(std::move(val), type == ColumnType::numeric, glob);
 		}
 	};
 
@@ -1861,6 +1861,7 @@ public:
 		while (opts.getNext(sn)) {
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
+			bool glob = false; // Must not replace wildcard if globbing.
 
 			auto val = opts.getNext(); // Either a value or an operation for the value coming up.
 			std::string oper;
@@ -1870,6 +1871,8 @@ public:
 			else if (val == "gte") oper = ">=";
 			else if (val == "eq")  oper = "=";
 			else if (val == "neq") oper = "notlike";
+			else if (val == "glob") oper = (glob = true, "GLOB");
+			else if (val == "nglob") oper = (glob = true, "NOT GLOB");
 			else if (val == "isnull" || val == "notnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
 			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
 			
@@ -1882,14 +1885,14 @@ public:
 				}
 			}
 
-			auto getOperand = [&col, this](std::string val) -> std::string {
+			auto getOperand = [&col, this, glob](std::string val) -> std::string {
 				auto valCol = m_columnInfos.find(val);
 				if (valCol != m_columnInfos.end()) {
 					valCol->second.usedInQuery = true;
 					return valCol->second.nameDef;
 				}
 				else {
-					return col->getLikeArg(std::move(val));
+					return col->getLikeArg(std::move(val), glob);
 				}
 			};
 
