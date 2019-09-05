@@ -3511,7 +3511,7 @@ ORDER BY Dupe DESC, "Book read")");
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
 		q.initColumnWidths();
 		q.add("ATTACH DATABASE ':memory:' AS mdb;");
-		q.add("CREATE TABLE mdb.Res (\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
+		q.add("CREATE TABLE mdb.Res (\n\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
 		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
 		q.add(");");
 		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
@@ -3638,47 +3638,45 @@ ORDER BY Dupe DESC, "Book read")");
 		else if (periodDef == "%Y-%m") periodFunc = "substr(\"Date Read\",1,7)";
 		else                           periodFunc = fmt("strftime('%s', \"Date Read\")", periodDef.c_str());
 
-		// Uses a temp table instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
-		q.add("DROP TABLE IF EXISTS TEMP.tmpDr;");
-		q.add("CREATE TEMP TABLE tmpDr AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
-		
-		q.init();
-		q.initOrderBy(period.c_str(), true);
-		q.add("SELECT Main." + period + " AS " + period + ", Total"); for (auto& c : columns) { q.a(", " + c.name); }; q.a(" FROM");
-		q.add(" (SELECT " + period + ", " + colOp + " AS Total FROM");
-		q.add("   (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("    FROM Books JOIN tmpDr USING(BookID)");
+		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
+		// Use a table for DR instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
+		q.add("CREATE TABLE mdb.DR AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
+		q.add("CREATE TABLE mdb.Res (\n" + period + " TEXT PRIMARY KEY\n,Total INTEGER");
+		for (auto& c : columns) q.adf(",%s INTEGER", c.name.c_str());
+		q.add(");\n");
+
+		q.add("INSERT INTO mdb.Res (" + period + ", Total) SELECT " + period + ", " + colOp + " FROM");
+		q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
+		q.add("  FROM Books JOIN mdb.DR USING(BookID)");
 		q.initTablesAndColumns(Table::books);
 		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 4);
-		q.addWhere(4);
-		q.add("   )");
-		q.add("  GROUP BY " + period);
-		q.add(" ) Main");
+		q.addAuxTablesMultipleCalls(Table::books, 2);
+		q.addWhere(2);
+		q.add(" )");
+		q.add(" GROUP BY " + period + ";");
 
 		for (auto& c : columns) {
-		// We don't update the having condition, it should be same for all columns and not included in col defs.
 		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
-		q.add(" LEFT JOIN");
-		q.add(" (SELECT " + period + ", " + colOp + " AS " + c.name + " FROM");
-		q.add("    (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("     FROM Books JOIN tmpDr USING(BookID)");
+		q.add("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
+		q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
+		q.add("  FROM Books JOIN mdb.DR USING(BookID)");
 		q.initTablesAndColumns(Table::books); // Need to call again to pick up new tables from c.definition, same startTable so should be safe!
 		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 5);
-		q.add("     WHERE " + ccond + ")");
-		q.add("  GROUP BY " + period);
-		if (!m_havingCondition.empty()) { 
-		q.add("  HAVING " + m_havingCondition);
+		q.addAuxTablesMultipleCalls(Table::books, 2);
+		q.add("  WHERE " + ccond + ")");
+		q.add(" GROUP BY " + period);
+		if (!m_havingCondition.empty()) {
+		q.add(" HAVING " + m_havingCondition);
 		}
-		q.add(" )");
-		q.add(" USING(" + period + ")");
+		q.add(" ON CONFLICT(" + period  + ") DO UPDATE SET " + c.name + "=excluded." + c.name + ";\n");
 		}
 
-		if (!cond.empty() && cond != WcS) {
-		q.add(" WHERE Main." + period + " LIKE " + likeArg(cond + WcS));
-		}
+		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res");
+		q.initOrderBy(period.c_str(), true);
+		if (!cond.empty() && cond != WcS)
+		q.add("WHERE " + period + " LIKE " + likeArg(cond + WcS));
 		q.addOrderBy();
+		q.add("; END TRANSACTION; DETACH DATABASE mdb");
 		q.resetTablesAndColumns();
 		runOutputQuery(q);
 	}

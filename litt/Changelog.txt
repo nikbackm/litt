@@ -1,5 +1,7 @@
 LITT Changelog:
 ===============
+ * 2019-09-05: Changed the *br* listings (listBooksReadPerPeriod) so that they no longer fail
+               when hitting the 64 table JOIN limit in SQLite (Had one JOIN per output column).
  * 2019-09-04: Modified (hacked) sqlite patternCompare function to support case sensitive 
                like matches for "ÅÄÖ".
                Added SQLite compile time option SQLITE_OMIT_LIKE_OPTIMIZATION due to above.
