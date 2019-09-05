@@ -2132,12 +2132,17 @@ public:
 			m_query.reserve(5000);
 		}
 
-		void init()
+		void addExplain()
 		{
 			if (litt.m_explainQuery > 0) {
 				m_query += "EXPLAIN ";
 				if (litt.m_explainQuery == 1) m_query += "QUERY PLAN ";
 			}
+		}
+
+		void init()
+		{
+			addExplain();
 		}
 
 		void addDistinct(SelectOption selectOption)
@@ -2276,9 +2281,9 @@ public:
 			add(res);
 		}
 
-		void addIf(bool cond, const char* line)
+		void aIf(std::string const & line, bool cond)
 		{
-			if (cond) add(line);
+			if (cond) add(line.c_str());
 		}
 
 		// NOTE: We assume the tableInfos are reset whenever startTable is changed to something else than the last call.
@@ -3557,11 +3562,11 @@ ORDER BY Dupe DESC, "Book read")");
 	}
 
 	struct PeriodColumn {
-		std::string const definition;
-		std::string const name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
+		std::string def;
+		std::string name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
 
 		PeriodColumn(std::string d, std::string const & n) : 
-			definition(std::move(d)), name(quote(n))
+			def(std::move(d)), name(quote(n))
 		{
 		}
 
@@ -3589,7 +3594,7 @@ ORDER BY Dupe DESC, "Book read")");
 			for (auto const & pc : res) {
 				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width, false);
 				m_output.write(" : ");
-				m_output.write(toUtf8(pc.definition));
+				m_output.write(toUtf8(pc.def));
 				m_output.write("\n");
 			}
 			m_output.write("\n");
@@ -3601,8 +3606,11 @@ ORDER BY Dupe DESC, "Book read")");
 		std::string const& periodDef,
 		std::string        period,
 		std::string const& cond,
-		std::vector<PeriodColumn> const& columns)
+		std::vector<PeriodColumn>&& columns) // Take ownership so we can modify it
 	{
+		// Total with empty def (i.e. include all) as first column. Avoids duplicating code this way!
+		columns.insert(columns.begin(), PeriodColumn("", "Total"));
+
 		std::string whatCol; unsigned colWidths = 4u; std::string nonBookSn;
 		switch (m_count) {
 		case Count::books: whatCol = "BookID"; break;
@@ -3628,8 +3636,7 @@ ORDER BY Dupe DESC, "Book read")");
 
 		period = quote(period);
 		OutputQuery q(*this);
-		q.columnWidths.push_back(colWidth(period)); q.columnWidths.push_back(std::max(colWidths, strlen("Total")));
-		q.columnRight.push_back(false);             q.columnRight.push_back(true);
+		q.columnWidths.push_back(colWidth(period)); q.columnRight.push_back(false);
 		for (auto& c : columns) { q.columnWidths.push_back(std::max(colWidths, c.colWidth())); q.columnRight.push_back(true); }
 		q.initColumnWidths();
 		std::string periodFunc;
@@ -3641,40 +3648,29 @@ ORDER BY Dupe DESC, "Book read")");
 		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
 		// Use a table for DR instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
 		q.add("CREATE TABLE mdb.DR AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
-		q.add("CREATE TABLE mdb.Res (\n" + period + " TEXT PRIMARY KEY\n,Total INTEGER");
+		q.add("CREATE TABLE mdb.Res (\n" + period + " TEXT PRIMARY KEY");
 		for (auto& c : columns) q.adf(",%s INTEGER", c.name.c_str());
 		q.add(");\n");
 
-		q.add("INSERT INTO mdb.Res (" + period + ", Total) SELECT " + period + ", " + colOp + " FROM");
-		q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("  FROM Books JOIN mdb.DR USING(BookID)");
-		q.initTablesAndColumns(Table::books);
-		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 2);
-		q.addWhere(2);
-		q.add(" )");
-		q.add(" GROUP BY " + period + ";");
-
 		for (auto& c : columns) {
-		auto ccond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.definition));
-		q.add("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
-		q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
-		q.add("  FROM Books JOIN mdb.DR USING(BookID)");
-		q.initTablesAndColumns(Table::books); // Need to call again to pick up new tables from c.definition, same startTable so should be safe!
-		m_tableInfos.datesRead.included = true;
-		q.addAuxTablesMultipleCalls(Table::books, 2);
-		q.add("  WHERE " + ccond + ")");
-		q.add(" GROUP BY " + period);
-		if (!m_havingCondition.empty()) {
-		q.add(" HAVING " + m_havingCondition);
-		}
-		q.add(" ON CONFLICT(" + period  + ") DO UPDATE SET " + c.name + "=excluded." + c.name + ";\n");
+			auto ccond = c.def.empty() ? m_whereCondition : appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.def));
+			q.addExplain();
+			q.add("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
+			q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
+			q.add("  FROM Books JOIN mdb.DR USING(BookID)");
+			q.initTablesAndColumns(Table::books); // Call here to pick up new tables from c.def, same startTable => many calls safe.
+			m_tableInfos.datesRead.included = true;
+			q.addAuxTablesMultipleCalls(Table::books, 2);
+			q.aIf("  WHERE " + ccond, !ccond.empty());
+			q.add(" )");
+			q.add(" GROUP BY " + period);
+			q.aIf(" HAVING " + m_havingCondition, !m_havingCondition.empty());
+			q.add(" ON CONFLICT(" + period  + ") DO UPDATE SET " + c.name + "=excluded." + c.name + ";\n");
 		}
 
 		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res");
 		q.initOrderBy(period.c_str(), true);
-		if (!cond.empty() && cond != WcS)
-		q.add("WHERE " + period + " LIKE " + likeArg(cond + WcS));
+		q.aIf("WHERE " + period + " LIKE " + likeArg(cond + WcS), !cond.empty() && cond != WcS);
 		q.addOrderBy();
 		q.add("; END TRANSACTION; DETACH DATABASE mdb");
 		q.resetTablesAndColumns();
@@ -4521,7 +4517,7 @@ ORDER BY Dupe DESC, "Book read")");
 				char def[20]; sprintf_s(def, "dr.____-%02d-*", m);
 				monthColumns.push_back({ std::string(def), std::string(months[m - 1]) });
 			}
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), monthColumns);
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), std::move(monthColumns));
 			break;
 		}
 		case a("brmy"): {
@@ -4534,7 +4530,7 @@ ORDER BY Dupe DESC, "Book read")");
 				yearColumns.push_back({ def, std::to_string(y) });
 			}
 			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", firstYear, lastYear)));
-			listBooksReadPerPeriod("%m", "Month", WcS, yearColumns);
+			listBooksReadPerPeriod("%m", "Month", WcS, std::move(yearColumns));
 			break;
 		}
 		case a("add-a"):   addAuthor(); break;
