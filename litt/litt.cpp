@@ -103,7 +103,7 @@ Options:
                       Specifying an explicit width value implies mode "on". If no value is specified then 
                       the width of the console is used. If there is no console then a hard-coded value is used.
     -y[on|off]        Automatic YES to all confirm prompts. Default is off.
-    -x[2]             Explains the query plan. x2 will show virtual machine code.
+    -x[1|2|3]         Explains the query plan. x/x1 = graph EQP output, x2 = VM code output, x3 = raw EQP output.
 
     --cons:<minRowCount>:{<colSnOrName>[:charCmpCount]|[:re|ren:<regExValue>]|[:dlt|dgt:<diffValue>]}+
                      Specify column conditions for consecutive output row matching.
@@ -1073,6 +1073,8 @@ public:
 
 struct SqliteCloser { void operator()(sqlite3* p) const { sqlite3_close(p); } };
 
+enum class ExQ { None = 0, Graph = 1, VMCode = 2, Raw = 3 };
+
 class Litt {
 	TableInfos m_tableInfos;
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
@@ -1086,7 +1088,7 @@ class Litt {
 	bool m_selectDistinct = false;
 	bool m_showQuery = false;
 	bool m_showDefaults = false;
-	int  m_explainQuery = 0; // 1 == EXPLAIN QUERY PLAN, >1 == EXPLAIN
+	ExQ m_explainQuery = ExQ::None; 
 	bool m_showNumberOfRows = false;
 	DisplayMode m_displayMode = DisplayMode::column;
 	std::string m_listSep = "|";
@@ -1570,7 +1572,9 @@ public:
 					m_selectDistinct = true;
 					break;
 				case 'x':
-					m_explainQuery = (val == "2") ? 2 : 1;
+					if (!val.empty() && (val[0] < '0' || '3' < val[0])) 
+						throw std::invalid_argument("Invalid explain value: " + val);
+					m_explainQuery = (val.empty() ? ExQ::Graph : ExQ(val[0] - '0'));
 					Input::confirmEnabled = false;
 					break;
 				case 'n': 
@@ -2134,9 +2138,9 @@ public:
 
 		void addExplain()
 		{
-			if (litt.m_explainQuery > 0) {
+			if (litt.m_explainQuery != ExQ::None) {
 				m_query += "EXPLAIN ";
-				if (litt.m_explainQuery == 1) m_query += "QUERY PLAN ";
+				if (litt.m_explainQuery != ExQ::VMCode) m_query += "QUERY PLAN ";
 			}
 		}
 
@@ -2169,8 +2173,9 @@ public:
 
 		void initColumnWidths()
 		{
-			if (litt.m_explainQuery == 2 && litt.m_displayMode == DisplayMode::column) {
-				columnWidths = { 5, 20, 6, 6, 6, 30, 6, 20 };
+			if (litt.m_displayMode == DisplayMode::column && litt.m_explainQuery != ExQ::None) {
+				if (litt.m_explainQuery == ExQ::VMCode)   columnWidths = { 5, 20, 6, 6, 6, 30, 6, 7/*comment, not in LITT*/ };
+				else if (litt.m_explainQuery == ExQ::Raw) columnWidths = { 5/*id*/, 6/*parent*/, 0/*not used*/, 100/*detail*/ };
 				columnRight.clear();
 			} // else assumes columnWidths are properly set!
 		}
@@ -2275,10 +2280,21 @@ public:
 			add(line.c_str());
 		}
 
+		void xad(std::string const& line)
+		{
+			m_query.append("\n"); addExplain(); m_query.append(line);
+		}
+
 		void adf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 		{
 			std_string_fmt_impl(fmtStr, res);
 			add(res);
+		}
+
+		void xaf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
+		{
+			std_string_fmt_impl(fmtStr, res);
+			xad(res);
 		}
 
 		void aIf(std::string const & line, bool cond)
@@ -2879,7 +2895,7 @@ public:
 	mutable std::vector<std::vector<std::string>> m_consRowBuffer;
 	mutable int m_consMatched = 0;
 
-	bool consEnabled() const { return m_explainQuery == 0 && m_consRowMinCount > 0; }
+	bool consEnabled() const { return m_explainQuery == ExQ::None && m_consRowMinCount > 0; }
 
 	void consInit(int argc, char **argv, char **azColName) const
 	{ _ASSERT(consEnabled());
@@ -3086,7 +3102,7 @@ public:
 			if (m_rowCount == 0) {
 				writeBomIfNeeded();
 
-				if (m_explainQuery == 1) {
+				if (m_explainQuery == ExQ::Graph) {
 					m_eqpGraph = std::make_unique<EQPGraph>(m_output);
 				}
 				else if (m_displayMode == DisplayMode::column) {
@@ -3515,15 +3531,15 @@ ORDER BY Dupe DESC, "Book read")");
 		OutputQuery q(*this);
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
 		q.initColumnWidths();
-		q.add("ATTACH DATABASE ':memory:' AS mdb;");
+		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
 		q.add("CREATE TABLE mdb.Res (\n\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
 		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
 		q.add(");");
-		q.adf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
+		q.xaf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
 			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
 			if (year == firstYear) q.initTablesAndColumns(startTable); // Need to call after getWhereCondition, once is enough since similar cond for whole loop.
-			q.adf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
+			q.xaf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, bc->nameDef.c_str(), col->nameDef.c_str(), year);
 			q.adf("FROM %s", getTableName(startTable));
 			q.addAuxTablesMultipleCalls(startTable);
 			q.adf("WHERE %s", ycond.c_str());
@@ -3531,11 +3547,13 @@ ORDER BY Dupe DESC, "Book read")");
 			q.addHaving();
 			q.adf("ORDER BY %s DESC, %s", bc->nameDef.c_str(), col->nameDef.c_str());
 			q.adf("LIMIT %i;", count);
-			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");\n", year, year, year);
-		} q.a("\n");
+			if (m_explainQuery == ExQ::None)
+			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");", year, year, year);
+			q.a("\n");
+		}
 		q.resetTablesAndColumns();
-		q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
-		q.add("DETACH DATABASE mdb");
+		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
+		q.add("END TRANSACTION; DETACH DATABASE mdb");
 		runOutputQuery(q);
 	}
 
@@ -3654,8 +3672,7 @@ ORDER BY Dupe DESC, "Book read")");
 
 		for (auto& c : columns) {
 			auto ccond = c.def.empty() ? m_whereCondition : appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.def));
-			q.addExplain();
-			q.add("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
+			q.xad("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
 			q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
 			q.add("  FROM Books JOIN mdb.DR USING(BookID)");
 			q.initTablesAndColumns(Table::books); // Call here to pick up new tables from c.def, same startTable => many calls safe.
@@ -3695,9 +3712,8 @@ ORDER BY Dupe DESC, "Book read")");
 
 	int executeWriteSql(std::string const& userSql)
 	{
-		if (m_explainQuery > 0) {
+		if (m_explainQuery != ExQ::None) {
 			OutputQuery q(*this); 
-			q.columnWidths.assign(5, 30);
 			q.initColumnWidths();
 			q.init();
 			q.a(userSql);
@@ -3862,7 +3878,7 @@ ORDER BY Dupe DESC, "Book read")");
 
 	void explainNotSupported()
 	{
-		if (m_explainQuery > 0) {
+		if (m_explainQuery != ExQ::None) {
 			throw std::invalid_argument("-x option is not supported for this action");
 		}
 	}

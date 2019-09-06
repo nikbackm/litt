@@ -1,0 +1,19 @@
+@echo off
+REM Compares output from LITT and SQLITE3. 
+REM Mainly intended for -x (EQP) output.
+setlocal
+on errormsg quit
+
+iff %# LT 1 then
+	echo Usage: %0 LITT commands
+	quit
+endIff
+
+set f1="%TEMP%\diff_ls1.txt"
+set f2="%TEMP%\diff_ls2.txt"
+
+litt.exe %$                                             > %f1%
+litt.exe %$ -q | sqlite3.exe %MYDOCS%\litt\litt.sqlite > %f2%
+
+start bcompare.exe %f1% %f2%
+

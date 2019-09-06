@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-06: Added raw EQP -x option. Checks -x option values. Added more explain output for *bcy listings.
  * 2019-09-05: Simplified the *br* listings (listBooksReadPerPeriod) so that "Total" is handled
                same way as the other result columns. The HAVING condition is now applied to it too.
  * 2019-09-05: Changed the *br* listings (listBooksReadPerPeriod) so that they no longer fail
