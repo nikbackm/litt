@@ -1,5 +1,8 @@
 LITT Changelog:
 ===============
+ * 2019-09-06: Bug fix in explain query plan, did not handle multiple explain queries in same 
+               output listing correctly. (Must render and restart when getting an id with lower value
+               that the previous one it seems)
  * 2019-09-06: Added raw EQP -x option. Checks -x option values. Added more explain output for *bcy listings.
  * 2019-09-05: Simplified the *br* listings (listBooksReadPerPeriod) so that "Total" is handled
                same way as the other result columns. The HAVING condition is now applied to it too.

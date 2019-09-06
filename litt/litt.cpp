@@ -3058,6 +3058,11 @@ public:
 
 		void appendRow(int iEqpId, int p2, const char *zText)
 		{
+			if (!rows.empty() && rows.back().iEqpId > iEqpId) { // => New query starts
+				render();
+				rows.clear();
+			}
+
 			EQPGraphRow row;
 			row.iEqpId = iEqpId;
 			row.iParentId = p2;
