@@ -48,8 +48,7 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
 
    brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
                                        - Generalization of brm,bry,brwd, can customize the period and its name.
-)" 
-	,stdout); if (1 <= level) fputs(
+)", stdout); if (1 <= level) fputs(
 R"(
 Adding and modifying data:
    add-b                                   Add a book.
@@ -76,8 +75,7 @@ Adding and modifying data:
    set-own  [BookID] [owned]               Set owned for a book.
 
    execute   [sqlString]                   Execute the given SQL string. Use with CAUTION!
-)"
-	,stdout); if (2 <= level) fputs(
+)", stdout); if (2 <= level) fputs(
 R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
       around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
@@ -223,8 +221,7 @@ Window function columns:
     ap, al, ac       - Period, lag and count for author
     gp, gl, gc       - Same for genre
     sp, sl, sc       - Same for source
-)"
-	,stdout);
+)", stdout);
 }
 
 namespace Utils
@@ -3589,9 +3586,7 @@ ORDER BY Dupe DESC, "Book read")");
 		std::string name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
 
 		PeriodColumn(std::string d, std::string const & n) : 
-			def(std::move(d)), name(quote(n))
-		{
-		}
+			def(std::move(d)), name(quote(n)) {}
 
 		unsigned colWidth() const { return LittDefs::colWidth(name); }
 	};
@@ -3609,7 +3604,7 @@ ORDER BY Dupe DESC, "Book read")");
 			if (name.empty()) {
 				throw std::invalid_argument(std::string("No name for def: ") + def);
 			}
-			res.push_back({ def, name });
+			res.emplace_back(def, name);
 			width = std::max(width, res.back().name.length());
 		}
 		if (!res.empty()) {
@@ -3632,7 +3627,7 @@ ORDER BY Dupe DESC, "Book read")");
 		std::vector<PeriodColumn>&& columns) // Take ownership so we can modify it
 	{
 		// Total with empty def (i.e. include all) as first column. Avoids duplicating code this way!
-		columns.insert(columns.begin(), PeriodColumn("", "Total"));
+		columns.emplace(columns.begin(), "", "Total");
 
 		std::string whatCol; unsigned colWidths = 4u; std::string nonBookSn;
 		switch (m_count) {
@@ -4533,25 +4528,19 @@ ORDER BY Dupe DESC, "Book read")");
 		case a("brp"):  listBooksReadPerPeriod(argm(0,"periodDef"), argm(1,"periodName"), arg(2, WcS), getPeriodColumns(3)); break;
 		case a("brym"): {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-			std::vector<PeriodColumn> monthColumns;
-			for (int m = 1; m <= 12; ++m) {
-				char def[20]; sprintf_s(def, "dr.____-%02d-*", m);
-				monthColumns.push_back({ std::string(def), std::string(months[m - 1]) });
-			}
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), std::move(monthColumns));
+			std::vector<PeriodColumn> cols;
+			for (int m = 1; m <= 12; ++m) cols.emplace_back(fmt("dr.____-%02d-*", m), months[m - 1]);
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), std::move(cols));
 			break;
 		}
 		case a("brmy"): {
 			auto st = getLocalTime();
-			auto firstYear = intarg(0, "firstYear", st.wYear);
-			auto lastYear = intarg(1, "lastYear", st.wYear);
-			std::vector<PeriodColumn> yearColumns;
-			for (int y = firstYear; y <= lastYear; ++y) {
-				char def[10]; sprintf_s(def, "dr.%04d-*", y);
-				yearColumns.push_back({ def, std::to_string(y) });
-			}
-			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", firstYear, lastYear)));
-			listBooksReadPerPeriod("%m", "Month", WcS, std::move(yearColumns));
+			auto first = intarg(0, "firstYear", st.wYear);
+			auto last = intarg(1, "lastYear", st.wYear);
+			std::vector<PeriodColumn> cols;
+			for (int y = first; y <= last; ++y) cols.emplace_back(fmt("dr.%04d-*", y), std::to_string(y));
+			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", first, last)));
+			listBooksReadPerPeriod("%m", "Month", WcS, std::move(cols));
 			break;
 		}
 		case a("add-a"):   addAuthor(); break;

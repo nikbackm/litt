@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-07: Decrease lines of code, mainly for brym and brmy.
  * 2019-09-06: Bug fix in explain query plan, did not handle multiple explain queries in same 
                output listing correctly. (Must render and restart when getting an id with lower value
                that the previous one it seems)
