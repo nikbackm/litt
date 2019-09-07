@@ -200,8 +200,8 @@ LITT Changelog:
  * 2018-09-19: Fixed column definition for "brym" so it does not matches the days as well! (In case of trailing -PO after day).
  * 2018-09-07: Added "set-r" for setting the rating of a book.
                Use fputs instead of puts for online help to avoid extra newlines.
-			   Include rating in some default listings.
-			   Improved ANSI; now always resets to default at the end of a column. But only if column uses custom values.
+               Include rating in some default listings.
+               Improved ANSI; now always resets to default at the end of a column. But only if column uses custom values.
  * 2018-09-06: addAuxTables: "stng" required AuthorBooks to be included.
  * 2018-09-04: Added rating column to Books.
  * 2018-03-30: Added virtual column "dm" for month of date read.
