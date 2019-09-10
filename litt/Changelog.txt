@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-10: inputIsbn now uses ask instead of confirm so a default answer (n) can be given.
  * 2019-09-10: Bug fix: Must set errno to 0 before calling strtol/strtoull.
  * 2019-09-10: Tinkering; appendTo => +=, addColums => addResultColumns.
  * 2019-09-07: Decrease lines of code, mainly for brym and brmy.

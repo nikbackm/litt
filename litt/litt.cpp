@@ -762,7 +762,7 @@ namespace Input
 		}
 	}
 
-	int ask(const char* validAnswers, std::string const & question, int& defAndRes )
+	int askInput(const char* validAnswers, std::string const & question, int& defAndRes )
 	{
 		bool foundDefault = false;
 		int const len = strlen(validAnswers);
@@ -797,9 +797,9 @@ namespace Input
 		return answer;
 	}
 
-	int ask(const char* validAnswers, std::string const & question)
+	int ask(const char* validAnswers, std::string const & question, int def = 0)
 	{
-		int def = 0; return ask(validAnswers, question, def);
+		return askInput(validAnswers, question, def);
 	}
 
 	bool confirmEnabled = true;
@@ -807,7 +807,7 @@ namespace Input
 	bool confirm(std::string const & question)
 	{
 		if (!confirmEnabled) return true;
-		int def = 0; return 'y' == ask("yn", question, def);
+		return 'y' == ask("yn", question);
 	}
 }
 using namespace Input;
@@ -1277,9 +1277,8 @@ class Litt {
 		do {
 			if (!value.empty()) { prefillInput(value); }
 			value = input(prompt, options);
-		} while (
-			!checkIsbn(value.c_str(), value.length()) && 
-			!confirm(fmt("Use invalid %s '%s'", prompt, value.c_str()))
+		} while (!checkIsbn(value.c_str(), value.length()) && 
+			ask("yn", fmt("Use invalid %s '%s'", prompt, value.c_str()), 'n') == 'n'
 		);
 	}
 
@@ -3967,8 +3966,8 @@ ORDER BY Dupe DESC, "Book read")");
 			input(otDate, "OT first publication date", PubDateRegEx);
 			input(otLangId, "OT LangID", cf(&Litt::selLanguage), getListLanguage());
 		}
-		ask("yn", "Own book", owns);
-		ask("yn", "Bought ebook", boughtEbook);
+		askInput("yn", "Own book", owns);
+		askInput("yn", "Bought ebook", boughtEbook);
 		input(seriesId, "SeriesID (optional)", cf(&Litt::selSeries), getListSeries(), optional);
 		if (seriesId != EmptyId) {
 			input(seriesPart, "Part in series");
