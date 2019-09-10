@@ -244,9 +244,8 @@ namespace Utils
 	}
 
 	template <typename T>
-	void appendTo(std::vector<T>& a, const std::vector<T>& b)
+	void operator+=(std::vector<T>& a, const std::vector<T>& b)
 	{
-	    a.reserve(a.size() + b.size());
 	    a.insert(a.end(), b.begin(), b.end());
 	}
 
@@ -1549,16 +1548,14 @@ public:
 					m_dbPath = val;
 					break;
 				case 'a': 
-					appendTo(m_additionalColumns, getColumns(val, ColumnsDataKind::width, true));
+					m_additionalColumns += getColumns(val, ColumnsDataKind::width, true);
 					break;
 				case 'w': 
 					appendToWhereCondition(LogOp_OR, getWhereCondition(val));
 					break;
 				case 's':
-					// Not necessarily included in the query, hence "false".
-					for (auto& c : getColumns(val, ColumnsDataKind::width, false)) { 
+					for (auto& c : getColumns(val, ColumnsDataKind::width, /*usedInQuery*/false))
 						c.first->overriddenWidth = c.second;
-					}
 					break;
 				case 'q':
 					m_showQuery = true;
@@ -2177,25 +2174,16 @@ public:
 			} // else assumes columnWidths are properly set!
 		}
 
-		void addCol(ColumnInfo const * ci)
-		{
-			ci->usedInResult = true;
-			m_query += ci->nameDef;
-			if (!ci->label.empty()) {
-				m_query.append(" AS ").append(ci->label);
-			}
-		}
-
-		void addColums(const char* defColumns)
+		void addResultColums(const char* defColumns)
 		{
 			auto selCols = litt.m_selectedColumns.empty() ? litt.getColumns(defColumns, ColumnsDataKind::width, true) : litt.m_selectedColumns;
-			appendTo(selCols, litt.m_additionalColumns);
+			selCols += litt.m_additionalColumns;
 			for (unsigned i = 0; i < selCols.size(); ++i) {
-				if (i != 0) {
-					m_query += ",";
-				}
 				auto ci = selCols[i].first;
-				addCol(ci);
+				ci->usedInResult = true;
+				if (i != 0) m_query.append(",");
+				m_query.append(ci->nameDef);
+				if (!ci->label.empty()) m_query.append(" AS ").append(ci->label);
 				if (litt.m_displayMode == DisplayMode::column) {
 					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
 					_ASSERT(width >= 0);
@@ -2217,7 +2205,7 @@ public:
 		{
 			showDefaultColumns(defColumns, defOrderBy);
 			initSelectBare(selectOption);
-			addColums(defColumns);
+			addResultColums(defColumns);
 			m_query.append("\nFROM ").append(from);
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			initOrderBy(defOrderBy);
@@ -2227,7 +2215,7 @@ public:
 		{
 			showDefaultColumns(defColumns, defOrderBy);
 			initWithSelectBare(with, selectOption);
-			addColums(defColumns);
+			addResultColums(defColumns);
 			m_query.append("\nFROM ").append(from);
 			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
 			initOrderBy(defOrderBy);
