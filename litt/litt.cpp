@@ -249,26 +249,27 @@ namespace Utils
 	    a.insert(a.end(), b.begin(), b.end());
 	}
 
-	bool toInt(std::string const & str, int& value)
+	template <typename T, typename CFunc>
+	bool toIntType(std::string const& str, T& value, CFunc cfunc)
 	{
+		errno = 0;
 		char* endPtr;
-		int v = strtol(str.c_str(), &endPtr, 10);
-		if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
+		T v = cfunc(str.c_str(), &endPtr, 10);
+		if (endPtr == str.c_str() || *endPtr != '\0' || errno == ERANGE) {
 			return false;
 		}
 		value = v;
 		return true;
 	}
 
+	bool toInt(std::string const & str, int& value)
+	{
+		return toIntType(str, value, strtol);
+	}
+
 	bool toULongLong(std::string const & str, unsigned long long & value)
 	{
-		char* endPtr;
-		auto v = strtoull(str.c_str(), &endPtr, 10);
-		if (errno == ERANGE || (endPtr != str.c_str() + str.length())) {
-			return false;
-		}
-		value = v;
-		return true;
+		return toIntType(str, value, strtoull);
 	}
 
 	void replaceAll(std::string& str, const std::string& from, const std::string& to)
@@ -1803,8 +1804,7 @@ public:
 					}
 				}
 				else if (kind == ColumnsDataKind::width) {
-					if (toInt(sn, data)) {
-					}
+					toInt(sn, data);
 				}
 				if (data >= 0) {
 					sn.clear();
