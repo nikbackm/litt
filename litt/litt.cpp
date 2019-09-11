@@ -3885,7 +3885,7 @@ ORDER BY Dupe DESC, "Book read")");
 		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
 		auto title       = std::string();
-		auto dateRead    = fmt("%04d-%02d-%02d ", st.wYear, st.wMonth, st.wDay); // extra space to remind adding mm:ss.
+		auto dateRead    = fmt("%04d-%02d-%02d ", st.wYear, st.wMonth, st.wDay); // extra space to remind adding hh:mm.
 		auto sourceId    = EmptyId;
 		auto genreIds    = GenreIds();
 		auto origtitle   = std::string();
