@@ -1,0 +1,47 @@
+CREATE TABLE BookCategory(CategoryID INTEGER PRIMARY KEY, Category TEXT UNIQUE NOT NULL);
+CREATE TABLE Language(LangID INTEGER PRIMARY KEY, Language TEXT UNIQUE NOT NULL);
+CREATE TABLE IF NOT EXISTS "Authors" ("AuthorID" INTEGER PRIMARY KEY, "Last Name" TEXT NOT NULL, "First Name" TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS "Books" ("BookID" INTEGER PRIMARY KEY, "Title" TEXT NOT NULL, "LangID" INTEGER NOT NULL, "Owned" INTEGER NOT NULL, "Bought Ebook" INTEGER NOT NULL, "Rating" NUMERIC NOT NULL, ISBN TEXT, CategoryID INTEGER NOT NULL, Pages INTEGER, Words INTEGER, "Date" TEXT,
+FOREIGN KEY(CategoryID) REFERENCES BookCategory(CategoryID), FOREIGN KEY(LangID) REFERENCES Language(LangID));
+CREATE TABLE IF NOT EXISTS "OriginalTitles"("BookID" INTEGER PRIMARY KEY, "Original Title" TEXT NOT NULL, LangID INTEGER NOT NULL, otISBN TEXT, otDate TEXT, 
+FOREIGN KEY(BookID) REFERENCES Books(BookID), FOREIGN KEY(LangID) REFERENCES Language(LangID));
+CREATE TABLE IF NOT EXISTS "Series" ("SeriesID" INTEGER PRIMARY KEY, "Series" TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS "Sources"("SourceID" INTEGER PRIMARY KEY, "Source" TEXT UNIQUE NOT NULL);
+CREATE TABLE IF NOT EXISTS "Genres"("GenreID" INTEGER PRIMARY KEY, "Genre" TEXT UNIQUE NOT NULL);
+CREATE TABLE IF NOT EXISTS "Stories"("StoryID" INTEGER PRIMARY KEY, "Story" TEXT NOT NULL, "Rating" NUMERIC NOT NULL);
+CREATE TABLE IF NOT EXISTS "DatesRead"("BookID" INTEGER, "Date Read" TEXT, "SourceID" INTEGER NOT NULL, PRIMARY KEY("BookID", "Date Read"), 
+FOREIGN KEY(BookID) REFERENCES Books(BookID)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "AuthorBooks"("BookID" INTEGER, "AuthorID" INTEGER,  PRIMARY KEY("BookID", "AuthorID" ),
+FOREIGN KEY(BookID) REFERENCES Books(BookID), FOREIGN KEY(AuthorID) REFERENCES Authors(AuthorID)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "BookSeries"("BookID" INTEGER, "SeriesID" INTEGER, "Part in Series" INTEGER NOT NULL, PRIMARY KEY("BookID", "SeriesID"), 
+FOREIGN KEY(BookID) REFERENCES Books(BookID), FOREIGN KEY(SeriesID) REFERENCES Series(SeriesID)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "BookGenres"("BookID" INTEGER, "GenreID" INTEGER,  PRIMARY KEY("BookID", "GenreID" ),
+FOREIGN KEY(BookID) REFERENCES Books(BookID), FOREIGN KEY(GenreID) REFERENCES Genres(GenreID)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS "BookStories"("BookID" INTEGER, "AuthorID" INTEGER, "StoryID" INTEGER, PRIMARY KEY("BookID", "AuthorID", "StoryID" ), 
+FOREIGN KEY(BookID,AuthorID) REFERENCES AuthorBooks(BookID,AuthorID), FOREIGN KEY(StoryID) REFERENCES Stories(StoryID)) WITHOUT ROWID;
+CREATE TABLE StoryGenres(StoryID INTEGER, GenreID INTEGER, PRIMARY KEY(StoryID, GenreID ), FOREIGN KEY(StoryID) REFERENCES Stories(StoryID), FOREIGN KEY(GenreID) REFERENCES Genres(GenreID)) WITHOUT ROWID;
+CREATE TABLE Pseudonyms(MainID INTEGER, PseudonymID INTEGER,  PRIMARY KEY(MainID, PseudonymID),
+FOREIGN KEY(MainID) REFERENCES Authors(AuthorID), FOREIGN KEY(PseudonymID) REFERENCES Authors(AuthorID)) WITHOUT ROWID;
+CREATE VIEW "BooksWithSameTitle" AS   SELECT Title, Count(Title) As Count FROM Books GROUP BY Title HAVING Count(Title) > 1 ORDER BY Count DESC
+/* BooksWithSameTitle(Title,Count) */;
+CREATE VIEW "BooksFlat" AS  SELECT * FROM Books INNER JOIN DatesRead USING(BookID) LEFT OUTER JOIN OriginalTitles USING(BookID) LEFT OUTER JOIN BookSeries USING(BookID) LEFT OUTER JOIN Series USING(SeriesID) LEFT OUTER JOIN Sources USING(SourceID)
+/* BooksFlat(BookID,Title,LangID,Owned,"Bought Ebook",Rating,ISBN,CategoryID,Pages,Words,Date,"Date Read",SourceID,"Original Title","LangID:1",otISBN,otDate,SeriesID,"Part in Series",Series,Source) */;
+CREATE VIEW "ReReads" AS Select Title, ReadCount, "Last Name", "First Name" FROM Books JOIN (SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1 ORDER BY ReadCount DESC) USING(BookID) JOIN AuthorBooks USING(BookID) JOIN Authors USING(AuthorID)
+/* ReReads(Title,ReadCount,"Last Name","First Name") */;
+CREATE VIEW "TwoOrMoreBookDates" AS SELECT "Date Read", Count("Date Read") FROM DatesRead WHERE "Date Read" > "2001-10" GROUP BY "Date Read" HAVING Count("Date Read") > 1
+/* TwoOrMoreBookDates("Date Read","Count(""Date Read"")") */;
+CREATE VIEW "Everything" AS SELECT "Title", "Last Name", "First Name", "Date Read", "Original Title", "Story", Books.BookID, "Series", "Part in series" FROM Books INNER JOIN DatesRead USING(BookID) LEFT OUTER JOIN OriginalTitles USING(BookID) INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) LEFT OUTER JOIN BookStories USING(BookID,AuthorID) LEFT OUTER JOIN Stories USING (StoryID) LEFT OUTER JOIN BookSeries USING(BookID) LEFT OUTER JOIN Series USING(SeriesID) ORDER BY "Date Read", Books.BookID, "Last Name"
+/* Everything(Title,"Last Name","First Name","Date Read","Original Title",Story,BookID,Series,"Part in Series") */;
+CREATE TRIGGER Pseudonyms_MainID_validate_insert BEFORE INSERT ON Pseudonyms
+WHEN (NEW.MainID IN (SELECT PseudonymID FROM Pseudonyms))
+BEGIN SELECT RAISE(ABORT,'MainID cannot be used as a pseudonym'); END;
+CREATE TRIGGER Pseudonyms_MainID_validate_update BEFORE UPDATE OF MainID ON Pseudonyms
+WHEN (NEW.MainID IN (SELECT PseudonymID FROM Pseudonyms))
+BEGIN SELECT RAISE(ABORT,'MainID cannot be used as a pseudonym'); END;
+CREATE TRIGGER Pseudonyms_PseudonymID_validate_insert BEFORE INSERT ON Pseudonyms
+WHEN (NEW.PseudonymID IN (SELECT MainID FROM Pseudonyms))
+BEGIN SELECT RAISE(ABORT,'PseudonymID cannot be a MainID too'); END;
+CREATE TRIGGER Pseudonyms_PseudonymID_validate_update BEFORE UPDATE OF PseudonymID ON Pseudonyms
+WHEN (NEW.PseudonymID IN (SELECT MainID FROM Pseudonyms))
+BEGIN SELECT RAISE(ABORT,'PseudonymID cannot be a MainID too'); END;
+CREATE TABLE sqlite_stat1(tbl,idx,stat);
