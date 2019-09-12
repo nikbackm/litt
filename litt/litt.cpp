@@ -354,8 +354,7 @@ namespace Utils
 	// Escape the SQL value and add the SQL quotes (if needed).
 	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
 	{
-		int intVal;
-		if (!(tryToTreatAsNumeric && toInt(str, intVal))) {
+		if (int intVal; !(tryToTreatAsNumeric && toInt(str, intVal))) {
 			replaceAll(str, "'", "''");
 			str = "'" + str + "'";
 		}
@@ -367,19 +366,17 @@ namespace Utils
 		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return static_cast<char>(tolower(c)); });
 	}
 
-	bool enableVTMode()
+	bool enableVTMode() // We assume a Windows 10 edition that supports ANSI.
 	{
-		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (hOut == INVALID_HANDLE_VALUE) { return false; }
-		DWORD dwMode = 0;
-		if (!GetConsoleMode(hOut, &dwMode)) { return false; }
-		return !!SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // We assume supported Win10 edition.
+		if (HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE); hOut != INVALID_HANDLE_VALUE)
+			if (DWORD dwMode=0; GetConsoleMode(hOut, &dwMode))
+				return SetConsoleMode(hOut, dwMode|ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+		return false;
 	}
 
 	SYSTEMTIME getLocalTime()
 	{
-		SYSTEMTIME st{}; ::GetLocalTime(&st);
-		return st;
+		SYSTEMTIME st{}; ::GetLocalTime(&st); return st;
 	}
 } // Utils
 using namespace Utils;
@@ -647,26 +644,18 @@ namespace Input
 		GetConsoleScreenBufferInfo(hOut, &info);
 		DWORD const fgMask = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY;
 		DWORD const bgMask = BACKGROUND_BLUE | BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_INTENSITY;
-		std::string str;
 
 		WORD textColor = 0;
-		auto strColor = getenv("LITT_INPUT_COLOR");
-		if (strColor != nullptr) {
-			auto color = atoi(strColor);
-			if (0 < color && color <= 0xFFFF) {
+		if (auto strColor = getenv("LITT_INPUT_COLOR"); strColor != nullptr) {
+			if (auto color = atoi(strColor); 0 < color && color <= 0xFFFF) {
 				textColor = (WORD)color;
 			}
 		}
 
-		if (textColor != 0) {
-			SetConsoleTextAttribute(hOut, textColor);
-		}
-		else { // Set text color to cyan, keep background.
-			SetConsoleTextAttribute(hOut, FOREGROUND_BLUE|FOREGROUND_GREEN | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
-		}
-		std::getline(std::cin, str);
-		// Restore the previous text color.
-		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask));
+		SetConsoleTextAttribute(hOut, (textColor != 0) ? textColor  // else text color cyan, background as-is.
+			: FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY | (bgMask & info.wAttributes));
+		std::string str; std::getline(std::cin, str);
+		SetConsoleTextAttribute(hOut, info.wAttributes & (fgMask | bgMask)); // Restore previous attributes.
 		return str;
 	}
 
@@ -682,8 +671,7 @@ namespace Input
 			recs[i].Event.KeyEvent.wVirtualScanCode = 0;
 			recs[i].Event.KeyEvent.uChar.AsciiChar = str[i];
 		}
-		DWORD out = 0;
-		if (!WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), recs.data(), recs.size(), &out)) {
+		if (DWORD n; !WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), recs.data(), recs.size(), &n)) {
 			fprintf(stderr, "Failed to prefill input! Error code = %i", GetLastError());
 		}
 	}
@@ -878,8 +866,8 @@ public:
 	int nextInt()
 	{
 		auto val = getNext();
-		int ival; if (!toInt(val, ival)) { throwError(); }
-		return ival;
+		if (int ival; toInt(val, ival)) return ival;
+		throwError();
 	}
 
 	std::string nextIntAsStr() { return std::to_string(nextInt()); }
@@ -1227,10 +1215,8 @@ class Litt {
 	static void isbn10(sqlite3_context* context, int argc, sqlite3_value** argv)
 	{
 		if (argc == 1) {
-			auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
-			if (isbn && isbn[0]) {
-				int const len = strlen(isbn);
-				if (checkIsbn(isbn, len)) {
+			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0]) {
+				if (int const len = strlen(isbn); checkIsbn(isbn, len)) {
 					if (len == 10) {
 						sqlite3_result_text(context, isbn, 10, SQLITE_TRANSIENT);
 						return;
@@ -1251,10 +1237,8 @@ class Litt {
 	static void isbn13(sqlite3_context *context, int argc, sqlite3_value **argv)
 	{
 		if (argc == 1) {
-			auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
-			if (isbn && isbn[0]) {
-				int const len = strlen(isbn);
-				if (checkIsbn(isbn, len)) {
+			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0]) {
+				if (int const len = strlen(isbn); checkIsbn(isbn, len)) {
 					if (len == 13) {
 						sqlite3_result_text(context, isbn, 13, SQLITE_TRANSIENT);
 						return;
@@ -1518,8 +1502,7 @@ public:
 					}
 					break;
 				case 'e':
-					int encoding;
-					if (toInt(val, encoding)) {
+					if (int encoding; toInt(val, encoding)) {
 						m_output.setEncoding(encoding);
 					}
 					else throw std::invalid_argument("Invalid encoding value: " + val);
@@ -1618,7 +1601,6 @@ public:
 					}
 					else if (extName == "ansi") {
 						m_ansiEnabled = true; // On by default when using ansi option
-						std::string subOpt;
 
 						auto nextColor = [&]() 
 						{
@@ -1626,7 +1608,7 @@ public:
 							return (val[0] == '\x1b') ? val : "\x1b[" + val;
 						};
 
-						while (extVal.getNext(subOpt)) {
+						for (std::string subOpt; extVal.getNext(subOpt); ) {
 							toLowerCase(subOpt);
 							if (subOpt == "off") {
 								m_ansiEnabled = false;
@@ -1657,8 +1639,7 @@ public:
 						}
 					}
 					else if (extName == "cnt") {
-						std::string what;
-						while (extVal.getNext(what)) {
+						for (std::string what; extVal.getNext(what); ) {
 							if      (what == "b") m_count = Count::books;
 							else if (what == "p") m_count = Count::pages;
 							else if (what == "w") m_count = Count::words;
@@ -1672,8 +1653,7 @@ public:
 						}
 					}
 					else if (extName == "drr") {
-						std::string what;
-						while (extVal.getNext(what)) {
+						for (std::string what; extVal.getNext(what); ) {
 							if      (what == "f") m_drRange = DRRange::first;
 							else if (what == "l") m_drRange = DRRange::last;
 							else if (what == "m") m_drRange = DRRange::middle;
@@ -1758,19 +1738,16 @@ public:
 
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
 	{
-		auto it = m_columnInfos.find(sn);
-		if (it == m_columnInfos.end()) {
-			if (allowActualName) {
-				const int MaxSize = 100;
-				static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
-				if (cols.size() == 0) cols.reserve(MaxSize);
-				if (cols.size() == MaxSize) throw std::runtime_error("Too many allowActualName columns!");
-				cols.push_back(ColumnInfo{sn, (int)sn.length(), ColumnType::numeric, sn});
-				return &cols.back();
-			}
-			throw std::invalid_argument("Invalid short column name: " + sn);
+		if (auto it = m_columnInfos.find(sn); it != m_columnInfos.end()) return &it->second;
+		if (allowActualName) {
+			const int MaxSize = 100;
+			static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
+			if (cols.size() == 0) cols.reserve(MaxSize);
+			if (cols.size() == MaxSize) throw std::runtime_error("Too many allowActualName columns!");
+			cols.push_back(ColumnInfo{sn, (int)sn.length(), ColumnType::numeric, sn});
+			return &cols.back();
 		}
-		return &it->second;
+		throw std::invalid_argument("Invalid short column name: " + sn);
 	}
 
 	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery, bool allowActualName = false) const
@@ -1853,8 +1830,7 @@ public:
 		std::string wcond;
 		std::string hcond;
 
-		std::string sn;
-		while (opts.getNext(sn)) {
+		for (std::string sn; opts.getNext(sn); ) {
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
 			bool glob = false; // Must not replace wildcard if globbing.
@@ -1882,14 +1858,11 @@ public:
 			}
 
 			auto getOperand = [&col, this, glob](std::string val) -> std::string {
-				auto valCol = m_columnInfos.find(val);
-				if (valCol != m_columnInfos.end()) {
+				if (auto valCol = m_columnInfos.find(val); valCol != m_columnInfos.end()) {
 					valCol->second.usedInQuery = true;
 					return valCol->second.nameDef;
 				}
-				else {
-					return col->getLikeArg(std::move(val), glob);
-				}
+				return col->getLikeArg(std::move(val), glob);
 			};
 
 			val = getOperand(val);
@@ -3753,10 +3726,9 @@ ORDER BY Dupe DESC, "Book read")");
 		std::vector<IdValue> res;
 		for (auto const& row : rows)
 		{
-			IdValue id;
-			if (!toIdValue(row.at(0), id))
+			if (IdValue id; !toIdValue(row.at(0), id))
 				throw std::logic_error("Invalid id value: '" + row.at(0) + "' from query " + userSql);
-			res.push_back(id);
+			else res.push_back(id);
 		}
 		return res;
 	}
@@ -3871,8 +3843,7 @@ ORDER BY Dupe DESC, "Book read")");
 
 	void printTotalChanges()
 	{
-		auto const changes = sqlite3_total_changes(m_conn.get());
-		if (changes > 0)
+		if (auto const changes = sqlite3_total_changes(m_conn.get()); changes > 0)
 			printf("Added %i rows.\n", changes);
 	}
 
@@ -3915,8 +3886,7 @@ ORDER BY Dupe DESC, "Book read")");
 			input(ad.story, "Story name (optional)", optional);
 			if (!ad.story.empty()) {
 				hasStories = true;
-				int same = 'y';
-				if (i > 0 && ad.story == authors[i - 1].story && ask("yn", "Same as previous", same) == 'y') {
+				if (int same = 'y'; i > 0 && ad.story == authors[i - 1].story && ask("yn", "Same as previous", same) == 'y') {
 					ad.storyId     = authors[i - 1].storyId;
 					ad.storyRating = authors[i - 1].storyRating;
 					ad.storyGenres = authors[i - 1].storyGenres;
@@ -4250,8 +4220,7 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 		else {
 			auto const drOrIndex = argi(argIndex, "Current date read value or index");
-			int index;
-			if (toInt(drOrIndex, index)) {
+			if (int index; toInt(drOrIndex, index)) {
 				if (0 <= index && index < (int)drRows.size()) {
 					return drRows[index].at(0);
 				}
@@ -4259,9 +4228,7 @@ ORDER BY Dupe DESC, "Book read")");
 					throw std::runtime_error(fmt("No date read found at index %i for book %llu", index, bookId));
 				}
 			}
-			else {
-				return drOrIndex;
-			}
+			return drOrIndex;
 		}
 	}
 
@@ -4377,16 +4344,16 @@ ORDER BY Dupe DESC, "Book read")");
 	
 	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
 	{
-		auto arg = argi(argIndex, name, optional);
-		if (!arg.empty() && confirm(fmt("Add %s '%s'", name, arg.c_str()))) {
-			(this->*addMethod)(arg);
+		if (auto arg = argi(argIndex, name, optional); !arg.empty()) {
+			if (confirm(fmt("Add %s '%s'", name, arg.c_str()))) {
+				(this->*addMethod)(arg);
+			}
 		}
 	}
 
 	void executeUserSql()
 	{
-		auto sql = argi(0, "sql", optional);
-		if (!sql.empty()) {
+		if (auto sql = argi(0, "sql", optional); !sql.empty()) {
 			if (confirm("Execute SQL")) {
 				OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
 				// Set first few columns to width 30, better than letting label and/or first value determine it.
@@ -4466,8 +4433,7 @@ ORDER BY Dupe DESC, "Book read")");
 	void executeAction() 
 	{
 		constexpr auto a = actionHash;
-		auto const& action = m_action;
-		switch (a(action.c_str())) {
+		switch (auto const& action = m_action; a(action.c_str())) {
 		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp((action.length()!=2) ? 2 : (action[1]-'0')); break;
 		case a("a"): case a("aa"):  listAuthors(action, arg(0), arg(1)); break;
 		case a("ps"):               listPseudonyms(arg(0), arg(1)); break;
