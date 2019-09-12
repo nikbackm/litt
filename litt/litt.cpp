@@ -1163,7 +1163,8 @@ class Litt {
 	{
 		int sum = 0;
 		for (int i = 0; i < 9; ++i) {
-			sum += (10 - i) * (isbn[i] - '0');
+			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
+			sum += (10 - i) * d;
 		}
 		int const rem = sum % 11;
 		int const chkVal = (rem == 0) ? 0 : 11 - rem;
@@ -1174,7 +1175,8 @@ class Litt {
 	{
 		int sum = 0, weight = 1;
 		for (int i = 0; i < 12; ++i) {
-			sum += weight * (isbn[i] - '0');
+			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
+			sum += weight * d;
 			weight = (weight == 1) ? 3 : 1;
 		}
 		int const rem = sum % 10;
