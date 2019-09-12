@@ -280,59 +280,42 @@ namespace Utils
 		}
 	}
 
-	std::wstring toWide(int codePage, const char *src, int len = 0)
+	std::wstring toWide(int codePage, const char *src, int const len)
 	{
-		int const nLen = (len > 0 ? len : lstrlenA(src));
-		if (nLen == 0) return std::wstring();
-		if (int const sizeNeeded = MultiByteToWideChar(codePage, 0, src, nLen, NULL, 0)) {
-			std::wstring wstr(sizeNeeded, '\0');
-			int const res = MultiByteToWideChar(codePage, 0, src, nLen, &wstr[0], sizeNeeded);
-			if (res == sizeNeeded) {
+		if (len == 0) return std::wstring();
+		if (int const cw = MultiByteToWideChar(codePage, 0, src, len, NULL, 0)) {
+			std::wstring wstr(cw, '\0');
+			if (int const res = MultiByteToWideChar(codePage, 0, src, len, &wstr[0], cw); res == cw)
 				return wstr;
-			}
 		}
 		throw std::runtime_error(fmt("MultiByteToWideChar for code page %i failed", codePage));
 	}
 
-	std::wstring toWide(int codePage, std::string const & str)
+	std::string toNarrow(int codePage, const wchar_t *src, int const len)
 	{
-		return toWide(codePage, str.c_str(), str.length());
-	}
-
-	std::string toNarrow(int codePage, const wchar_t *src, int len = 0)
-	{
-		int const nLen = (len > 0 ? len : lstrlenW(src));
-		if (nLen == 0) return std::string();
-		if (int const sizeNeeded = WideCharToMultiByte(codePage, 0, src, nLen, NULL, 0, NULL, NULL)) {
-			std::string str(sizeNeeded, '\0');
-			int const res = WideCharToMultiByte(codePage, 0, src, nLen, &str[0], sizeNeeded, NULL, NULL);
-			if (res == sizeNeeded) {
+		if (len == 0) return std::string();
+		if (int const cb = WideCharToMultiByte(codePage, 0, src, len, NULL, 0, NULL, NULL)) {
+			std::string str(cb, '\0');
+			if (int const res = WideCharToMultiByte(codePage, 0, src, len, &str[0], cb, NULL, NULL); res == cb)
 				return str;
-			}
 		}
 		throw std::runtime_error(fmt("WideCharToMultiByte for code page %i failed", codePage));
 	}
 
-	std::wstring utf8ToWide(const char* utf8String, int len = 0)
+	std::wstring utf8ToWide(const char* utf8String, int len) // Used during output.
 	{
 		return toWide(CP_UTF8, utf8String, len);
 	}
 
-	std::string toUtf8(int codePage, const char* str, int len = 0)
-	{
-		auto wstr = toWide(codePage, str, len);
-		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
-	}
-
 	std::string toUtf8(int codePage, std::string const & str)
 	{
-		auto wstr = toWide(codePage, str);
+		auto wstr = toWide(codePage, str.c_str(), str.length() );
 		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
 	}
 
 	std::string fromUtf8(int codePage, std::string const & str)
 	{
-		auto wstr = toWide(CP_UTF8, str);
+		auto wstr = toWide(CP_UTF8, str.c_str(), str.length());
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 

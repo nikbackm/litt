@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-12: Cleaned up string encoding conversion functions.
  * 2019-09-12: Took C++17 mode and SDK 10.0.17763.0 in use. Also Selection statements with initializer; P0305R1.
  * 2019-09-12: Bug fix: Detects invalid --colsep values while still allowing empty ones.
  * 2019-09-10: inputIsbn now uses ask instead of confirm so a default answer (n) can be given.
