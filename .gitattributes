@@ -61,3 +61,12 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# GitHib language detection
+#
+# Want C++ to be detected.
+###############################################################################
+
+* linguist-vendored
+*.cpp linguist-vendored=false
