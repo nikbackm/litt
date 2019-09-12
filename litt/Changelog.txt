@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-12: Cleaned up input functions.
  * 2019-09-12: Cleaned up toSecondsValue.
  * 2019-09-12: Bug fix: The ISBN check now verifies that it only contains numeric digits.
  * 2019-09-12: Bug fix: Getting the next ID value now works for an empty db!

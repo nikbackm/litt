@@ -613,7 +613,6 @@ using namespace LittDefs;
 namespace Input
 {
 	enum InputOptions : unsigned {
-		none     = 0x00,
 		optional = 0x00,
 		required = 0x01,
 	};
@@ -641,6 +640,7 @@ namespace Input
 
 	void prefillInput(std::string const& str)
 	{
+		if (str.empty()) return;
 		std::vector<INPUT_RECORD> recs(str.size());
 		for (size_t i = 0; i < str.size(); ++i) {
 			recs[i].EventType = KEY_EVENT;
@@ -658,39 +658,35 @@ namespace Input
 
 	std::string input(const char* prompt, InputOptions options = required)
 	{
-	retry:
-		printf("%s: ", prompt);
-		auto value = readLine();
-		if (value.empty() && (required & (unsigned)options)) {
-			goto retry;
+		for (;;) {
+			printf("%s: ", prompt);
+			auto value = readLine();
+			if (!(value.empty() && (required & options)))
+				return value;
 		}
-		return value;
 	}
 
 	std::string input(const char* prompt, const char* regEx, InputOptions options = required)
 	{
-	retry:
-		auto value = input(prompt, options);
-		if (!value.empty() && !std::regex_match(value, std::regex(regEx))) {
+		for (;;) {
+			auto value = input(prompt, options);
+			if (value.empty() || std::regex_match(value, std::regex(regEx))) 
+				return value;
 			prefillInput(value);
-			goto retry;
 		}
-		return value;
 	}
-
+	
 	void input(std::string& value, const char* prompt, InputOptions options = required)
 	{
-		if (!value.empty()) { prefillInput(value); }
+		prefillInput(value);
 		value = input(prompt, options);
 	}
 
 	void input(std::string& value, const char* prompt, const char* regex, InputOptions options = required)
 	{
-	retry:
-		input(value, prompt, options);
-		if (!value.empty() && !std::regex_match(value, std::regex(regex))) {
-			goto retry;
-		}
+		do {
+			input(value, prompt, options);
+		} while (!(value.empty() || std::regex_match(value, std::regex(regex))));
 	}
 
 	void input(unsigned& value, const char* prompt, InputOptions options = required)
@@ -708,25 +704,21 @@ namespace Input
 		const char* prompt,
 		InputCheckIdFunction const& checkId,
 		InputListFunction const& listValues,
-		InputOptions options = required)
+		InputOptions const options = required)
 	{
-		if (value != EmptyId) { prefillInput(std::to_string(value)); }
-	retry:
-		auto str = input(prompt, options);
-		value = EmptyId;
-		if (!str.empty()) {
+		if (value != EmptyId) prefillInput(std::to_string(value));
+		for (;;) {
+			auto str = input(prompt, options);
+			value = EmptyId; if (str.empty()) break; // Done, empty id allowed and inputted.
 			toIdValue(str, value);
-			if (value == EmptyId && listValues) {
-				listValues(str);
-				goto retry;
+			if (value == EmptyId) {
+				if (listValues) listValues(str);
 			}
 			else if (checkId) try { checkId(value); } catch (std::exception&) {
 				printf("Invalid ID for this column, please try again.\n");
-				goto retry;
+				value = EmptyId;
 			}
-		}
-		if (value == EmptyId && (required & (unsigned)options)) {
-			goto retry;
+			if (value != EmptyId) break; // Done, got a valid id.
 		}
 	}
 
@@ -1241,7 +1233,7 @@ class Litt {
 	void inputIsbn(std::string& value, const char* prompt, InputOptions options = required)
 	{
 		do {
-			if (!value.empty()) { prefillInput(value); }
+			prefillInput(value);
 			value = input(prompt, options);
 		} while (!checkIsbn(value.c_str(), value.length()) && 
 			ask("yn", fmt("Use invalid %s '%s'", prompt, value.c_str()), 'n') == 'n'
