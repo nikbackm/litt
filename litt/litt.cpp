@@ -1688,9 +1688,8 @@ public:
 						m_offset = extVal.nextInt();
 					}
 					else if (extName == "colsep") {
-						try { m_colSep = toUtf8(extVal.getNext()); }
-						catch (std::invalid_argument& ) { m_colSep.clear(); } // allow empty values for colsep!
-						m_colSepSize = Utils::utf8ToWide(m_colSep.c_str()).size();
+						m_colSep = toUtf8(extVal.empty() ? std::string() : extVal.getNext());
+						m_colSepSize = Utils::utf8ToWide(m_colSep.c_str(), m_colSep.length()).length(); // Assumes UTF-16 length = #glyphs!
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
 					}
