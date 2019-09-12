@@ -1472,7 +1472,7 @@ public:
 						m_displayMode = DisplayMode::list;
 						if (4 < val.length()) {
 							if (val[4] == ':' && 5 < val.length()) {
-								m_listSep = toUtf8(val.substr(5).c_str());
+								m_listSep = toUtf8(val.substr(5));
 							}
 							else {
 								goto invalidDisplayMode;
@@ -3763,6 +3763,12 @@ ORDER BY Dupe DESC, "Book read")");
 
 	#define ESC_S(str) escSqlVal(str).c_str()
 
+	IdValue getNextIdValue(const char* idCol, const char* table)
+	{
+		auto idStr = selectSingleValue(fmt("SELECT ifnull(max(%s), 0) + 1 FROM %s", idCol, table), idCol);
+		IdValue id = 1; toIdValue(idStr, id); return id;
+	}
+
 	void addAuthor()
 	{
 		auto ln = argi(0, "last name", optional); if (ln.empty()) return;
@@ -3857,7 +3863,7 @@ ORDER BY Dupe DESC, "Book read")");
 		auto seriesId    = EmptyId;
 		auto seriesPart  = std::string();
 	enterBook:
-		auto nextStoryId = getNextStoryId();
+		auto nextStoryId = getNextIdValue("StoryID", "Stories");
 		bool hasStories = false;
 		for (size_t i = 0;;) {
 			AData ad = (i < authors.size()) ? authors[i] : AData{};
@@ -3971,19 +3977,19 @@ ORDER BY Dupe DESC, "Book read")");
 			case 'e': default: goto enterBook;
 		}
 		// Add it!
-		auto bookId = selectSingleValue("SELECT max(BookId) + 1 FROM Books", "BookId"); auto bid = bookId.c_str();
+		auto bid = getNextIdValue("BookID", "Books");
 
 		std::string sql = "BEGIN TRANSACTION;\n";
 		sql.append(fmt("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
-		                          " VALUES(%s,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);\n",
+		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);\n",
 			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), rating.c_str(), ESC_S(isbn), catId, pages, words, ESC_S(date)));
-		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%s,%s,%llu);\n",
+		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu);\n",
 			bid, ESC_S(dateRead), sourceId));
 		for (auto gi : genreIds) {
-			sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%s,%llu);\n", bid, gi));
+			sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);\n", bid, gi));
 		}
 		for (auto const& a : authors) {
-			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%s,%llu);\n", bid, a.authorId));
+			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);\n", bid, a.authorId));
 			if (!a.story.empty()) {
 				if (!a.storyRating.empty()) {
 					sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);\n",
@@ -3992,16 +3998,16 @@ ORDER BY Dupe DESC, "Book read")");
 						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", a.storyId, gi));
 					}
 				}
-				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%s,%llu,%llu);\n",
+				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);\n",
 					bid, a.authorId, a.storyId));
 			}
 		}
 		if (!origtitle.empty()) {
-			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%s,%s,%llu,%s,%s);\n",
+			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);\n",
 				bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate)));
 		}
 		if (seriesId != EmptyId) {
-			sql.append(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%s,%llu,%s);\n",
+			sql.append(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);\n",
 				bid, seriesId, escSqlVal(seriesPart, true).c_str()));
 		}
 		sql.append("COMMIT TRANSACTION");
@@ -4017,12 +4023,6 @@ ORDER BY Dupe DESC, "Book read")");
 				goto enterBook;
 			}
 		}
-	}
-
-	IdValue getNextStoryId()
-	{
-		auto idStr = selectSingleValue("SELECT max(StoryId) + 1 FROM Stories", "StoryId"); 
-		IdValue id=0; toIdValue(idStr, id); return id;
 	}
 
 	bool getStoryId(IdValue& storyId, std::string const & story)
@@ -4067,7 +4067,7 @@ ORDER BY Dupe DESC, "Book read")");
 				std::string sql = "BEGIN TRANSACTION;";
 				sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid));
 				if (!rating.empty()) {
-					storyId = getNextStoryId();
+					storyId = getNextIdValue("StoryID", "Stories");
 					sql.append(fmt("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), rating.c_str()));
 					for (auto gi : genreIds) {
 						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", storyId, gi));
