@@ -439,9 +439,6 @@ namespace LittDefs
 
 	bool toSecondsValue(std::string const & str, unsigned long long & value)
 	{
-		if (str[0] == '-' || str[0] == '\0') {
-			return false;
-		}
 		return toULongLong(str, value);
 	}
 
