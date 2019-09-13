@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-13: Re-grouped the col descs in the online help a little.
  * 2019-09-13: Simplified "actual name" column handling.
  * 2019-09-13: Simplified sel* helper methods.
  * 2019-09-13: Listings during add actions are now resistant to output action options like -c and -o.

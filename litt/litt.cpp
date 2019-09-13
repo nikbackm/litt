@@ -167,15 +167,13 @@ Column short name values:
     bt, bi           - Book title, BookID
     cat, catid       - Book category, CategoryID
     ra, own, beb     - Rating, Owned, Bought Ebook
-    ot               - Original title
     la, laid         - Language, LangID
-    otla, otli       - Language and LangID for the original title
-    bd, by           - First publication date and year	
-    otd, oty         - First publication date and year for the original title
+    bd, by           - First publication date and year
     isbn             - ISBN for book. May also be other ID like ASIN in case there is no ISBN
     is10, is13       - ISBN value in ISBN10 and ISBN13 formats. (NULL if check sum wrong)
-    otis             - ISBN for the original title
-    oi10, oi13       - otISBN value in ISBN10 and ISBN13 formats.  (NULL if check sum wrong)
+    ot, otla, otli   - Original title, its Language and LangID
+    otd, oty         - First publication date and year for the original title
+    otis, oi10, oi13 - Original title ISBN, and in ISBN10 and ISBN13 formats (NULL...)
     pgs, wds         - Book pages and words
     wpp, kw          - Words per page and kilo-words
     ln, fn, nn, ai   - Author last and first name, author full name, AuthorID
