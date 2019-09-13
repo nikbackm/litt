@@ -1113,11 +1113,9 @@ class Litt {
 	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, Tables tables, std::string const& label = "", bool isGroupAgg = false)
 	{
 		bool const justifyRight = (defWidth < 0);
-		auto res = m_columnInfos.emplace(std::make_pair(sn, ColumnInfo{ nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight, tables }));
-		if (!res.second) {
-			throw std::logic_error("Duplicate short name: " + sn);
-		}
-		return res.first->second;
+		if (auto res = m_columnInfos.try_emplace(sn, ColumnInfo(nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight, tables)); res.second)
+			return res.first->second;
+		throw std::logic_error("Duplicate short name: " + sn);
 	}
 
 	ColumnInfo& addColumnText(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
@@ -1464,9 +1462,7 @@ public:
 					}
 					break;
 				case 'e':
-					if (int encoding; toInt(val, encoding)) {
-						m_output.setEncoding(encoding);
-					}
+					if (int enc; toInt(val, enc)) m_output.setEncoding(enc);
 					else throw std::invalid_argument("Invalid encoding value: " + val);
 					break;
 				case 'f': {
@@ -1698,17 +1694,12 @@ public:
 		createScalarFunc("isbn13", 1, isbn13);
 	}
 
+	mutable decltype(m_columnInfos) m_ancis; // Holds ColumnInfo:s for "actual name" columns.
+
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
 	{
 		if (auto it = m_columnInfos.find(sn); it != m_columnInfos.end()) return &it->second;
-		if (allowActualName) {
-			const int MaxSize = 100;
-			static std::vector<ColumnInfo> cols; // OBS! Make an option to clear in case "persistent" litt is ever made.
-			if (cols.size() == 0) cols.reserve(MaxSize);
-			if (cols.size() == MaxSize) throw std::runtime_error("Too many allowActualName columns!");
-			cols.push_back(ColumnInfo{sn, (int)sn.length(), ColumnType::numeric, sn});
-			return &cols.back();
-		}
+		if (allowActualName) return &m_ancis.try_emplace(sn, ColumnInfo(sn, (int)sn.length(), ColumnType::numeric, sn)).first->second;
 		throw std::invalid_argument("Invalid short column name: " + sn);
 	}
 
@@ -1760,7 +1751,7 @@ public:
 				case ColumnsDataKind::sortOrder: data = (int)ColumnSortOrder::Asc; break;
 				}
 			}
-			res.push_back(std::make_pair(column, data));
+			res.emplace_back(column, data);
 			if (endOfInput) {
 				break;
 			}
@@ -3144,8 +3135,7 @@ public:
 		}
 
 		m_rowCount = 0;
-		int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr);
-		if (res == SQLITE_OK) {
+		if (int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr); res == SQLITE_OK) {
 			if (m_eqpGraph) {
 				m_eqpGraph->render();
 				m_eqpGraph.reset();
@@ -3619,12 +3609,10 @@ ORDER BY Dupe DESC, "Book read")");
 			return 0;
 		}
 
-		int res = sqlite3_exec(m_conn.get(), encSql.c_str(), callback, callBackData, nullptr);
-		if (res != SQLITE_OK) {
+		if (int res = sqlite3_exec(m_conn.get(), encSql.c_str(), callback, callBackData, nullptr); res != SQLITE_OK)
 			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
-		}
-
-		return sqlite3_changes(m_conn.get());
+		else
+			return sqlite3_changes(m_conn.get());
 	}
 
 	int executeWriteSql(std::string const& userSql)
@@ -3655,8 +3643,7 @@ ORDER BY Dupe DESC, "Book read")");
 	void executeInsert(std::string const& userSql, const char* idName)
 	{
 		if (executeWriteSql(userSql) > 0) {
-			auto const id = sqlite3_last_insert_rowid(m_conn.get());
-			if (id != EmptyId) {
+			if (auto const id = sqlite3_last_insert_rowid(m_conn.get()); id != EmptyId) {
 				printf("Added with %s %llu\n", idName, id);
 			}
 		}
@@ -3700,9 +3687,7 @@ ORDER BY Dupe DESC, "Book read")");
 	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
 	{
 		auto res = selectRowValues(userSql);
-		if (res.empty()) {
-			throw std::runtime_error(fmt("Could not find %s", valueName));
-		}
+		if (res.empty()) throw std::runtime_error(fmt("Could not find %s", valueName));
 		return res[0].at(0);
 	}
 
@@ -3801,9 +3786,8 @@ ORDER BY Dupe DESC, "Book read")");
 
 	void explainNotSupported()
 	{
-		if (m_explainQuery != ExQ::None) {
+		if (m_explainQuery != ExQ::None)
 			throw std::invalid_argument("-x option is not supported for this action");
-		}
 	}
 
 	void printTotalChanges()
@@ -3851,7 +3835,7 @@ ORDER BY Dupe DESC, "Book read")");
 			input(ad.story, "Story name (optional)", optional);
 			if (!ad.story.empty()) {
 				hasStories = true;
-				if (int same = 'y'; i > 0 && ad.story == authors[i - 1].story && ask("yn", "Same as previous", same) == 'y') {
+				if (i > 0 && ad.story == authors[i - 1].story && ask("yn", "Same as previous", 'y') == 'y') {
 					ad.storyId     = authors[i - 1].storyId;
 					ad.storyRating = authors[i - 1].storyRating;
 					ad.storyGenres = authors[i - 1].storyGenres;
