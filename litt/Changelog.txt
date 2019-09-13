@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-13: Moved inputIsbn to Input functions and ISBN check functions to Utils.
  * 2019-09-13: Avoid duplicating the input regex check.
  * 2019-09-12: Cleaned up input functions.
  * 2019-09-12: Cleaned up toSecondsValue.

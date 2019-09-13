@@ -349,6 +349,38 @@ namespace Utils
 		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return static_cast<char>(tolower(c)); });
 	}
 
+	int calcIsbn10CheckDigit(const char* isbn)
+	{
+		int sum = 0;
+		for (int i = 0; i < 9; ++i) {
+			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
+			sum += (10 - i) * d;
+		}
+		int const rem = sum % 11;
+		int const chkVal = (rem == 0) ? 0 : 11 - rem;
+		return (chkVal == 10) ? 'X' : chkVal + '0';
+	}
+
+	int calcIsbn13CheckDigit(const char* isbn)
+	{
+		int sum = 0, weight = 1;
+		for (int i = 0; i < 12; ++i) {
+			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
+			sum += weight * d;
+			weight = (weight == 1) ? 3 : 1;
+		}
+		int const rem = sum % 10;
+		int const chkVal = (rem == 0) ? 0 : 10 - rem;
+		return chkVal + '0';
+	}
+
+	bool checkIsbn(const char* isbn, int len)
+	{
+		if (len == 10) return calcIsbn10CheckDigit(isbn) == isbn[9];
+		if (len == 13) return calcIsbn13CheckDigit(isbn) == isbn[12];
+		return false;
+	}
+
 	bool enableVTMode() // We assume a Windows 10 edition that supports ANSI.
 	{
 		if (HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE); hOut != INVALID_HANDLE_VALUE)
@@ -761,6 +793,14 @@ namespace Input
 		return askInput(validAnswers, question, def);
 	}
 
+	void inputIsbn(std::string& value, const char* prompt, InputOptions options = required)
+	{
+		do {
+			input(value, prompt, options);
+		} while (!checkIsbn(value.c_str(), value.length()) &&
+			ask("yn", fmt("Use invalid %s '%s'", prompt, value.c_str()), 'n') == 'n');
+	}
+
 	bool confirmEnabled = true;
 
 	bool confirm(std::string const & question)
@@ -1144,45 +1184,6 @@ class Litt {
 		return r == 0 ? n1 - n2 : r;
 	}
 */
-
-	static int calcIsbn10CheckDigit(const char* isbn)
-	{
-		int sum = 0;
-		for (int i = 0; i < 9; ++i) {
-			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
-			sum += (10 - i) * d;
-		}
-		int const rem = sum % 11;
-		int const chkVal = (rem == 0) ? 0 : 11 - rem;
-		return (chkVal == 10) ? 'X' : chkVal + '0';
-	}
-
-	static int calcIsbn13CheckDigit(const char* isbn)
-	{
-		int sum = 0, weight = 1;
-		for (int i = 0; i < 12; ++i) {
-			int const d = isbn[i] - '0'; if (d < 0 || 9 < d) return 0;
-			sum += weight * d;
-			weight = (weight == 1) ? 3 : 1;
-		}
-		int const rem = sum % 10;
-		int const chkVal = (rem == 0) ? 0 : 10 - rem;
-		return chkVal + '0';
-	}
-
-	static bool checkIsbn(const char* isbn, int len)
-	{
-		if (len == 10) {
-			auto const chk = calcIsbn10CheckDigit(isbn);
-			return chk == isbn[9];
-		}
-		else if (len == 13) {
-			auto const chk = calcIsbn13CheckDigit(isbn);
-			return chk == isbn[12];
-		}
-		return false;
-	}
-
 	static void isbn10(sqlite3_context* context, int argc, sqlite3_value** argv)
 	{
 		if (argc == 1) {
@@ -1225,16 +1226,6 @@ class Litt {
 			}
 		}
 		sqlite3_result_null(context);
-	}
-
-	void inputIsbn(std::string& value, const char* prompt, InputOptions options = required)
-	{
-		do {
-			prefillInput(value);
-			value = input(prompt, options);
-		} while (!checkIsbn(value.c_str(), value.length()) && 
-			ask("yn", fmt("Use invalid %s '%s'", prompt, value.c_str()), 'n') == 'n'
-		);
 	}
 
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
