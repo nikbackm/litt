@@ -1902,9 +1902,20 @@ public:
 		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
 	}
 
-	void resetWhere() const
+	// Needed when listing output multiple times in same LITT session (like when listing items for book input!)
+	// Note that usedInResult is used/checked and reset in addOrderBy. Cannot do that here since addAuxTables
+	// is called multiple times to generate a single query in some cases.
+	void resetTablesAndColumns()
 	{
-		m_whereCondition.clear();
+		for (auto& ti : m_tableInfos.arrView) ti.reset();
+		for (auto& node : m_columnInfos) node.second.usedInQuery = false;
+	}
+
+	void resetListingData(std::string const& whereCondition) // For use from listings during add actions.
+	{
+		m_selectedColumns.clear(); m_orderBy.clear(); m_additionalColumns.clear();
+		resetTablesAndColumns();
+		m_whereCondition = getWhereCondition(whereCondition);
 	}
 
 	void addActionWhereCondition(const char* sn, std::string const & cond) const
@@ -2376,19 +2387,6 @@ public:
 			}
 		}
 
-		// Needed when listing output multiple times in same LITT session (like when listing items for book input!)
-		// Note that usedInResult is used/checked and reset in addOrderBy. Cannot do that here since addAuxTables
-		// is called multiple times to generate a single query in some cases.
-		void resetTablesAndColumns()
-		{
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.reset();
-			}
-			for (auto& node : litt.m_columnInfos) {
-				node.second.usedInQuery = false;
-			}
-		}
-
 		void addAuxTablesRaw(Table startTable = Table::books, unsigned indentSize = 0)
 		{
 			litt.getTableInfo(startTable).included = true; // Do this here so it's done also if addAuxTablesMultipleCalls is called.
@@ -2588,15 +2586,13 @@ public:
 		{
 			initTablesAndColumns(startTable);
 			addAuxTablesRaw(startTable, indentSize);
-			resetTablesAndColumns();
+			litt.resetTablesAndColumns();
 		}
 
 		void addAuxTablesMultipleCalls(Table startTable = Table::books, unsigned indentSize = 0)
 		{
 			addAuxTablesRaw(startTable, indentSize);
-			for (auto& ti : litt.m_tableInfos.arrView) {
-				ti.included = false;
-			}
+			for (auto& ti : litt.m_tableInfos.arrView) ti.included = false;
 		}
 
 		void addOrderBy()
@@ -3474,7 +3470,7 @@ ORDER BY Dupe DESC, "Book read")");
 			q.adf("UPDATE mdb.Res SET \"%i\" = (SELECT \"%i\" FROM mdb.Year%i WHERE rowId=mdb.Res.\"#\");", year, year, year);
 			q.a("\n");
 		}
-		q.resetTablesAndColumns();
+		resetTablesAndColumns();
 		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
 		q.add("END TRANSACTION; DETACH DATABASE mdb");
 		runOutputQuery(q);
@@ -3611,7 +3607,7 @@ ORDER BY Dupe DESC, "Book read")");
 		q.aIf("WHERE " + period + " LIKE " + likeArg(cond + WcS), !cond.empty() && cond != WcS);
 		q.addOrderBy();
 		q.add("; END TRANSACTION; DETACH DATABASE mdb");
-		q.resetTablesAndColumns();
+		resetTablesAndColumns();
 		runOutputQuery(q);
 	}
 
@@ -3728,7 +3724,7 @@ ORDER BY Dupe DESC, "Book read")");
 		return [=](IdValue id) { (this->*selMethod)(id); };
 	}
 
-	#define LIST_F(listCode) [&](std::string const & s) { resetWhere(); listCode; }
+	#define LIST_F(listCode) [&](std::string const & s) { resetListingData(""); listCode; }
 	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS));       }
 	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, ""));   }
 	InputListFunction getListSource() { return LIST_F(listSources("so", WcS + s + WcS)); }
@@ -4012,12 +4008,8 @@ ORDER BY Dupe DESC, "Book read")");
 			};
 			for (;;) {
 				printf("\nStory name already exists, select a storyID to use from the ones listed or leave empty to add new.\n\n");
-				OutputQuery q(*this);
-				q.columnWidths.assign({ 7, 30, 6, 25, 30 });
-				q.a(fmt("SELECT StoryID, Story, Stories.Rating, \"Last Name\"||' '||\"First Name\" AS Author, Title"
-					" FROM Stories JOIN BookStories USING(StoryID) JOIN Books USING(BookID) JOIN Authors USING(AuthorID)"
-					" WHERE Story=%s", ESC_S(story)));
-				runOutputQuery(q);
+				resetListingData("st.eq." + story);
+				runListData("stid.st.stra.nn.bt", "stid.st", Table::stories);
 				printf("\n");
 				if (!idValid()) { storyId = EmptyId; }
 				input(storyId, "StoryID", nullptr, nullptr, optional);
