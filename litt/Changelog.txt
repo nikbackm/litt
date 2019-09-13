@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-13: Simplified sel* helper methods.
  * 2019-09-13: Listings during add actions are now resistant to output action options like -c and -o.
  * 2019-09-13: Moved inputIsbn to Input functions and ISBN check functions to Utils.
  * 2019-09-13: Avoid duplicating the input regex check.

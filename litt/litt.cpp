@@ -2045,7 +2045,7 @@ public:
 		{ "Stories", m_tableInfos.stories },
 	};
 
-	const char* getTableName(Table table)
+	const char* getTableName(Table table) const
 	{
 		return m_tableData[(int)table].tableName;
 	}
@@ -3706,18 +3706,19 @@ ORDER BY Dupe DESC, "Book read")");
 		return res[0].at(0);
 	}
 
-	std::string selDV(std::string const& sql, const char* idName) const
+	std::string selDV(const char* valCol, Table table, const char* idCol, IdValue id) const
 	{
-		return fromUtf8(selectSingleValue(sql, idName)); // Convert to console code page, it will be displayed there.
+		auto sql = fmt("SELECT %s FROM %s WHERE %s=%llu", valCol, getTableName(table), idCol, id);
+		return fromUtf8(selectSingleValue(sql, idCol)); // Convert to console code page, it will be displayed there.
 	}
-	std::string selTitle(IdValue id) const { return selDV(fmt("SELECT Title FROM Books WHERE BookID=%llu", id), "BookID"); }
-	std::string selSeries(IdValue id) const { return selDV(fmt("SELECT Series FROM Series WHERE SeriesID=%llu", id), "SeriesID"); }
-	std::string selSource(IdValue id) const { return selDV(fmt("SELECT Source FROM Sources WHERE SourceID=%llu", id), "SourceID"); }
-	std::string selGenre(IdValue id) const { return selDV(fmt("SELECT Genre FROM Genres WHERE GenreID=%llu", id), "GenreID"); }
-	std::string selAuthor(IdValue id) const { return selDV(fmt("SELECT \"First Name\" || ' ' || \"Last Name\" FROM Authors WHERE AuthorID=%llu", id), "AuthorID"); }
-	std::string selStory(IdValue id) const { return selDV(fmt("SELECT Story FROM Stories WHERE StoryID=%llu", id), "StoryID"); }
-	std::string selBookCategory(IdValue id) const { return selDV(fmt("SELECT Category FROM BookCategory WHERE CategoryID=%llu", id), "CategoryID"); }
-	std::string selLanguage(IdValue id) const { return selDV(fmt("SELECT Language FROM Language WHERE LangID=%llu", id), "LangID"); }
+	std::string selTitle(IdValue id) const        { return selDV("Title", Table::books, "BookID", id); }
+	std::string selSeries(IdValue id) const       { return selDV("Series", Table::series, "SeriesID", id); }
+	std::string selSource(IdValue id) const       { return selDV("Source", Table::sources, "SourceID", id); }
+	std::string selGenre(IdValue id) const        { return selDV("Genre", Table::genres, "GenreID", id); }
+	std::string selAuthor(IdValue id) const       { return selDV(A_NAME, Table::authors, "AuthorID", id); }
+	std::string selStory(IdValue id) const        { return selDV("Story", Table::stories, "StoryID", id); }
+	std::string selBookCategory(IdValue id) const { return selDV("Category", Table::bookCategory, "CategoryID", id); }
+	std::string selLanguage(IdValue id) const     { return selDV("Language", Table::language, "LangID", id); }
 	
 	InputCheckIdFunction cf(std::string (Litt::*selMethod)(IdValue id) const) const
 	{
