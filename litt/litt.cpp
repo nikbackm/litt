@@ -684,9 +684,8 @@ namespace Input
 
 	void input(std::string& value, const char* prompt, const char* regex, InputOptions options = required)
 	{
-		do {
-			input(value, prompt, options);
-		} while (!(value.empty() || std::regex_match(value, std::regex(regex))));
+		prefillInput(value);
+		value = input(prompt, regex, options);
 	}
 
 	void input(unsigned& value, const char* prompt, InputOptions options = required)
@@ -766,8 +765,7 @@ namespace Input
 
 	bool confirm(std::string const & question)
 	{
-		if (!confirmEnabled) return true;
-		return 'y' == ask("yn", question);
+		return confirmEnabled ? (ask("yn", question) == 'y') : true;
 	}
 }
 using namespace Input;
@@ -987,8 +985,7 @@ public:
 		if (len == 0) return;
 		if (m_stdOutIsConsole) {
 			auto ws = utf8ToWide(str, len);
-			DWORD written;
-			if (!WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &written, 0)) {
+			if (DWORD nw; !WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &nw, 0)) {
 				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
 			}
 		}
