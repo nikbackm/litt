@@ -2627,14 +2627,7 @@ public:
 			}
 
 			// Needed when called multiple times in same LITT session (like when listing items for book input!)
-			for (auto& node : litt.m_columnInfos) {
-				node.second.usedInResult = false;
-			}
-		}
-
-		std::string getSql() const
-		{
-			return litt.encodeSqlFromInput(m_query);
+			for (auto& node : litt.m_columnInfos) node.second.usedInResult = false;
 		}
 	}; // OutputQuery
 
@@ -3137,7 +3130,7 @@ public:
 
 	void runOutputQuery(OutputQuery& query)
 	{
-		std::string sql = query.getSql();
+		std::string sql = encodeSqlFromInput(query.m_query);
 
 		if (m_showQuery) {
 			m_output.write(sql); m_output.write('\n');
@@ -3170,8 +3163,7 @@ public:
 			}
 		}
 	}
-
-
+	
 	void runListData(const char* defColumns, const char* defOrderBy, Table startTable = Table::books, SelectOption selectOption = SelectOption::normal)
 	{
 		OutputQuery query(*this);
