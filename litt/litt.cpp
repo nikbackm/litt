@@ -2058,19 +2058,55 @@ public:
 		distinct,
 	};
 
-	class OutputQuery {
+	struct QueryBuilder {
 		std::string m_query;
+		
+		QueryBuilder(const char* sql = nullptr)
+		{ 
+			m_query.reserve(5000);
+			if (sql != nullptr) m_query.append(sql);
+		}
+
+		void a(const char* str)
+		{
+			m_query.append(str);
+		}
+
+		void a(std::string const & str)
+		{
+			m_query.append(str);
+		}
+
+		void add(const char* line)
+		{
+			m_query.append("\n").append(line);
+		}
+
+		void add(std::string const & line)
+		{
+			add(line.c_str());
+		}
+
+		void adf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
+		{
+			std_string_fmt_impl(fmtStr, res);
+			add(res);
+		}
+
+		void aIf(std::string const & line, bool cond)
+		{
+			if (cond) add(line);
+		}
+	};
+	
+	class OutputQuery : public QueryBuilder {
 		Columns m_orderBy;
 	public:
 		Litt& litt;
 		std::vector<int> columnWidths; // Only set for column mode.
 		std::vector<bool> columnRight; // Only set for column mode.
 
-		OutputQuery(Litt& litt) 
-			: litt(litt) 
-		{
-			m_query.reserve(5000);
-		}
+		OutputQuery(Litt& litt) : litt(litt) {}
 
 		void addExplain()
 		{
@@ -2187,46 +2223,15 @@ public:
 			}
 		}
 
-		void a(const char* str)
-		{
-			m_query += str;
-		}
-
-		void a(std::string const & str)
-		{
-			m_query += str;
-		}
-
-		void add(const char* line)
-		{
-			m_query.append("\n").append(line);
-		}
-
-		void add(std::string const & line)
-		{
-			add(line.c_str());
-		}
-
 		void xad(std::string const& line)
 		{
 			m_query.append("\n"); addExplain(); m_query.append(line);
-		}
-
-		void adf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
-		{
-			std_string_fmt_impl(fmtStr, res);
-			add(res);
 		}
 
 		void xaf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 		{
 			std_string_fmt_impl(fmtStr, res);
 			xad(res);
-		}
-
-		void aIf(std::string const & line, bool cond)
-		{
-			if (cond) add(line.c_str());
 		}
 
 		// NOTE: We assume the tableInfos are reset whenever startTable is changed to something else than the last call.
@@ -3951,45 +3956,45 @@ ORDER BY Dupe DESC, "Book read")");
 		// Add it!
 		auto bid = getNextIdValue("BookID", "Books");
 
-		std::string sql = "BEGIN TRANSACTION;\n";
-		sql.append(fmt("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
-		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);\n",
-			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date)));
-		sql.append(fmt("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu);\n",
-			bid, ESC_S(dateRead), sourceId));
+		QueryBuilder qb("BEGIN TRANSACTION;");
+		qb.adf("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
+		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);",
+			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date));
+		qb.adf("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu);",
+			bid, ESC_S(dateRead), sourceId);
 		for (auto gi : genreIds) {
-			sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);\n", bid, gi));
+			qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
 		}
 		for (auto const& a : authors) {
-			sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);\n", bid, a.authorId));
+			qb.adf("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, a.authorId);
 			if (!a.story.empty()) {
 				if (!a.storyRating.empty()) {
-					sql.append(fmt("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);\n",
-						a.storyId, ESC_S(a.story), S(a.storyRating)));
+					qb.adf("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);",
+						a.storyId, ESC_S(a.story), S(a.storyRating));
 					for (auto gi : a.storyGenres) {
-						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", a.storyId, gi));
+						qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", a.storyId, gi);
 					}
 				}
-				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);\n",
-					bid, a.authorId, a.storyId));
+				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);",
+					bid, a.authorId, a.storyId);
 			}
 		}
 		if (!origtitle.empty()) {
-			sql.append(fmt("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);\n",
-				bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate)));
+			qb.adf("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);",
+				bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate));
 		}
 		if (seriesId != EmptyId) {
-			sql.append(fmt("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);\n",
-				bid, seriesId, S(escSqlVal(seriesPart, true))));
+			qb.adf("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);",
+				bid, seriesId, S(escSqlVal(seriesPart, true)));
 		}
-		sql.append("COMMIT TRANSACTION");
+		qb.add("COMMIT TRANSACTION");
 		
 		try {
-			executeSql(sql);
+			executeSql(qb.m_query);
 			printTotalChanges();
 		}
 		catch (std::exception& ex) {
-			printf("Failed to add book: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), S(sql));
+			printf("Failed to add book: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), S(qb.m_query));
 			executeSql("ROLLBACK TRANSACTION");
 			if (confirm("Retry")) {
 				goto enterBook;
@@ -4032,25 +4037,25 @@ ORDER BY Dupe DESC, "Book read")");
 			}
 			if (confirmf("Add story '%s' [%llu] with rating='%s' to '%s [%llu]' for author %s [%llu]",
 				S(story), storyId, S(rating), S(selTitle(bid)), bid, S(selAuthor(aid)), aid)) {
-				std::string sql = "BEGIN TRANSACTION;";
-				sql.append(fmt("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid));
+				QueryBuilder qb("BEGIN TRANSACTION;");
+				qb.adf("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid);
 				if (!rating.empty()) {
 					storyId = getNextIdValue("StoryID", "Stories");
-					sql.append(fmt("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), S(rating)));
+					qb.adf("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), S(rating));
 					for (auto gi : genreIds) {
-						sql.append(fmt("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);\n", storyId, gi));
-						sql.append(fmt("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);\n", bid, gi));
+						qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", storyId, gi);
+						qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
 					}
 				}
-				sql.append(fmt("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, aid, storyId));
-				sql.append("COMMIT TRANSACTION");
+				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, aid, storyId);
+				qb.add("COMMIT TRANSACTION");
 
 				try {
-					executeSql(sql);
+					executeSql(qb.m_query);
 					printTotalChanges();
 				}
 				catch (std::exception& ex) {
-					printf("Failed to add story: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), S(sql));
+					printf("Failed to add story: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), S(qb.m_query));
 					executeSql("ROLLBACK TRANSACTION");
 				}
 			}
