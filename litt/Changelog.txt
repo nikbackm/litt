@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-14: Added confirmf, executeWriteSqlf and made executeInsert "f" to avoid overuse of fmt.
  * 2019-09-14: Use S() macro to get c_str() value of std::string in format functions, easier to read.
  * 2019-09-13: Re-grouped the col descs in the online help a little.
  * 2019-09-13: Simplified "actual name" column handling.
