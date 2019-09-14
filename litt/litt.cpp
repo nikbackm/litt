@@ -2099,9 +2099,8 @@ public:
 		}
 	};
 	
-	class OutputQuery : public QueryBuilder {
+	struct OutputQuery : QueryBuilder {
 		Columns m_orderBy;
-	public:
 		Litt& litt;
 		std::vector<int> columnWidths; // Only set for column mode.
 		std::vector<bool> columnRight; // Only set for column mode.
