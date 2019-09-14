@@ -470,12 +470,8 @@ namespace LittDefs
 		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
 	}
 
-	bool toSecondsValue(std::string const & str, unsigned long long & value)
-	{
-		return toULongLong(str, value);
-	}
-
-	bool toIdValue(std::string const & str, IdValue& value) { return toULongLong(str, value); }
+	constexpr auto& toSecondsValue = toULongLong;
+	constexpr auto& toIdValue = toULongLong;
 
 	struct TableInfo {
 		TableInfo* parent = nullptr; // Parent table, i.e. table that will need to be included in the current query if this table is. May be null.
