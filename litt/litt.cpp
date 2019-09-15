@@ -822,10 +822,11 @@ public:
 		: m_option(value), m_type(type), m_delim(delim)
 	{}
 
-	bool empty() const
-	{
-		return m_option.length() <= m_optionIndex;
-	}
+	bool empty() const { return m_option.length() <= m_optionIndex; }
+
+	// These two allows clients to push a read value back. (Safe thanks to empty())
+	unsigned position() const            { return m_optionIndex; }
+	void     setPosition(unsigned pos)   { m_optionIndex = pos; }
 
 	bool getNext(std::string& next)
 	{
@@ -1707,21 +1708,13 @@ public:
 	{
 		Columns res;
 		OptionParser opts(sns);
-		std::string sn;
-		for (;;) {
-			if (sn.empty()) {
-				if (!opts.getNext(sn)) {
-					break;
-				}
-			}
+		for (std::string sn; opts.getNext(sn); ) {
 			auto column = getColumn(sn, allowActualName);
-			if (usedInQuery) {
-				column->usedInQuery = true;
-			}
+			if (usedInQuery) column->usedInQuery = true;
 
 			// Now get the optional data (sortOrder/width).
 			int data = -1;
-			bool endOfInput = false;
+			auto const curOptPos = opts.position();
 			if (opts.getNext(sn)) {
 				if (kind == ColumnsDataKind::sortOrder) {
 					if (sn == "asc") {
@@ -1734,29 +1727,16 @@ public:
 				else if (kind == ColumnsDataKind::width) {
 					toInt(sn, data);
 				}
-				if (data >= 0) {
-					sn.clear();
-				}
-				else {
-					// lookup sn as column next iteration
-				}
 			}
-			else {
-				endOfInput = true;
-			}
-
-			if (data < 0) { // Provide default values
-				switch (kind) {
-				case ColumnsDataKind::width: data = column->width; break;
+			if (data < 0) { // Data not read or not valid
+				opts.setPosition(curOptPos); // if invalid data value was read, undo read.
+				switch (kind) {//  provide default values.
+				case ColumnsDataKind::width:     data = column->width; break;
 				case ColumnsDataKind::sortOrder: data = (int)ColumnSortOrder::Asc; break;
 				}
 			}
 			res.emplace_back(column, data);
-			if (endOfInput) {
-				break;
-			}
 		} // for
-
 		return res;
 	}
 
