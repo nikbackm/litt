@@ -1,6 +1,6 @@
 LITT Changelog:
 ===============
- * 2019-09-15: Made addColumn(Info) methods more readable (shorter).
+ * 2019-09-15: Made addColumn(Info) methods more readable (shorter). defWidth => width.
  * 2019-09-14: Alias toSecondsValue and toIdValue to toULongLong instead of calling it.
  * 2019-09-14: Factored out QueryBuilder base class from OutputQuery and used it for write queries.
  * 2019-09-14: Added confirmf, executeWriteSqlf and made executeInsert "f" to avoid overuse of fmt.

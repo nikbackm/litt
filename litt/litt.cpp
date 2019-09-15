@@ -591,8 +591,8 @@ namespace LittDefs
 
 	struct ColumnInfo {
 		// These values are pre-configured:
-		std::string const nameDef; // Name or definition for column
-		int         const defWidth;
+		std::string const nameDef; // Column name or SQL expression (def) for column
+		int         const width; // Default width of column, can be overridden.
 		ColumnType  const type;
 		std::string const label; // optional, used when name does not refer to a direct table column.
 		bool        const aggr; // Is a group aggregate column?
@@ -609,9 +609,9 @@ namespace LittDefs
 		mutable bool usedInQuery = false;
 		mutable bool usedInResult = false;
 
-		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType ct, std::string const& label, bool aggr, bool justifyRight, Tables t) :
+		ColumnInfo(std::string const& nameDef, int width, ColumnType ct, std::string const& label, bool aggr, bool justifyRight, Tables t) :
 			nameDef(nameDef),
-			defWidth(defWidth),
+			width(width),
 			type(ct),
 			label(label),
 			aggr(aggr),
@@ -1112,36 +1112,36 @@ class Litt {
 
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
-	ColumnInfo& ci(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType ct, Tables t, std::string const& label, bool aggr = false)
+	ColumnInfo& ci(std::string const& sn, std::string const& nameDef, int width, ColumnType ct, Tables t, std::string const& label, bool aggr = false)
 	{
-		bool const justifyRight = (defWidth < 0);
-		if (auto res = m_columnInfos.try_emplace(sn, nameDef, abs(defWidth), ct, label, aggr, justifyRight, t); res.second)
+		bool const justifyRight = (width < 0);
+		if (auto res = m_columnInfos.try_emplace(sn, nameDef, abs(width), ct, label, aggr, justifyRight, t); res.second)
 			return res.first->second;
 		throw std::logic_error("Duplicate short name: " + sn);
 	}
 
-	ColumnInfo& ciText(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciText(std::string const & sn, std::string const & nameDef, int width, Tables tables, std::string const & label = "")
 	{
-		return ci(sn, nameDef, defWidth, ColumnType::text, tables, label);
+		return ci(sn, nameDef, width, ColumnType::text, tables, label);
 	}
 
-	ColumnInfo& ciNum(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciNum(std::string const & sn, std::string const & nameDef, int width, Tables tables, std::string const & label = "")
 	{
-		return ci(sn, nameDef, defWidth, ColumnType::numeric, tables, label);
+		return ci(sn, nameDef, width, ColumnType::numeric, tables, label);
 	}
 
-	ColumnInfo& ciTextL(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, const char* collation, std::string const & label = "")
+	ColumnInfo& ciTextL(std::string const & sn, std::string const & nameDef, int width, Tables tables, const char* collation, std::string const & label = "")
 	{
-		auto& ci = ciText(sn, nameDef, defWidth, tables, label);
+		auto& ci = ciText(sn, nameDef, width, tables, label);
 		auto const labelLength = "l_" + sn;
 		ci.lengthColumn = &ciNum(sn + "l", "length(" + nameDef + ")", labelLength.length(), tables, labelLength);
 		ci.collation = collation;
 		return ci;
 	}
 
-	ColumnInfo& ciAggr(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciAggr(std::string const & sn, std::string const & def, int width, Tables tables, std::string const & label)
 	{
-		return ci(sn, nameDef, defWidth, ColumnType::numeric, tables, label, true); 
+		return ci(sn, def, width, ColumnType::numeric, tables, label, true);
 	}
 /*
 #define ADJUST_IGNORE(strlit,n,s) \
@@ -1748,7 +1748,7 @@ public:
 
 			if (data < 0) { // Provide default values
 				switch (kind) {
-				case ColumnsDataKind::width: data = column->defWidth; break;
+				case ColumnsDataKind::width: data = column->width; break;
 				case ColumnsDataKind::sortOrder: data = (int)ColumnSortOrder::Asc; break;
 				}
 			}
