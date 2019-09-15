@@ -589,14 +589,13 @@ namespace LittDefs
 	};
 	static_assert(sizeof(TableInfos::arrView) == sizeof(TableInfos), "check arrView size!");
 
-	// Note: All member value types are chosen/designed so that zero-init will set the desired default.
 	struct ColumnInfo {
 		// These values are pre-configured:
 		std::string const nameDef; // Name or definition for column
 		int         const defWidth;
 		ColumnType  const type;
 		std::string const label; // optional, used when name does not refer to a direct table column.
-		bool        const isGroupAggregate;
+		bool        const aggr; // Is a group aggregate column?
 		bool        const justifyRight;
 
 		// Also pre-configured, but have default values:
@@ -610,14 +609,14 @@ namespace LittDefs
 		mutable bool usedInQuery = false;
 		mutable bool usedInResult = false;
 
-		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType type, std::string const& label, bool isGroupAggregate = false, bool justifyRight = false, Tables tables = Tables()) :
+		ColumnInfo(std::string const& nameDef, int defWidth, ColumnType ct, std::string const& label, bool aggr, bool justifyRight, Tables t) :
 			nameDef(nameDef),
 			defWidth(defWidth),
-			type(type),
+			type(ct),
 			label(label),
-			isGroupAggregate(isGroupAggregate),
+			aggr(aggr),
 			justifyRight(justifyRight),
-			tables(tables)
+			tables(t)
 		{}
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
@@ -1113,37 +1112,36 @@ class Litt {
 
 	mutable int m_rowCount = 0; // The number of rows printed so far.
 
-	ColumnInfo& addColumn(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType type, Tables tables, std::string const& label = "", bool isGroupAgg = false)
+	ColumnInfo& ci(std::string const& sn, std::string const& nameDef, int defWidth, ColumnType ct, Tables t, std::string const& label, bool aggr = false)
 	{
 		bool const justifyRight = (defWidth < 0);
-		if (auto res = m_columnInfos.try_emplace(sn, ColumnInfo(nameDef, abs(defWidth), type, label, isGroupAgg, justifyRight, tables)); res.second)
+		if (auto res = m_columnInfos.try_emplace(sn, nameDef, abs(defWidth), ct, label, aggr, justifyRight, t); res.second)
 			return res.first->second;
 		throw std::logic_error("Duplicate short name: " + sn);
 	}
 
-	ColumnInfo& addColumnText(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciText(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::text, tables, label);
+		return ci(sn, nameDef, defWidth, ColumnType::text, tables, label);
 	}
 
-	ColumnInfo& addColumnNumeric(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciNum(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, tables, label);
+		return ci(sn, nameDef, defWidth, ColumnType::numeric, tables, label);
 	}
 
-	ColumnInfo& addColumnTextWithLength(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, const char* collation, std::string const & label = "")
+	ColumnInfo& ciTextL(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, const char* collation, std::string const & label = "")
 	{
-		auto& ci = addColumnText(sn, nameDef, defWidth, tables, label);
+		auto& ci = ciText(sn, nameDef, defWidth, tables, label);
 		auto const labelLength = "l_" + sn;
-		auto & ciLength = addColumnNumeric(sn + "l", "length(" + nameDef + ")", labelLength.length(), tables, labelLength);
-		ci.lengthColumn = &ciLength;
+		ci.lengthColumn = &ciNum(sn + "l", "length(" + nameDef + ")", labelLength.length(), tables, labelLength);
 		ci.collation = collation;
 		return ci;
 	}
 
-	ColumnInfo& addColumnNumericAggregate(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
+	ColumnInfo& ciAggr(std::string const & sn, std::string const & nameDef, int defWidth, Tables tables, std::string const & label = "")
 	{
-		return addColumn(sn, nameDef, defWidth, ColumnType::numeric, tables, label, true); 
+		return ci(sn, nameDef, defWidth, ColumnType::numeric, tables, label, true); 
 	}
 /*
 #define ADJUST_IGNORE(strlit,n,s) \
@@ -1244,95 +1242,95 @@ public:
 		auto&t = m_tableInfos;
 
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
-		addColumnNumeric("ai", "AuthorID", -8, Tables());
-		addColumnNumeric("beb", "\"Bought Ebook\"", 3, Tables(&t.books));
-		addColumnNumeric("bi", "BookID", -4, Tables());
-		addColumnTextWithLength("bt", "Title", 45, Tables(&t.books), CTitle);
-		addColumnTextWithLength("bd", "Date", 10, Tables(&t.books), CDefault);
-		addColumnTextWithLength("otd", "otDate", 10, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("bdo", "ifnull(otDate, Date)", 10, Tables(&t.books, &t.originalTitles), CDefault, "oDate");
-		addColumnNumeric("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, Tables(&t.books), "BYear");
-		addColumnNumeric("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, Tables(&t.originalTitles), "otYear");
-		addColumnTextWithLength("dr", "\"Date Read\"", 10, Tables(&t.datesRead), CDefault);
-		addColumnNumeric("dc", "DRCnt", 5, Tables(&t.dc));
-		addColumnTextWithLength("dg", "\"Date(s)\"", 30, Tables(&t.dg), CDefault);
-		addColumnTextWithLength("fn", "\"First Name\"", 15, Tables(&t.authors), CNoCase);
-		addColumnTextWithLength("ge", "GBook.Genre", 30, Tables(&t.gbook), CNoCase);
-		addColumnTextWithLength("gg", "\"Genre(s)\"", 30, Tables(&t.gg), CNoCase);
-		addColumnNumeric("gi", "BookGenres.GenreID", -7, Tables(&t.bookGenres));
-		addColumnNumeric("gi_n", "GenreID", -7, Tables());
-		addColumnTextWithLength("ln", "\"Last Name\"", 20, Tables(&t.authors), CLastName); 
-		addColumnNumeric("nc", "AuthorCnt", 6, Tables(&t.nc));
-		addColumnTextWithLength("ng", "\"Author(s)\"", 50, Tables(&t.ng), CNoCase);
-		addColumnTextWithLength("nn", A_NAME, 25, Tables(&t.authors), CNoCase, "Author");
-		addColumnNumeric("laid", "Books.LangID", 6, Tables(&t.books));
-		addColumnNumeric("laid_n", "LangID", 6, Tables());
-		addColumnNumeric("otli", "OriginalTitles.LangID", 8, Tables(&t.originalTitles), "otLangID");
-		addColumnText("la", "L_book.Language", 4, Tables(&t.l_book), "Lang");
-		addColumnText("otla", "L_ot.Language", 4, Tables(&t.l_ot), "otLa");
-		addColumnNumeric("ra", "Books.Rating", 3, Tables(&t.books), "Rating");
-		addColumnNumeric("ar", "ARating", 3, Tables(&t.ar));
-		addColumnNumeric("gr", "GRating", 3, Tables(&t.gr));
-		addColumnNumeric("sor", "SORating", 3, Tables(&t.sor));
-		addColumnNumeric("ser", "SERating", 3, Tables(&t.ser));
-		addColumnNumeric("own", "Owned", 3, Tables(&t.books));
-		addColumnTextWithLength("isbn", "ISBN", 13, Tables(&t.books), CDefault);
-		addColumnTextWithLength("is10", "isbn10(ISBN)", 10, Tables(&t.books), CDefault);
-		addColumnTextWithLength("is13", "isbn13(ISBN)", 13, Tables(&t.books), CDefault);
-		addColumnTextWithLength("otis", "otISBN", 13, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("oi10", "isbn10(otISBN)", 10, Tables(&t.originalTitles), CDefault);
-		addColumnTextWithLength("oi13", "isbn13(otISBN)", 13, Tables(&t.originalTitles), CDefault);
-		addColumnNumeric("catid", "CategoryID", 3, Tables());
-		addColumnTextWithLength("cat", "Category", 11, Tables(&t.bookCategory), CNoCase);
-		addColumnNumeric("pgs", "Pages", 5, Tables(&t.books));
-		addColumnNumeric("wds", "Words", 6, Tables(&t.books));
-		addColumnNumeric("wpp", "Words / Pages", 4, Tables(&t.books), "WPP");
-		addColumnNumeric("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
-		addColumnTextWithLength("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
-		addColumnTextWithLength("se", "Series", 40, Tables(&t.series), CTitle);
-		addColumnNumeric("si", "SeriesID", -8, Tables());
-		addColumnText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
-		addColumnText("sep", "Series||' '||\"Part in Series\"", 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
-		addColumnTextWithLength("st", "Story", 45, Tables(&t.stories), CTitle);
-		addColumnNumeric("stid", "StoryID", -7, Tables());
-		addColumnNumeric("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
-		addColumnTextWithLength("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
-		addColumnTextWithLength("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
-		addColumnNumeric("stbc", "\"BCnt\"", 4, Tables(&t.stbc));
-		addColumnTextWithLength("stbg", "\"StoryBooks(s)\"", 50, Tables(&t.stbg), CNoCase);
-		addColumnNumeric("stnc", "\"ACnt\"", 4, Tables(&t.stnc));
-		addColumnTextWithLength("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
-		addColumnTextWithLength("btst", APPEND_OPT_COL("Title", "Story"), 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
-		addColumnNumeric("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
-		addColumnTextWithLength("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
-		addColumnTextWithLength("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
-		addColumnNumeric("bastc", "SCnt", 4, Tables(&t.bastc));
-		addColumnTextWithLength("bastg", "Stories", 45, Tables(&t.bastg), CNoCase);
-		addColumnTextWithLength("btbastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.bastg), CTitle, "\"Title [Stories]\"");
-		addColumnNumeric("astc", "AStoryCnt", 5, Tables(&t.astc));
-		addColumnTextWithLength("astg", "\"Author Stories\"", 100, Tables(&t.astg), CNoCase);
-		addColumnNumeric("bstc", "BStoryCnt", 5, Tables(&t.bstc));
-		addColumnTextWithLength("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
-		addColumnTextWithLength("bstng", "\"Book+Story author(s)\"", 50, Tables(&t.bstng), CNoCase);
-		addColumnTextWithLength("so", "Source", 35, Tables(&t.sources), CNoCase);
-		addColumnNumeric("soid", "SourceID", -8, Tables());
-		addColumnTextWithLength("ps", "ps.Pseudonyms", 25, Tables(&t.ps), CNoCase);
-		addColumnTextWithLength("psf", "psf.\"Pseudonym For\"", 25, Tables(&t.psf), CNoCase);
-		addColumnNumeric("psmid", "PSMainID", -9, Tables(&t.psmid), "PSMainID");
-		addColumnNumeric("abc", "ABC", 4, Tables(&t.abc));
-		addColumnNumeric("abcp","ABCP",4, Tables(&t.abcp));
-		addColumnNumeric("abcr","ABCR",4, Tables(&t.abcr));
-		addColumnTextWithLength("agg", "\"Author Genres\"",    135, Tables(&t.agg),  CNoCase);
-		addColumnTextWithLength("aggp","\"Author(p) Genres\"", 135, Tables(&t.aggp), CNoCase);
-		addColumnNumeric("agc", "AGC", 4, Tables(&t.agc));
-		addColumnNumeric("agcp","AGCP",4, Tables(&t.agcp));
-		addColumnNumeric("gbc", "GBC", 4, Tables(&t.gbc));
-		addColumnNumeric("gac", "GAC", 4, Tables(&t.gac));
-		addColumnNumeric("cbc", "CBC", 4, Tables(&t.cbc));
-		addColumnNumeric("lbc", "LBC", 4, Tables(&t.lbc));
-		addColumnNumeric("obc", "OBC", 4, Tables(&t.obc));
-		addColumnNumeric("sobc","SOBC",4, Tables(&t.sobc));
-		addColumnNumeric("sebc","SEBC",4, Tables(&t.sebc));
+		ciNum("ai", "AuthorID", -8, Tables());
+		ciNum("beb", "\"Bought Ebook\"", 3, Tables(&t.books));
+		ciNum("bi", "BookID", -4, Tables());
+		ciTextL("bt", "Title", 45, Tables(&t.books), CTitle);
+		ciTextL("bd", "Date", 10, Tables(&t.books), CDefault);
+		ciTextL("otd", "otDate", 10, Tables(&t.originalTitles), CDefault);
+		ciTextL("bdo", "ifnull(otDate, Date)", 10, Tables(&t.books, &t.originalTitles), CDefault, "oDate");
+		ciNum("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, Tables(&t.books), "BYear");
+		ciNum("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, Tables(&t.originalTitles), "otYear");
+		ciTextL("dr", "\"Date Read\"", 10, Tables(&t.datesRead), CDefault);
+		ciNum("dc", "DRCnt", 5, Tables(&t.dc));
+		ciTextL("dg", "\"Date(s)\"", 30, Tables(&t.dg), CDefault);
+		ciTextL("fn", "\"First Name\"", 15, Tables(&t.authors), CNoCase);
+		ciTextL("ge", "GBook.Genre", 30, Tables(&t.gbook), CNoCase);
+		ciTextL("gg", "\"Genre(s)\"", 30, Tables(&t.gg), CNoCase);
+		ciNum("gi", "BookGenres.GenreID", -7, Tables(&t.bookGenres));
+		ciNum("gi_n", "GenreID", -7, Tables());
+		ciTextL("ln", "\"Last Name\"", 20, Tables(&t.authors), CLastName); 
+		ciNum("nc", "AuthorCnt", 6, Tables(&t.nc));
+		ciTextL("ng", "\"Author(s)\"", 50, Tables(&t.ng), CNoCase);
+		ciTextL("nn", A_NAME, 25, Tables(&t.authors), CNoCase, "Author");
+		ciNum("laid", "Books.LangID", 6, Tables(&t.books));
+		ciNum("laid_n", "LangID", 6, Tables());
+		ciNum("otli", "OriginalTitles.LangID", 8, Tables(&t.originalTitles), "otLangID");
+		ciText("la", "L_book.Language", 4, Tables(&t.l_book), "Lang");
+		ciText("otla", "L_ot.Language", 4, Tables(&t.l_ot), "otLa");
+		ciNum("ra", "Books.Rating", 3, Tables(&t.books), "Rating");
+		ciNum("ar", "ARating", 3, Tables(&t.ar));
+		ciNum("gr", "GRating", 3, Tables(&t.gr));
+		ciNum("sor", "SORating", 3, Tables(&t.sor));
+		ciNum("ser", "SERating", 3, Tables(&t.ser));
+		ciNum("own", "Owned", 3, Tables(&t.books));
+		ciTextL("isbn", "ISBN", 13, Tables(&t.books), CDefault);
+		ciTextL("is10", "isbn10(ISBN)", 10, Tables(&t.books), CDefault);
+		ciTextL("is13", "isbn13(ISBN)", 13, Tables(&t.books), CDefault);
+		ciTextL("otis", "otISBN", 13, Tables(&t.originalTitles), CDefault);
+		ciTextL("oi10", "isbn10(otISBN)", 10, Tables(&t.originalTitles), CDefault);
+		ciTextL("oi13", "isbn13(otISBN)", 13, Tables(&t.originalTitles), CDefault);
+		ciNum("catid", "CategoryID", 3, Tables());
+		ciTextL("cat", "Category", 11, Tables(&t.bookCategory), CNoCase);
+		ciNum("pgs", "Pages", 5, Tables(&t.books));
+		ciNum("wds", "Words", 6, Tables(&t.books));
+		ciNum("wpp", "Words / Pages", 4, Tables(&t.books), "WPP");
+		ciNum("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
+		ciTextL("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
+		ciTextL("se", "Series", 40, Tables(&t.series), CTitle);
+		ciNum("si", "SeriesID", -8, Tables());
+		ciText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
+		ciText("sep", "Series||' '||\"Part in Series\"", 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
+		ciTextL("st", "Story", 45, Tables(&t.stories), CTitle);
+		ciNum("stid", "StoryID", -7, Tables());
+		ciNum("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
+		ciTextL("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
+		ciTextL("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
+		ciNum("stbc", "\"BCnt\"", 4, Tables(&t.stbc));
+		ciTextL("stbg", "\"StoryBooks(s)\"", 50, Tables(&t.stbg), CNoCase);
+		ciNum("stnc", "\"ACnt\"", 4, Tables(&t.stnc));
+		ciTextL("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
+		ciTextL("btst", APPEND_OPT_COL("Title", "Story"), 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
+		ciNum("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
+		ciTextL("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
+		ciTextL("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
+		ciNum("bastc", "SCnt", 4, Tables(&t.bastc));
+		ciTextL("bastg", "Stories", 45, Tables(&t.bastg), CNoCase);
+		ciTextL("btbastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.bastg), CTitle, "\"Title [Stories]\"");
+		ciNum("astc", "AStoryCnt", 5, Tables(&t.astc));
+		ciTextL("astg", "\"Author Stories\"", 100, Tables(&t.astg), CNoCase);
+		ciNum("bstc", "BStoryCnt", 5, Tables(&t.bstc));
+		ciTextL("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
+		ciTextL("bstng", "\"Book+Story author(s)\"", 50, Tables(&t.bstng), CNoCase);
+		ciTextL("so", "Source", 35, Tables(&t.sources), CNoCase);
+		ciNum("soid", "SourceID", -8, Tables());
+		ciTextL("ps", "ps.Pseudonyms", 25, Tables(&t.ps), CNoCase);
+		ciTextL("psf", "psf.\"Pseudonym For\"", 25, Tables(&t.psf), CNoCase);
+		ciNum("psmid", "PSMainID", -9, Tables(&t.psmid), "PSMainID");
+		ciNum("abc", "ABC", 4, Tables(&t.abc));
+		ciNum("abcp","ABCP",4, Tables(&t.abcp));
+		ciNum("abcr","ABCR",4, Tables(&t.abcr));
+		ciTextL("agg", "\"Author Genres\"",    135, Tables(&t.agg),  CNoCase);
+		ciTextL("aggp","\"Author(p) Genres\"", 135, Tables(&t.aggp), CNoCase);
+		ciNum("agc", "AGC", 4, Tables(&t.agc));
+		ciNum("agcp","AGCP",4, Tables(&t.agcp));
+		ciNum("gbc", "GBC", 4, Tables(&t.gbc));
+		ciNum("gac", "GAC", 4, Tables(&t.gac));
+		ciNum("cbc", "CBC", 4, Tables(&t.cbc));
+		ciNum("lbc", "LBC", 4, Tables(&t.lbc));
+		ciNum("obc", "OBC", 4, Tables(&t.obc));
+		ciNum("sobc","SOBC",4, Tables(&t.sobc));
+		ciNum("sebc","SEBC",4, Tables(&t.sebc));
 
 #define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
 
@@ -1347,18 +1345,18 @@ public:
 #define OTD_DAYS "CAST(strftime('%J'," OTD_FIXED ") AS REAL)"
 
 		// Columns for more formats of Date Read:
-		addColumnNumeric("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "DOW");
-		addColumnText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
+		ciNum("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "DOW");
+		ciText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
 					  5, Tables(&t.datesRead), "DoW");
-		addColumnNumeric("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "Month");
-		addColumnNumeric("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, Tables(&t.datesRead), "Year");
-		addColumnText("dym", "substr(\"Date Read\",1,7)", 7, Tables(&t.datesRead), "YMonth");
-		addColumnText("dymd", "substr(\"Date Read\",1,10)", 10, Tables(&t.datesRead), "YMDay");
-		addColumnText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, Tables(&t.datesRead), "Time");
-		addColumnNumeric("sec", DR_SECS, -11, Tables(&t.datesRead), "Timestamp");
-		addColumnNumeric("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, Tables(&t.datesRead, &t.books), "RDelay");
-		addColumnNumeric("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, Tables(&t.books, &t.originalTitles), "TDelay");
+		ciNum("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "Month");
+		ciNum("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, Tables(&t.datesRead), "Year");
+		ciText("dym", "substr(\"Date Read\",1,7)", 7, Tables(&t.datesRead), "YMonth");
+		ciText("dymd", "substr(\"Date Read\",1,10)", 10, Tables(&t.datesRead), "YMDay");
+		ciText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, Tables(&t.datesRead), "Time");
+		ciNum("sec", DR_SECS, -11, Tables(&t.datesRead), "Timestamp");
+		ciNum("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, Tables(&t.datesRead, &t.books), "RDelay");
+		ciNum("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, Tables(&t.books, &t.originalTitles), "TDelay");
 
 		// Some columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
 		// Will also display sensible values for all other supported formats.
@@ -1375,41 +1373,41 @@ public:
 #define DRR_DAYS "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
 // We keep these macros defined so they can be used elsewhere as well.
 
-		addColumnText("drrf", DRR_FIRST, 10, Tables(&t.datesRead), "DRRFirst");
-		addColumnText("drrl", DRR_LAST,  10, Tables(&t.datesRead), "DRRLast");
-		addColumnText("drrm", DRR_MID,   10, Tables(&t.datesRead), "DRRMiddle");
-		addColumnText("drrr", DRR_RAND,  10, Tables(&t.datesRead), "DRRRandom");
-		addColumnNumeric("drrd", DRR_DAYS, -7, Tables(&t.datesRead), "DRRDays");
+		ciText("drrf", DRR_FIRST, 10, Tables(&t.datesRead), "DRRFirst");
+		ciText("drrl", DRR_LAST,  10, Tables(&t.datesRead), "DRRLast");
+		ciText("drrm", DRR_MID,   10, Tables(&t.datesRead), "DRRMiddle");
+		ciText("drrr", DRR_RAND,  10, Tables(&t.datesRead), "DRRRandom");
+		ciNum("drrd", DRR_DAYS, -7, Tables(&t.datesRead), "DRRDays");
 
 		// Some window function columns: 
 		// Note: Cannot be used in WHERE!
 		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
 
 #define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
-		addColumnNumeric("lag", "round(" LAG ", 1)", -5, Tables(&t.datesRead), "Lag");
-		addColumnNumeric("lagi", ROUND_TO_INT(LAG),  -4, Tables(&t.datesRead), "Lag");
+		ciNum("lag", "round(" LAG ", 1)", -5, Tables(&t.datesRead), "Lag");
+		ciNum("lagi", ROUND_TO_INT(LAG),  -4, Tables(&t.datesRead), "Lag");
 #undef LAG
 
 #define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
-		addColumnNumeric("dind", XIND("date(" DR_FIXED ")"),          -4, Tables(&t.datesRead), "DInd");
-		addColumnNumeric("mind", XIND("substr(\"Date Read\",1,7)"),   -4, Tables(&t.datesRead), "MInd");
-		addColumnNumeric("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, Tables(&t.datesRead), "YInd");
+		ciNum("dind", XIND("date(" DR_FIXED ")"),          -4, Tables(&t.datesRead), "DInd");
+		ciNum("mind", XIND("substr(\"Date Read\",1,7)"),   -4, Tables(&t.datesRead), "MInd");
+		ciNum("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, Tables(&t.datesRead), "YInd");
 #undef XIND
 
 #define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
 #define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
 #define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
-		addColumnNumeric("ap", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
-		addColumnNumeric("al", XLAG("AuthorID"),   -5, Tables(), "ALag");
-		addColumnNumeric("ac", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
+		ciNum("ap", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
+		ciNum("al", XLAG("AuthorID"),   -5, Tables(), "ALag");
+		ciNum("ac", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
 
-		addColumnNumeric("gp", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
-		addColumnNumeric("gl", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
-		addColumnNumeric("gc", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
+		ciNum("gp", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
+		ciNum("gl", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
+		ciNum("gc", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
 
-		addColumnNumeric("sp", XPERIOD("SourceID"),-7, Tables(&t.datesRead), "SPeriod");
-		addColumnNumeric("sl", XLAG("SourceID"),   -5, Tables(&t.datesRead), "SLag");
-		addColumnNumeric("sc", XCOUNT("SourceID"), -4, Tables(), "SCnt");
+		ciNum("sp", XPERIOD("SourceID"),-7, Tables(&t.datesRead), "SPeriod");
+		ciNum("sl", XLAG("SourceID"),   -5, Tables(&t.datesRead), "SLag");
+		ciNum("sc", XCOUNT("SourceID"), -4, Tables(), "SCnt");
 #undef XCOUNT
 #undef XLAG
 #undef XPERIOD
@@ -1420,18 +1418,18 @@ public:
 		
 		// Special-purpose "virtual" columns, these are not generally usable:
 		//
-		addColumnNumeric("btc", "TitleCount", -5, Tables(), "Count"); // for listSametitle
-		addColumnNumeric("brc", "ReadCount", -5, Tables(), "Reads");  // for listRereads
+		ciNum("btc", "TitleCount", -5, Tables(), "Count"); // for listSametitle
+		ciNum("brc", "ReadCount", -5, Tables(), "Reads");  // for listRereads
 		// These are for the book count actions.
-		addColumnNumericAggregate("bc",  "COUNT(BookID)", -6, Tables(), "Books");
-		addColumnNumericAggregate("bcp", "SUM(Pages)", -7, Tables(), "Pages");
-		addColumnNumericAggregate("bcw", "SUM(Words)", -9, Tables(), "Words");
-		addColumnNumericAggregate("bckw", "(SUM(Words)+500)/1000", -6, Tables(), "Kwords");
-		addColumnNumericAggregate("bca", "COUNT(AuthorID)", -6, Tables(), "Authors");
-		addColumnNumericAggregate("bcg", "COUNT(GenreID)", -6, Tables(), "Genres");
-		addColumnNumericAggregate("bcst", "COUNT(StoryID)", -6, Tables(), "Stories");
-		addColumnNumericAggregate("bcso", "COUNT(SourceID)", -6, Tables(), "Sources");
-		addColumnNumericAggregate("bcc", "COUNT(CategoryID)", -6, Tables(), "Categories");
+		ciAggr("bc",  "COUNT(BookID)", -6, Tables(), "Books");
+		ciAggr("bcp", "SUM(Pages)", -7, Tables(), "Pages");
+		ciAggr("bcw", "SUM(Words)", -9, Tables(), "Words");
+		ciAggr("bckw", "(SUM(Words)+500)/1000", -6, Tables(), "Kwords");
+		ciAggr("bca", "COUNT(AuthorID)", -6, Tables(), "Authors");
+		ciAggr("bcg", "COUNT(GenreID)", -6, Tables(), "Genres");
+		ciAggr("bcst", "COUNT(StoryID)", -6, Tables(), "Stories");
+		ciAggr("bcso", "COUNT(SourceID)", -6, Tables(), "Sources");
+		ciAggr("bcc", "COUNT(CategoryID)", -6, Tables(), "Categories");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -1702,7 +1700,7 @@ public:
 	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
 	{
 		if (auto it = m_columnInfos.find(sn); it != m_columnInfos.end()) return &it->second;
-		if (allowActualName) return &m_ancis.try_emplace(sn, ColumnInfo(sn, (int)sn.length(), ColumnType::numeric, sn)).first->second;
+		if (allowActualName) return &m_ancis.try_emplace(sn, sn, (int)sn.length(), ColumnType::numeric, sn, false, false, Tables()).first->second;
 		throw std::invalid_argument("Invalid short column name: " + sn);
 	}
 
@@ -1850,7 +1848,7 @@ public:
 			}
 
 			auto appendSnCondTo = [&](std::string& c) { c = ((c.empty()) ? snCond : c + LogOp_AND + snCond); };
-			appendSnCondTo(col->isGroupAggregate ? hcond : wcond);
+			appendSnCondTo(col->aggr ? hcond : wcond);
 		}
 
 		appendToHavingCondition(LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
@@ -2961,18 +2959,13 @@ public:
 	public:
 		EQPGraph(Output const& output) :m_output(output) {}
 
-		void appendRow(int iEqpId, int p2, const char *zText)
+		void appendRow(int iEqpId, int parentId, const char *zText)
 		{
 			if (!rows.empty() && rows.back().iEqpId > iEqpId) { // => New query starts
 				render();
 				rows.clear();
 			}
-
-			EQPGraphRow row;
-			row.iEqpId = iEqpId;
-			row.iParentId = p2;
-			row.text = zText;
-			rows.push_back(std::move(row));
+			rows.push_back(EQPGraphRow{ iEqpId, parentId, zText });
 		}
 
 		void render() 
@@ -3099,7 +3092,7 @@ public:
 						consInit(argc, argv, azColName);
 					}
 				}
-			} // if (litt.m_rowCount == 0) {
+			} // if (m_rowCount == 0) {
 
 			if (m_eqpGraph && argc == 4) {
 				m_eqpGraph->appendRow(atoi(argv[0]), atoi(argv[1]), argv[3]);
