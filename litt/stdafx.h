@@ -8,6 +8,8 @@
 #include "targetver.h"
 #define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
+#define VC_EXTRALEAN
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include <stdio.h>
@@ -18,9 +20,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <array>
 #include <map>
-#include <set>
 #include <algorithm>
 #include <memory>
 #include <functional>

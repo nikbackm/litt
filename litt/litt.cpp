@@ -1690,7 +1690,6 @@ public:
 			if (sqlite3_create_function(conn, name, nArg, SQLITE_UTF8, nullptr, func, nullptr, nullptr) != SQLITE_OK)
 				throw std::runtime_error(fmt("Failed to create sqlite function %s: %s", name, sqlite3_errmsg(conn)));
 		};
-
 		createScalarFunc("isbn10", 1, isbn10);
 		createScalarFunc("isbn13", 1, isbn13);
 	}
@@ -3718,7 +3717,6 @@ ORDER BY Dupe DESC, "Book read")");
 	InputListFunction getListStory()  { return LIST_F(listStories("st", s + WcS));       }
 	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", s + WcS)); }
 	InputListFunction getListLanguage() { return LIST_F(listBookLanguages("l", s + WcS)); }
-	
 	#undef LIST_F
 
 	IdValue getNextIdValue(const char* idCol, const char* table)
@@ -3955,8 +3953,7 @@ ORDER BY Dupe DESC, "Book read")");
 						qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", a.storyId, gi);
 					}
 				}
-				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);",
-					bid, a.authorId, a.storyId);
+				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, a.authorId, a.storyId);
 			}
 		}
 		if (!origtitle.empty()) {
@@ -3989,7 +3986,7 @@ ORDER BY Dupe DESC, "Book read")");
 				"SELECT 1 FROM Stories WHERE StoryID=%llu AND Story=%s", storyId, ESC_S(story)));
 			};
 			for (;;) {
-				printf("\nStory name already exists, select a storyID to use from the ones listed or leave empty to add new.\n\n");
+				printf("\nStory name exists, select storyID from below or leave empty to add a new story.\n\n");
 				resetListingData("st.eq." + story);
 				runListData("stid.st.stra.nn.bt", "stid.st", Table::stories);
 				printf("\n");
