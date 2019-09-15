@@ -260,12 +260,12 @@ namespace Utils
 		return true;
 	}
 
-	bool toInt(std::string const & str, int& value)
+	bool toInt(std::string const& str, int& value)
 	{
 		return toIntType(str, value, strtol);
 	}
 
-	bool toULongLong(std::string const & str, unsigned long long & value)
+	bool toULongLong(std::string const& str, unsigned long long & value)
 	{
 		return toIntType(str, value, strtoull);
 	}
@@ -305,24 +305,24 @@ namespace Utils
 		return toWide(CP_UTF8, utf8String, len);
 	}
 
-	std::string toUtf8(int codePage, std::string const & str)
+	std::string toUtf8(int codePage, std::string const& str)
 	{
 		auto wstr = toWide(codePage, str.c_str(), str.length() );
 		return toNarrow(CP_UTF8, wstr.c_str(), wstr.length());
 	}
 
-	std::string fromUtf8(int codePage, std::string const & str)
+	std::string fromUtf8(int codePage, std::string const& str)
 	{
 		auto wstr = toWide(CP_UTF8, str.c_str(), str.length());
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 
-	std::string quote(std::string const & str)
+	std::string quote(std::string const& str)
 	{
 		return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
 	}
 
-	std::string unquote(std::string const & str)
+	std::string unquote(std::string const& str)
 	{
 		auto res = str;
 		if (res.length() >= 2 && res.front() == '"' && res.back() == '"') {
@@ -464,7 +464,7 @@ namespace LittDefs
 		return escSqlVal(str, tryToTreatAsNumeric);
 	}
 
-	unsigned colWidth(std::string const & str)
+	unsigned colWidth(std::string const& str)
 	{
 		auto const w = str.length();
 		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
@@ -724,7 +724,7 @@ namespace Input
 	}
 
 	using InputCheckIdFunction = std::function<void(IdValue)>;
-	using InputListFunction = std::function<void(std::string const &)>;
+	using InputListFunction = std::function<void(std::string const&)>;
 
 	void input(
 		IdValue& value, 
@@ -749,7 +749,7 @@ namespace Input
 		}
 	}
 
-	int askInput(const char* validAnswers, std::string const & question, int& defAndRes )
+	int askInput(const char* validAnswers, std::string const& question, int& defAndRes )
 	{
 		bool foundDefault = false;
 		int const len = strlen(validAnswers);
@@ -784,7 +784,7 @@ namespace Input
 		return answer;
 	}
 
-	int ask(const char* validAnswers, std::string const & question, int def = 0)
+	int ask(const char* validAnswers, std::string const& question, int def = 0)
 	{
 		return askInput(validAnswers, question, def);
 	}
@@ -799,7 +799,7 @@ namespace Input
 
 	bool confirmEnabled = true;
 
-	bool confirm(std::string const & question)
+	bool confirm(std::string const& question)
 	{
 		return confirmEnabled ? (ask("yn", question) == 'y') : true;
 	}
@@ -818,7 +818,7 @@ class OptionParser {
 	const char* const m_type;
 	const char        m_delim;
 public:
-	OptionParser(std::string const & value, const char* type = "option", char delim = OptDelim)
+	OptionParser(std::string const& value, const char* type = "option", char delim = OptDelim)
 		: m_option(value), m_type(type), m_delim(delim)
 	{}
 
@@ -939,7 +939,7 @@ public:
 		m_buffer[m_bufPos++] = c;
 	}
 
-	void write(std::string const & str) const 
+	void write(std::string const& str) const 
 	{
 		write(str.c_str(), str.length());
 	}
@@ -1120,17 +1120,17 @@ class Litt {
 		throw std::logic_error("Duplicate short name: " + sn);
 	}
 
-	ColumnInfo& ciText(std::string const & sn, std::string const & nameDef, int width, Tables tables, std::string const & label = "")
+	ColumnInfo& ciText(std::string const& sn, std::string const& nameDef, int width, Tables tables, std::string const& label = "")
 	{
 		return ci(sn, nameDef, width, ColumnType::text, tables, label);
 	}
 
-	ColumnInfo& ciNum(std::string const & sn, std::string const & nameDef, int width, Tables tables, std::string const & label = "")
+	ColumnInfo& ciNum(std::string const& sn, std::string const& nameDef, int width, Tables tables, std::string const& label = "")
 	{
 		return ci(sn, nameDef, width, ColumnType::numeric, tables, label);
 	}
 
-	ColumnInfo& ciTextL(std::string const & sn, std::string const & nameDef, int width, Tables tables, const char* collation, std::string const & label = "")
+	ColumnInfo& ciTextL(std::string const& sn, std::string const& nameDef, int width, Tables tables, const char* collation, std::string const& label = "")
 	{
 		auto& ci = ciText(sn, nameDef, width, tables, label);
 		auto const labelLength = "l_" + sn;
@@ -1139,7 +1139,7 @@ class Litt {
 		return ci;
 	}
 
-	ColumnInfo& ciAggr(std::string const & sn, std::string const & def, int width, Tables tables, std::string const & label)
+	ColumnInfo& ciAggr(std::string const& sn, std::string const& def, int width, Tables tables, std::string const& label)
 	{
 		return ci(sn, def, width, ColumnType::numeric, tables, label, true);
 	}
@@ -1696,14 +1696,14 @@ public:
 
 	mutable decltype(m_columnInfos) m_ancis; // Holds ColumnInfo:s for "actual name" columns.
 
-	ColumnInfo const* getColumn(std::string const & sn, bool allowActualName = false) const
+	ColumnInfo const* getColumn(std::string const& sn, bool allowActualName = false) const
 	{
 		if (auto it = m_columnInfos.find(sn); it != m_columnInfos.end()) return &it->second;
 		if (allowActualName) return &m_ancis.try_emplace(sn, sn, (int)sn.length(), ColumnType::numeric, sn, false, false, Tables()).first->second;
 		throw std::invalid_argument("Invalid short column name: " + sn);
 	}
 
-	Columns getColumns(std::string const & sns, ColumnsDataKind kind, bool usedInQuery, bool allowActualName = false) const
+	Columns getColumns(std::string const& sns, ColumnsDataKind kind, bool usedInQuery, bool allowActualName = false) const
 	{
 		Columns res;
 		OptionParser opts(sns);
@@ -1768,7 +1768,7 @@ public:
 			: snOrName;
 	}
 
-	std::regex getRegex(std::string const & reVal)
+	std::regex getRegex(std::string const& reVal)
 	{
 		return std::regex(
 			toUtf8(reVal),
@@ -1777,7 +1777,7 @@ public:
 			std::regex_constants::nosubs);
 	}
 
-	std::string getWhereCondition(std::string const & value) const // Will also update included columns!
+	std::string getWhereCondition(std::string const& value) const // Will also update included columns!
 	{
 		OptionParser opts(value, "where");
 		std::string wcond;
@@ -1854,7 +1854,7 @@ public:
 		return wcond;
 	}
 
-	static std::string parseCountCondition(std::string const & name, std::string const & value)
+	static std::string parseCountCondition(std::string const& name, std::string const& value)
 	{
 		OptionParser opts(value, "count condition");
 		auto val = opts.getNext(); 
@@ -1871,24 +1871,24 @@ public:
 		}
 	}
 
-	static std::string appendConditions(const char* logicalOp, std::string const & cond, std::string const & cond2)
+	static std::string appendConditions(const char* logicalOp, std::string const& cond, std::string const& cond2)
 	{
 		if (cond.empty()) return cond2;
 		if (cond2.empty()) return cond;
 		return "(" + cond + ")" + logicalOp + "(" + cond2 + ")";
 	}
 
-	void appendToHavingCondition(const char* logicalOp, std::string const & condition) const
+	void appendToHavingCondition(const char* logicalOp, std::string const& condition) const
 	{
 		m_havingCondition = appendConditions(logicalOp, m_havingCondition, condition);
 	}
 
-	void addCountCondToHavingCondition(const char* sn, std::string const & countCond) const
+	void addCountCondToHavingCondition(const char* sn, std::string const& countCond) const
 	{
 		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->nameDef, countCond));
 	}
 
-	void appendToWhereCondition(const char* logicalOp, std::string const & condition) const
+	void appendToWhereCondition(const char* logicalOp, std::string const& condition) const
 	{
 		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
 	}
@@ -1909,7 +1909,7 @@ public:
 		m_whereCondition = getWhereCondition(whereCondition);
 	}
 
-	void addActionWhereCondition(const char* sn, std::string const & cond) const
+	void addActionWhereCondition(const char* sn, std::string const& cond) const
 	{
 		if (!cond.empty()) {
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
@@ -2002,8 +2002,8 @@ public:
 			: input(fmt("Enter %s", name).c_str(), R"x(\d+)x", iopt).c_str());
 	}
 
-	std::string toUtf8(std::string const & str) const   { return Utils::toUtf8(consoleCodePage, str); }
-	std::string fromUtf8(std::string const & str) const { return Utils::fromUtf8(consoleCodePage, str); }
+	std::string toUtf8(std::string const& str) const   { return Utils::toUtf8(consoleCodePage, str); }
+	std::string fromUtf8(std::string const& str) const { return Utils::fromUtf8(consoleCodePage, str); }
 
 	std::string encodeSqlFromInput(std::string const& sql) const { return toUtf8(sql); }
 
@@ -2065,7 +2065,7 @@ public:
 			m_query.append(str);
 		}
 
-		void a(std::string const & str)
+		void a(std::string const& str)
 		{
 			m_query.append(str);
 		}
@@ -2075,7 +2075,7 @@ public:
 			m_query.append("\n").append(line);
 		}
 
-		void add(std::string const & line)
+		void add(std::string const& line)
 		{
 			add(line.c_str());
 		}
@@ -2086,7 +2086,7 @@ public:
 			add(res);
 		}
 
-		void aIf(std::string const & line, bool cond)
+		void aIf(std::string const& line, bool cond)
 		{
 			if (cond) add(line);
 		}
@@ -2843,7 +2843,7 @@ public:
 			switch (col.matchMethod) {
 			case ConsRowMatchMethod::columnValue:
 				if (cvMatch) {
-					auto const & prevVal = m_consRowBuffer[0][col.index];
+					auto const& prevVal = m_consRowBuffer[0][col.index];
 					if (col.charCmpCount <= 0) {
 						cvMatch = (prevVal == val);
 					}
@@ -3162,7 +3162,7 @@ public:
 		runOutputQuery(query);
 	}
 
-	void listAuthors(std::string const & action, std::string const & ln, std::string const & fn)
+	void listAuthors(std::string const& action, std::string const& ln, std::string const& fn)
 	{
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
@@ -3174,7 +3174,7 @@ public:
 		}
 	}
 
-	void listPseudonyms(std::string const & ln, std::string const & fn)
+	void listPseudonyms(std::string const& ln, std::string const& fn)
 	{
 		appendToWhereCondition(LogOp_AND, (getWhereCondition("psf.*") + LogOp_OR + getWhereCondition("ps.*"))); 
 		addActionWhereCondition("ln", ln);
@@ -3182,7 +3182,7 @@ public:
 		runListData("psmid.ai.nn.ps.psf", "psmid.ps.desc.ln", Table::authors);
 	}
 
-	void listBooks(std::string const & action, std::string const & title)
+	void listBooks(std::string const& action, std::string const& title)
 	{
 		if (action == "b") {
 			addActionWhereCondition("bt", title);
@@ -3194,7 +3194,7 @@ public:
 		}
 	}
 
-	void listSeries(std::string const & action, std::string const & series)
+	void listSeries(std::string const& action, std::string const& series)
 	{
 		addActionWhereCondition("se", series);
 		if (action == "s") {
@@ -3205,7 +3205,7 @@ public:
 		}
 	}
 
-	void listGenres(std::string const & action, std::string const & genre)
+	void listGenres(std::string const& action, std::string const& genre)
 	{
 		addActionWhereCondition("ge", genre);
 		if (action == "g") {
@@ -3222,7 +3222,7 @@ public:
 		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", Table::originalTitles);
 	}
 
-	void listStories(std::string const & action, std::string const & story)
+	void listStories(std::string const& action, std::string const& story)
 	{
 		addActionWhereCondition("st", story);
 		if (action == "st") {
@@ -3233,7 +3233,7 @@ public:
 		}
 	}
 
-	void listSources(std::string const & action, std::string const & sourceName)
+	void listSources(std::string const& action, std::string const& sourceName)
 	{
 		addActionWhereCondition("so", sourceName);
 		if (action == "so") {
@@ -3244,7 +3244,7 @@ public:
 		}
 	}
 
-	void listBookCategories(std::string const & action, std::string const & catName)
+	void listBookCategories(std::string const& action, std::string const& catName)
 	{
 		addActionWhereCondition("cat", catName);
 		if (action == "c") {
@@ -3255,7 +3255,7 @@ public:
 		}
 	}
 
-	void listBookLanguages(std::string const & action, std::string const & catName)
+	void listBookLanguages(std::string const& action, std::string const& catName)
 	{
 		addActionWhereCondition("la", catName);
 		if (action == "l") {
@@ -3396,7 +3396,7 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 	}
 
-	void listBookCounts(std::string const & countCond, bool includeReReads, const char* columns, const char* snGroupBy, Table startTable = Table::books)
+	void listBookCounts(std::string const& countCond, bool includeReReads, const char* columns, const char* snGroupBy, Table startTable = Table::books)
 	{
 		std::string ccol = getCountColumn();
 		auto selCols = columns + std::string(".") + ccol;
@@ -3483,7 +3483,7 @@ ORDER BY Dupe DESC, "Book read")");
 		std::string def;
 		std::string name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
 
-		PeriodColumn(std::string d, std::string const & n) : 
+		PeriodColumn(std::string d, std::string const& n) : 
 			def(std::move(d)), name(quote(n)) {}
 
 		unsigned colWidth() const { return LittDefs::colWidth(name); }
@@ -3507,7 +3507,7 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 		if (!res.empty()) {
 			writeBomIfNeeded();
-			for (auto const & pc : res) {
+			for (auto const& pc : res) {
 				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width, false);
 				m_output.write(" : ");
 				m_output.write(toUtf8(pc.def));
@@ -3708,7 +3708,7 @@ ORDER BY Dupe DESC, "Book read")");
 		return [=](IdValue id) { (this->*selMethod)(id); };
 	}
 
-	#define LIST_F(listCode) [&](std::string const & s) { resetListingData(""); listCode; }
+	#define LIST_F(listCode) [&](std::string const& s) { resetListingData(""); listCode; }
 	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS));       }
 	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, ""));   }
 	InputListFunction getListSource() { return LIST_F(listSources("so", WcS + s + WcS)); }
@@ -3734,22 +3734,22 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 	}
 
-	void addGenre(std::string const & name)
+	void addGenre(std::string const& name)
 	{
 		executeInsert("GenreID", "INSERT INTO Genres (Genre) VALUES(%s)", ESC_S(name));
 	}
 
-	void addSeries(std::string const & name)
+	void addSeries(std::string const& name)
 	{
 		executeInsert("SeriesID", "INSERT INTO Series (Series) VALUES(%s)",  ESC_S(name));
 	}
 
-	void addSource(std::string const & name)
+	void addSource(std::string const& name)
 	{
 		executeInsert("SourceID", "INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name));
 	}
 
-	void addBookCategory(std::string const & name)
+	void addBookCategory(std::string const& name)
 	{
 		executeInsert("CategoryID", "INSERT INTO BookCategory (Category) VALUES(%s)",  ESC_S(name));
 	}
@@ -3979,7 +3979,7 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 	}
 
-	bool getStoryId(IdValue& storyId, std::string const & story)
+	bool getStoryId(IdValue& storyId, std::string const& story)
 	{
 		if (hasRowValue(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESC_S(story)))) {
 			auto idValid = [&]() { return storyId == EmptyId || hasRowValue(fmt(
