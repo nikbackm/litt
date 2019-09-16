@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-16: Renamed window function columns to be less collision-prone with normal columns.
  * 2019-09-16: Simplified selectRowValues.
  * 2019-09-15: Change input prompt for existing story.
  * 2019-09-15: Made addColumn(Info) methods more readable (shorter). defWidth => width. Clean stdafx.h. const & => const&. Simplified getColumns.

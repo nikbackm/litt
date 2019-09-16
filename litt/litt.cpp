@@ -197,7 +197,7 @@ Column short name values:
     bsra, bsge, bsgg - Rating, Genre and Genre(s) for story or book (if there is no story)
     astc, astg       - Story count and stories for author
     bstc, bstg       - Story count and stories for book
-    bastc, bastg     - Story count and stories for book+author.
+    bastc, bastg     - Story count and stories for book+author
     btbastg          - Title combined with stories for book+author
     bstng            - Authors for book+story
     se, si, pa, sep  - Series, SeriesID, Part in Series, Series + Part
@@ -214,11 +214,11 @@ Column short name values:
     E.g. "btl" will provide the lengths of the "bt" column values.
 
 Window function columns:
-    lag, lagi        - Lag in days (real and int) from the previous book
-    dind, mind, yind - Index/ordinal of book for day, month and year
-    ap, al, ac       - Period, lag and count for author
-    gp, gl, gc       - Same for genre
-    sp, sl, sc       - Same for source
+    lag, lagi           - Lag in days (real and int) from the previous book
+    dind, mind, yind    - Index/ordinal of book for day, month and year
+    aper, alag, acnt    - Period, lag and count for author
+    gper, glag, gcnt    - Same for genre
+    soper, solag, socnt - Same for source
 )", stdout);
 }
 
@@ -1398,17 +1398,17 @@ public:
 #define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
 #define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
 #define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
-		ciNum("ap", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
-		ciNum("al", XLAG("AuthorID"),   -5, Tables(), "ALag");
-		ciNum("ac", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
+		ciNum("aper", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
+		ciNum("alag", XLAG("AuthorID"),   -5, Tables(), "ALag");
+		ciNum("acnt", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
 
-		ciNum("gp", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
-		ciNum("gl", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
-		ciNum("gc", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
+		ciNum("gper", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
+		ciNum("glag", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
+		ciNum("gcnt", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
 
-		ciNum("sp", XPERIOD("SourceID"),-7, Tables(&t.datesRead), "SPeriod");
-		ciNum("sl", XLAG("SourceID"),   -5, Tables(&t.datesRead), "SLag");
-		ciNum("sc", XCOUNT("SourceID"), -4, Tables(), "SCnt");
+		ciNum("soper", XPERIOD("SourceID"),-8, Tables(&t.datesRead), "SOPeriod");
+		ciNum("solag", XLAG("SourceID"),   -6, Tables(&t.datesRead), "SOLag");
+		ciNum("socnt", XCOUNT("SourceID"), -5, Tables(), "SOCnt");
 #undef XCOUNT
 #undef XLAG
 #undef XPERIOD
@@ -2271,9 +2271,9 @@ public:
 			t.bstng.parent = &t.bookStories;
 
 			auto const authorBooksVal = (startTable != Table::authors) ? &t.authorbooks : nullptr;
-			litt.getColumn("ap")->tables.reset(&t.datesRead, authorBooksVal);
-			litt.getColumn("al")->tables.reset(&t.datesRead, authorBooksVal);
-			litt.getColumn("ac")->tables.reset(authorBooksVal);
+			litt.getColumn("aper")->tables.reset(&t.datesRead, authorBooksVal);
+			litt.getColumn("alag")->tables.reset(&t.datesRead, authorBooksVal);
+			litt.getColumn("acnt")->tables.reset(authorBooksVal);
 
 			t.l_book.parent = (startTable != Table::language) ? &t.books : nullptr;
 			t.lbc.parent = t.l_book.parent;
@@ -2293,7 +2293,7 @@ public:
 			t.sor.parent = t.sources.parent;
 			t.sobc.parent = t.sources.parent;
 			litt.getColumn("soid")->tables.reset(t.sources.parent);
-			litt.getColumn("sc")->tables.reset(t.sources.parent);
+			litt.getColumn("socnt")->tables.reset(t.sources.parent);
 
 			_ASSERT(t.stories.parent == nullptr || t.stories.parent == &t.bookStories);
 			if (startTable != Table::stories) {
