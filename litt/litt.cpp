@@ -1288,7 +1288,7 @@ public:
 		ciNum("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
 		ciTextL("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
 		ciTextL("se", "Series", 40, Tables(&t.series), CTitle);
-		ciTextL("sg", "Series", 40, Tables(&t.sg), CNoCase);
+		ciTextL("sg", "\"Series(s)\"", 40, Tables(&t.sg), CNoCase);
 		ciNum("si", "SeriesID", -8, Tables());
 		ciText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
 		ciText("sp", SEPART, 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
@@ -2380,7 +2380,7 @@ public:
 
 			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres JOIN Genres USING(GenreID) GROUP BY BookID)"
 
-			#define SG "(SELECT BookID, group_concat(Series,', ') AS 'Series' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
+			#define SG "(SELECT BookID, group_concat(Series,', ') AS 'Series(s)' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
 			#define SPG "(SELECT BookID, group_concat(" SEPART ",', ') AS 'Series #' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
 
 			#define AR  "(SELECT AuthorID, avg(Rating) AS ARating  FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)"
