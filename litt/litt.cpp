@@ -3632,11 +3632,9 @@ ORDER BY Dupe DESC, "Book read")");
 		std::vector<std::vector<std::string>> res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
-			std::vector<std::string> row;
-			row.resize(argc);
-			std::transform(argv, argv + argc, row.begin(), rowValue);
-			auto& res = *static_cast<std::vector<std::vector<std::string>>*>(pArg);
-			res.push_back(std::move(row));
+			auto pRes = static_cast<decltype(&res)>(pArg);
+			pRes->emplace_back(size_t(argc));
+			std::transform(argv, argv + argc, pRes->back().begin(), rowValue);
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
