@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-16: Added series virtual columns "sg" and "spg", renamed "sep" to "sp".
  * 2019-09-16: Renamed window function columns to be less collision-prone with normal columns.
  * 2019-09-16: Simplified selectRowValues.
  * 2019-09-15: Change input prompt for existing story.

@@ -200,7 +200,8 @@ Column short name values:
     bastc, bastg     - Story count and stories for book+author
     btbastg          - Title combined with stories for book+author
     bstng            - Authors for book+story
-    se, si, pa, sep  - Series, SeriesID, Part in Series, Series + Part
+    se, si, pa, sp   - Series, SeriesID, Part in Series, Series+Part
+    sg, spg          - Every series and Series+Part for a book, for books belonging to multiple series
     so, soid         - Source, SourceID
     ps, psf, psmid   - Pseudonym(s), Pseudonym For, Pseudonym MainID
     abc, abcp, abcr  - Author book count, with pseudonyms counted (for MainID) and with re-reads
@@ -516,7 +517,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 2 + 38] = {};
+			TableInfo arrView[11 + 7 + 2 + 40] = {};
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -551,6 +552,8 @@ namespace LittDefs
 				TableInfo dc;
 				TableInfo dg;
 				TableInfo gg;
+				TableInfo sg;
+				TableInfo spg;
 				TableInfo ar;
 				TableInfo gr;
 				TableInfo sor;
@@ -590,24 +593,20 @@ namespace LittDefs
 	static_assert(sizeof(TableInfos::arrView) == sizeof(TableInfos), "check arrView size!");
 
 	struct ColumnInfo {
-		// These values are pre-configured:
 		std::string const nameDef; // Column name or SQL expression (def) for column
 		int         const width; // Default width of column, can be overridden.
-		ColumnType  const type;
-		std::string const label; // optional, used when name does not refer to a direct table column.
+		ColumnType  const type; // text or numeric column basically.
+		std::string const label; // label for output, useful when nameDef is not a column name.
 		bool        const aggr; // Is a group aggregate column?
-		bool        const justifyRight;
+		bool        const justifyRight; // Justify right instead of left on DisplayMode::column.
 
-		// Also pre-configured, but have default values:
 		ColumnInfo const* lengthColumn = nullptr; // Will be set only if the column has a length column added.
 		const char*       collation = nullptr; // Only set if not using the default (usually BINARY)
+		mutable Tables    tables; // Tables needed by nameDef in the query, varies with startTable(action).
 
-		mutable Tables tables; // The tables referenced by the column definition.
-
-		// These values are set at runtime. Stored here for convenience.
-		mutable int  overriddenWidth = -1;
-		mutable bool usedInQuery = false;
-		mutable bool usedInResult = false;
+		mutable int  overriddenWidth = -1; // Overriden width via either -c or -s option.
+		mutable bool usedInQuery = false; // Tells if column is references anywhere in the query.
+		mutable bool usedInResult = false; // Tells if column is a result (i.e. SELECT:ed) column.
 
 		ColumnInfo(std::string const& nameDef, int width, ColumnType ct, std::string const& label, bool aggr, bool justifyRight, Tables t) :
 			nameDef(nameDef),
@@ -823,7 +822,6 @@ public:
 	{}
 
 	bool empty() const { return m_option.length() <= m_optionIndex; }
-
 	// These two allows clients to push a read value back. (Safe thanks to empty())
 	unsigned position() const            { return m_optionIndex; }
 	void     setPosition(unsigned pos)   { m_optionIndex = pos; }
@@ -1230,6 +1228,7 @@ class Litt {
 
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
+#define SEPART "Series||' '||\"Part in Series\""
 #define APPEND_OPT_COL(mand, opt) mand " || CASE WHEN " opt " IS NULL THEN '' ELSE (' [' || " opt " || ']') END"
 
 public:
@@ -1289,9 +1288,11 @@ public:
 		ciNum("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
 		ciTextL("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
 		ciTextL("se", "Series", 40, Tables(&t.series), CTitle);
+		ciTextL("sg", "Series", 40, Tables(&t.sg), CNoCase);
 		ciNum("si", "SeriesID", -8, Tables());
 		ciText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
-		ciText("sep", "Series||' '||\"Part in Series\"", 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
+		ciText("sp", SEPART, 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
+		ciText("spg", "\"Series #\"", 40, Tables(&t.spg));
 		ciTextL("st", "Story", 45, Tables(&t.stories), CTitle);
 		ciNum("stid", "StoryID", -7, Tables());
 		ciNum("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
@@ -2230,6 +2231,8 @@ public:
 				t.dc.parent = bookTi;
 				t.dg.parent = bookTi;
 				t.gg.parent = bookTi;
+				t.sg.parent = bookTi;
+				t.spg.parent = bookTi;
 				t.bstc.parent = bookTi;
 				t.bstg.parent = bookTi;
 				bookTi->parent = nullptr; // No parent, might cause loop.
@@ -2376,6 +2379,9 @@ public:
 			#define DG "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM DatesRead GROUP BY BookID)"
 
 			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres JOIN Genres USING(GenreID) GROUP BY BookID)"
+
+			#define SG "(SELECT BookID, group_concat(Series,', ') AS 'Series' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
+			#define SPG "(SELECT BookID, group_concat(" SEPART ",', ') AS 'Series #' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
 
 			#define AR  "(SELECT AuthorID, avg(Rating) AS ARating  FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)"
 			#define GR  "(SELECT GenreID,  avg(Rating) AS GRating  FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)"
@@ -2529,6 +2535,8 @@ public:
 			includeLeft(t.series,       "Series USING(SeriesID)");
 			includeLeftIf(t.ser,        SER " USING(SeriesID)", Table::series);
 			includeLeftIf(t.sebc,       SEBC " USING(SeriesID)", Table::series);
+			includeLeft(t.sg,           SG " USING(BookID)");
+			includeLeft(t.spg,          SPG " USING(BookID)");
 
 			includeLeftIf(t.bookStories, "BookStories USING(BookID,AuthorID)", Table::stories);
 			includeLeft(t.stories,       "Stories USING(StoryID)");
@@ -3181,7 +3189,7 @@ public:
 			runListData("si.se.70", "si", Table::series);
 		}
 		else {
-			runListData("bi.sep.nn.ra.bt.dr", "dr.bi.ln.fn", Table::series);
+			runListData("bi.sp.nn.ra.bt.dr", "dr.bi.ln.fn", Table::series);
 		}
 	}
 
