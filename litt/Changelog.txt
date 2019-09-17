@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-17: Simplify reset methods.
  * 2019-09-17: Factored out eIDARGI, renamed selTitle to selBook for needed naming consistency.
  * 2019-09-17: Added "add-l" action. Simplified executeSimpleAddAction and executeInsert.
  * 2019-09-17: Further simplified selectRowValues and dependent functions.

@@ -481,12 +481,7 @@ namespace LittDefs
 		bool used = false;           // Is the table used in the (output) query?
 		bool included = false;       // Is the table already included in the query?
 
-		void reset()
-		{
-			parent = nullptr;
-			used = false;
-			included = false;
-		}
+		void reset() { *this = TableInfo{}; }
 	};
 
 	struct Tables {
@@ -494,23 +489,18 @@ namespace LittDefs
 		TableInfo* tis[MaxSize];
 
 		Tables(TableInfo* ti1 = nullptr, TableInfo* ti2 = nullptr)
-		{
-			tis[0] = ti1;
-			tis[1] = ti2;
-		}
+			: tis{ti1, ti2} {}
 
 		void reset(TableInfo* ti1 = nullptr, TableInfo* ti2 = nullptr)
 		{
-			tis[0] = ti1;
-			tis[1] = ti2;
+			*this = Tables(ti1, ti2);
 		}
 
 		TableInfo** begin() { return tis;}
 
 		TableInfo** end() 
 		{ 
-			int i = 0;
-			while (i < MaxSize && tis[i] != nullptr) { ++i; }
+			int i = 0; while (i < MaxSize && tis[i] != nullptr) ++i;
 			return tis + i;
 		}
 	};
