@@ -58,6 +58,7 @@ Adding and modifying data:
    add-g    [genre]                        Add a genre.
    add-so   [source]                       Add a book source.
    add-c    [category]                     Add a book category.
+   add-l    [language]                     Add a book language.
    add-st   [BookID] [AID] [story] [rat]   Add a story for a book.
    add-bg   [BookID] [GenreID]             Add a genre for a book.
    add-stg  [StoryID] [GenreID]            Add a genre for a story.
@@ -401,6 +402,7 @@ using namespace Utils;
 namespace LittDefs
 {
 	using IdValue = unsigned long long;
+	using GenreIds = std::vector<IdValue>;
 
 	enum class DisplayMode {
 		column,
@@ -3625,12 +3627,11 @@ ORDER BY Dupe DESC, "Book read")");
 		return executeWriteSql(userSql);
 	}
 
-	void executeInsert(const char* idName, _In_z_ _Printf_format_string_ const char* sqlFmtStr, ...)
+	void executeInsert(const char* name, std::string const& userSql)
 	{
-		std_string_fmt_impl(sqlFmtStr, userSql);
 		if (executeWriteSql(userSql) > 0) {
 			if (auto const id = sqlite3_last_insert_rowid(m_conn.get()); id != EmptyId) {
-				printf("Added with %s %llu\n", idName, id);
+				printf("Added with %s ID %llu\n", name, id);
 			}
 		}
 	}
@@ -3711,31 +3712,18 @@ ORDER BY Dupe DESC, "Book read")");
 		auto ln = argi(0, "last name", optional); if (ln.empty()) return;
 		auto fn = argi(1, "first name", optional); // May be empty.
 		if (confirmf("Add author '%s, %s'", S(ln), S(fn))) {
-			executeInsert("AuthorID", "INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn));
+			executeInsert("author", fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)));
 		}
 	}
 
-	void addGenre(std::string const& name)
+	void add(const char* name, const char* tableName, unsigned argIndex = 0) // Generic add for single-column entities
 	{
-		executeInsert("GenreID", "INSERT INTO Genres (Genre) VALUES(%s)", ESC_S(name));
+		if (auto arg = argi(argIndex, name, optional); !arg.empty()) {
+			if (confirmf("Add %s '%s'", name, S(arg))) {
+				executeInsert(name, fmt("INSERT INTO %s (%s) VALUES(%s)", tableName, name, ESC_S(arg)));
+			}
+		}
 	}
-
-	void addSeries(std::string const& name)
-	{
-		executeInsert("SeriesID", "INSERT INTO Series (Series) VALUES(%s)",  ESC_S(name));
-	}
-
-	void addSource(std::string const& name)
-	{
-		executeInsert("SourceID", "INSERT INTO Sources (Source) VALUES(%s)",  ESC_S(name));
-	}
-
-	void addBookCategory(std::string const& name)
-	{
-		executeInsert("CategoryID", "INSERT INTO BookCategory (Category) VALUES(%s)",  ESC_S(name));
-	}
-	
-	using GenreIds = std::vector<IdValue>;
 
 	void inputGenres(GenreIds& genres, const char* prompt)
 	{
@@ -4102,7 +4090,7 @@ ORDER BY Dupe DESC, "Book read")");
 	{
 		if (auto bi = bidargi(0)) {
 			auto dr = argi(1, "Date read", DateReadRegEx);
-			auto sid = idargi(2, "SourceID", cf(&Litt::selSource), getListSource());
+			auto sid = soidargi(2);
 			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selTitle(bi)))) {
 				executeWriteSqlf("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
 			}
@@ -4231,15 +4219,6 @@ ORDER BY Dupe DESC, "Book read")");
 			auto owned = intargi(1, "Owned");
 			if (confirmf("Set owned of '%s' => %i", S(selTitle(bookId)), owned)) {
 				executeWriteSqlf("UPDATE Books SET Owned = %i WHERE BookID=%llu", owned, bookId);
-			}
-		}
-	}
-	
-	void executeSimpleAddAction(const char* name, void (Litt::*addMethod)(std::string const&), unsigned argIndex = 0)
-	{
-		if (auto arg = argi(argIndex, name, optional); !arg.empty()) {
-			if (confirmf("Add %s '%s'", name, S(arg))) {
-				(this->*addMethod)(arg);
 			}
 		}
 	}
@@ -4389,10 +4368,11 @@ ORDER BY Dupe DESC, "Book read")");
 			break;
 		}
 		case a("add-a"):   addAuthor(); break;
-		case a("add-g"):   executeSimpleAddAction("genre", &Litt::addGenre); break;
-		case a("add-s"):   executeSimpleAddAction("series", &Litt::addSeries); break;
-		case a("add-so"):  executeSimpleAddAction("book source", &Litt::addSource); break;
-		case a("add-c"):   executeSimpleAddAction("book category", &Litt::addBookCategory); break;
+		case a("add-g"):   add("genre", "Genres"); break;
+		case a("add-s"):   add("series", "Series"); break;
+		case a("add-so"):  add("source", "Sources"); break;
+		case a("add-c"):   add("category", "BookCategory"); break;
+		case a("add-l"):   add("language", "Language"); break;
 		case a("add-b"):   addBook(); break;
 		case a("add-st"):  addStory(); break;
 		case a("set-s"):   setBookSeries(); break;
