@@ -517,7 +517,7 @@ namespace LittDefs
 		TableInfos() {};
 
 		union {
-			TableInfo arrView[11 + 7 + 2 + 40] = {};
+			TableInfo arrView[11 + 7 + 2 + 40] = {}; // Technically against C++ standard!
 			#pragma warning(disable : 4201) // nameless struct extension.
 			struct {
 				// Start tables
@@ -3637,12 +3637,11 @@ ORDER BY Dupe DESC, "Book read")");
 
 	std::vector<std::vector<std::string>> selectRowValues(std::string const& userSql) const
 	{
-		std::vector<std::vector<std::string>> res;
+		decltype(selectRowValues("")) res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
 			auto pRes = static_cast<decltype(&res)>(pArg);
-			pRes->emplace_back(size_t(argc));
-			std::transform(argv, argv + argc, pRes->back().begin(), rowValue);
+			std::transform(argv, argv + argc, pRes->emplace_back(size_t(argc)).begin(), rowValue);
 			return 0;
 		};
 		executeSql(userSql, callback, &res, false);
@@ -3651,28 +3650,24 @@ ORDER BY Dupe DESC, "Book read")");
 
 	std::vector<IdValue> selectRowIdValues(std::string const& userSql) const
 	{
-		auto rows = selectRowValues(userSql);
 		std::vector<IdValue> res;
-		for (auto const& row : rows)
+		for (auto const& row : selectRowValues(userSql))
 		{
-			if (IdValue id; !toIdValue(row.at(0), id))
-				throw std::logic_error("Invalid id value: '" + row.at(0) + "' from query " + userSql);
-			else res.push_back(id);
+			if (IdValue id; toIdValue(row.at(0), id)) res.push_back(id);
+			else throw std::runtime_error(fmt("Invalid ID value '%s' in '%s'", S(row[0]), S(userSql)));
 		}
 		return res;
 	}
 
-	bool hasRowValue(std::string const& userSql)
+	bool hasRows(std::string const& userSql)
 	{
-		auto res = selectRowValues(userSql);
-		return !res.empty();
+		return !selectRowValues(userSql).empty(); // Could optimize and retrieve only first row, but hardly needed.
 	}
 
 	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
 	{
-		auto res = selectRowValues(userSql);
-		if (res.empty()) throw std::runtime_error(fmt("Could not find %s", valueName));
-		return res[0].at(0);
+		if (auto res = selectRowValues(userSql); !res.empty()) return res[0].at(0);
+		throw std::runtime_error(fmt("Could not find %s", valueName));
 	}
 
 	std::string selDV(const char* valCol, Table table, const char* idCol, IdValue id) const
@@ -3967,8 +3962,8 @@ ORDER BY Dupe DESC, "Book read")");
 
 	bool getStoryId(IdValue& storyId, std::string const& story)
 	{
-		if (hasRowValue(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESC_S(story)))) {
-			auto idValid = [&]() { return storyId == EmptyId || hasRowValue(fmt(
+		if (hasRows(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESC_S(story)))) {
+			auto idValid = [&]() { return storyId == EmptyId || hasRows(fmt(
 				"SELECT 1 FROM Stories WHERE StoryID=%llu AND Story=%s", storyId, ESC_S(story)));
 			};
 			for (;;) {
