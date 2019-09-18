@@ -584,29 +584,31 @@ namespace LittDefs
 	};
 	static_assert(sizeof(TableInfos::arrView) == sizeof(TableInfos), "check arrView size!");
 
+	enum Justify : int { JLeft = 1, JCenter = 0, JRight = -1 }; // For DisplayMode::column
+
 	struct ColumnInfo {
 		std::string const nameDef; // Column name or SQL expression (def) for column
 		int         const width; // Default width of column, can be overridden.
+		Justify     const justify; // Only supports Left and partly Right right now!
 		ColumnType  const type; // text or numeric column basically.
 		std::string const label; // label for output, useful when nameDef is not a column name.
 		bool        const aggr; // Is a group aggregate column?
-		bool        const justifyRight; // Justify right instead of left on DisplayMode::column.
 
 		ColumnInfo const* lengthColumn = nullptr; // Will be set only if the column has a length column added.
 		const char*       collation = nullptr; // Only set if not using the default (usually BINARY)
 		mutable Tables    tables; // Tables needed by nameDef in the query, varies with startTable(action).
 
-		mutable int  overriddenWidth = -1; // Overriden width via either -c or -s option.
+		mutable int  sWidth = -1; // Width set by the -s option.
 		mutable bool usedInQuery = false; // Tells if column is references anywhere in the query.
 		mutable bool usedInResult = false; // Tells if column is a result (i.e. SELECT:ed) column.
 
-		ColumnInfo(std::string const& nameDef, int width, ColumnType ct, std::string const& label, bool aggr, bool justifyRight, Tables t) :
+		ColumnInfo(std::string const& nameDef, int width, Justify j, ColumnType ct, std::string const& label, bool aggr, Tables t) :
 			nameDef(nameDef),
 			width(width),
+			justify(j),
 			type(ct),
 			label(label),
 			aggr(aggr),
-			justifyRight(justifyRight),
 			tables(t)
 		{}
 
@@ -940,11 +942,11 @@ public:
 		write(str, strlen(str));
 	}
 
-	void writeUtf8Width(const char* str, int width, bool justifyRight) const
+	void writeUtf8Width(const char* str, int width, Justify justify) const
 	{ // PRE: str contains only complete utf-8 code points.
 		int writtenChars = 0;
 
-		if (justifyRight) { // OBS! Does not work for utf-8 strings with multibyte chars! Mainly with numeric columns for now!
+		if (justify == JRight) { // OBS! Does not work for utf-8 strings with multibyte chars! Mainly with numeric columns for now!
 			for (int i = strlen(str); i < width; ++i)
 			{
 				write(' ');
@@ -1105,8 +1107,7 @@ class Litt {
 
 	ColumnInfo& ci(std::string const& sn, std::string const& nameDef, int width, ColumnType ct, Tables t, std::string const& label, bool aggr = false)
 	{
-		bool const justifyRight = (width < 0);
-		if (auto res = m_columnInfos.try_emplace(sn, nameDef, abs(width), ct, label, aggr, justifyRight, t); res.second)
+		if (auto res = m_columnInfos.try_emplace(sn, nameDef, abs(width), width>0?JLeft:JRight, ct, label, aggr, t); res.second)
 			return res.first->second;
 		throw std::logic_error("Duplicate short name: " + sn);
 	}
@@ -1491,7 +1492,7 @@ public:
 					break;
 				case 's':
 					for (auto& c : getColumns(val, ColumnsDataKind::width, /*usedInQuery*/false))
-						c.first->overriddenWidth = c.second;
+						c.first->sWidth = c.second;
 					break;
 				case 'q':
 					m_showQuery = true;
@@ -1693,7 +1694,7 @@ public:
 	ColumnInfo const* getColumn(std::string const& sn, bool allowActualName = false) const
 	{
 		if (auto it = m_columnInfos.find(sn); it != m_columnInfos.end()) return &it->second;
-		if (allowActualName) return &m_ancis.try_emplace(sn, sn, (int)sn.length(), ColumnType::numeric, sn, false, false, Tables()).first->second;
+		if (allowActualName) return &m_ancis.try_emplace(sn, sn, (int)sn.length(), JLeft, ColumnType::numeric, sn, false, Tables()).first->second;
 		throw std::invalid_argument("Invalid short column name: " + sn);
 	}
 
@@ -2064,12 +2065,17 @@ public:
 			if (cond) add(line);
 		}
 	};
+
+	struct ColumnSetting {
+		int     width;
+		Justify justify;
+		ColumnSetting(int w, Justify j=JLeft) : width(w), justify(j) {}
+	};
 	
 	struct OutputQuery : QueryBuilder {
 		Columns m_orderBy;
 		Litt& litt;
-		std::vector<int> columnWidths; // Only set for column mode.
-		std::vector<bool> columnRight; // Only set for column mode.
+		std::vector<ColumnSetting> columnSettings; // Only set (or used at least!) for column mode.
 
 		OutputQuery(Litt& litt) : litt(litt) {} // For queries built piecemeally.
 
@@ -2130,10 +2136,7 @@ public:
 				m_query.append(ci->nameDef);
 				if (!ci->label.empty()) m_query.append(" AS ").append(ci->label);
 				if (litt.m_displayMode == DisplayMode::column) {
-					auto const width = ci->overriddenWidth >= 0 ? ci->overriddenWidth : selCols[i].second;
-					_ASSERT(width >= 0);
-					columnWidths.push_back(width);
-					columnRight.push_back(ci->justifyRight);
+					columnSettings.emplace_back(ci->sWidth >= 0 ? ci->sWidth : selCols[i].second, ci->justify);
 				}
 			}
 		}
@@ -2604,17 +2607,16 @@ public:
 			auto val = rowValue(argv[i]);
 			switch (m_displayMode) {
 			case DisplayMode::column:
-				if ((size_t)i == query.columnWidths.size()) {
+				if ((size_t)i == query.columnSettings.size()) {
 					// This will happen if "execute" is used to execute two (or more) different SQL 
 					// queries where the latter one contains more columns that the former. 
 					// Just add a suitable value to avoid crash. No need to support this use case further.
-					query.columnWidths.push_back(30);
-					query.columnRight.push_back(false);
+					query.columnSettings.emplace_back(30, JLeft);
 				}
-				if (query.columnWidths[i] > 0) {
+				if (auto cs = query.columnSettings[i]; cs.width > 0) {
 					if (i != 0) m_output.write(m_colSep);
 					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiRowColors[i].get());
-					m_output.writeUtf8Width(val, query.columnWidths[i], query.columnRight[i]);
+					m_output.writeUtf8Width(val, cs.width, cs.justify);
 					if (m_ansiEnabled && m_ansiRowColors[i].get() != m_ansiDefColor) m_output.write(m_ansiDefColor);
 				}
 				break;
@@ -2967,24 +2969,31 @@ public:
 					m_eqpGraph = std::make_unique<EQPGraph>(m_output);
 				}
 				else if (m_displayMode == DisplayMode::column) {
-					for (int i = query.columnWidths.size(); i < argc; ++i) {
-						query.columnWidths.push_back(std::min(size_t{30}, std::max(strlen(azColName[i]), strlen(rowValue(argv[i])))));
+					if (m_explainQuery != ExQ::None) { // Override column settings for explain output.
+						if (m_explainQuery == ExQ::VMCode)   query.columnSettings = { 5, 20, 6, 6, 6, 30, 6, 0/*comment, not in LITT*/ };
+						else if (m_explainQuery == ExQ::Raw) query.columnSettings = { 5/*id*/, 6/*parent*/, 0/*not used*/, 100/*detail*/ };
 					}
-					for (int i = query.columnRight.size(); i < argc; ++i) {
-						query.columnRight.push_back(false);
+
+					for (int i = query.columnSettings.size(); i < argc; ++i) { // Add missing columnSettings (for execute action).
+						query.columnSettings.emplace_back(std::max(strlen(azColName[i]), strlen(rowValue(argv[i]))), JLeft);
+						for (auto const& e : m_columnInfos) { // Try to find CS from columnInfos
+							if (auto ci = e.second; azColName[i] == ci.label || azColName[i] == ci.nameDef || 
+								azColName[i] == ci.nameDef.substr(1, ci.nameDef.length()-2)) {
+								query.columnSettings.back() = ColumnSetting(std::max(ci.width, query.columnSettings.back().width), ci.justify);
+								break;
+							}
+						}
 					}
 
 					bool fitW = (m_fitWidth == FitWidth::on);
 					bool const autoFit = (m_fitWidth == FitWidth::automatic && m_output.stdOutIsConsole());
 					if (fitW || autoFit) {
 						int requiredWidth = 0;
-						for (auto& w : query.columnWidths) { 
-							if (w > m_fitWidthValue) w = m_fitWidthValue; // Guard against HUGE sizes, can be slow to inc!
-							requiredWidth += w;
+						for (auto& cs : query.columnSettings) { 
+							if (cs.width > m_fitWidthValue) cs.width = m_fitWidthValue; // Guard against HUGE sizes, can be slow to inc!
+							requiredWidth += cs.width;
 						}
-						if (query.columnWidths.size() > 1) {
-							requiredWidth += (m_colSepSize * (query.columnWidths.size() - 1));
-						}
+						requiredWidth += (m_colSepSize * (query.columnSettings.size() - 1));
 						if (autoFit) {
 							fitW = (requiredWidth > m_fitWidthValue);
 						}
@@ -2997,12 +3006,12 @@ public:
 								int diff = abs(target - current);
 								for (;;) {
 									int changed = 0;
-									for (auto& w : query.columnWidths) {
+									for (auto& cs : query.columnSettings) {
 										// Don't touch columns with smallish widths (IDs, dates)
 										// Also don't make arbitrarily small and large. 
 										// Currently widest value in any column (not ng!) is 59.
-										if (10 < w && (inc < 0 || w < 60)) {
-											w += inc;
+										if (10 < cs.width && (inc < 0 || cs.width < 60)) {
+											cs.width += inc;
 											changed += abs(inc);
 											if (changed >= diff) goto done;
 										}
@@ -3037,10 +3046,9 @@ public:
 						outputRow(query, true, argc, azColName);
 						if (m_displayMode == DisplayMode::column) {
 							for (int i = 0; i < argc; ++i) {
-								if (query.columnWidths[i] > 0) {
+								if (auto w = query.columnSettings[i].width; w > 0) {
 									if (i != 0) m_output.write(m_colSep);
-									std::string underLine(query.columnWidths[i], '-');
-									m_output.write(underLine);
+									m_output.write(std::string(w, '-'));
 								}
 							}
 							m_output.write('\n');
@@ -3306,7 +3314,7 @@ JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRa
 WHERE B.Title = S.Story AND B.BookID <> S.BookID
 ORDER BY Dupe DESC, "Book read")";
 		OutputQuery query(*this, sql);
-		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
+		query.columnSettings = { 6,4,20,15,10,15,20,10,15,20,10,15 };
 		runOutputQuery(query);
 	}
 
@@ -3369,7 +3377,7 @@ ORDER BY Dupe DESC, "Book read")";
 		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
 
 		OutputQuery q(*this);
-		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
+		q.columnSettings.emplace_back(3, JRight); for (int y = firstYear; y <= lastYear; ++y) q.columnSettings.emplace_back(30, JLeft);
 		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
 		q.add("CREATE TABLE mdb.Res (\n\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
 		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
@@ -3445,7 +3453,7 @@ ORDER BY Dupe DESC, "Book read")";
 		if (!res.empty()) {
 			writeBomIfNeeded();
 			for (auto const& pc : res) {
-				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width, false);
+				m_output.writeUtf8Width(toUtf8(pc.name).c_str(), width, JLeft);
 				m_output.write(" : ");
 				m_output.write(toUtf8(pc.def));
 				m_output.write("\n");
@@ -3489,8 +3497,8 @@ ORDER BY Dupe DESC, "Book read")";
 
 		period = quote(period);
 		OutputQuery q(*this);
-		q.columnWidths.push_back(colWidth(period)); q.columnRight.push_back(false);
-		for (auto& c : columns) { q.columnWidths.push_back(std::max(colWidths, c.colWidth())); q.columnRight.push_back(true); }
+		q.columnSettings.emplace_back(colWidth(period), JLeft);
+		for (auto& c : columns) { q.columnSettings.emplace_back(std::max(colWidths, c.colWidth()), JRight); }
 		std::string periodFunc;
 		if      (periodDef == "%Y")    periodFunc = "substr(\"Date Read\",1,4)";
 		else if (periodDef == "%m")    periodFunc = "substr(\"Date Read\",6,2)";
