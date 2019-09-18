@@ -2090,8 +2090,8 @@ public:
 		OutputQuery(Litt& litt, const char* defColumns, const char* with, const char* from, const char* defOrderBy, SelectOption selOpt = SelectOption::normal)
 			: OutputQuery(litt)
 		{
-			showDefaultColumns(defColumns, defOrderBy);
-			addWithSelect(with, selOpt);
+			if (litt.m_showDefaults) printf("defColumns: %s\ndefOrderBy: %s\n\n", defColumns, defOrderBy);
+			addSelect(with, selOpt);
 			addResultColums(defColumns);
 			m_query.append("\nFROM ").append(from);
 			initOrderBy(defOrderBy);
@@ -2105,24 +2105,14 @@ public:
 			}
 		}
 
-		void addDistinct(SelectOption selectOption)
-		{
-			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
-				m_query.append("DISTINCT ");
-			}
-		}
+		void addSelect(SelectOption selOpt = SelectOption::normal) { addSelect(nullptr, selOpt); }
 
-		void addSelect(SelectOption selectOption = SelectOption::normal)
-		{
-			addWithSelect(nullptr, selectOption);
-		}
-
-		void addWithSelect(const char* with, SelectOption selectOption = SelectOption::normal)
+		void addSelect(const char* with, SelectOption selOpt = SelectOption::normal) // Also adds EXPLAIN and DISTINCT
 		{
 			addExplain();
 			if (with != nullptr) m_query.append("WITH\n").append(with).append("\n");
 			m_query.append("SELECT ");
-			addDistinct(selectOption);
+			if (litt.m_selectDistinct || selOpt == SelectOption::distinct) m_query.append("DISTINCT ");
 		}
 
 		void addResultColums(const char* defColumns)
@@ -2138,13 +2128,6 @@ public:
 				if (litt.m_displayMode == DisplayMode::column) {
 					columnSettings.emplace_back(ci->sWidth >= 0 ? ci->sWidth : selCols[i].second, ci->justify);
 				}
-			}
-		}
-
-		void showDefaultColumns(const char* defColumns, const char* defOrderBy)
-		{
-			if (litt.m_showDefaults) {
-				printf("defColumns: %s\ndefOrderBy: %s\n\n", defColumns, defOrderBy);
 			}
 		}
 

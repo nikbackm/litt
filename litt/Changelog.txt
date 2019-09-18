@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-18: Inline addDistinct and showDefaultColumns, only called once.
  * 2019-09-18: Simplified justification. Improved it for execute.
  * 2019-09-18: Simplified OutputQuery usage and made it more logical.
  * 2019-09-17: Optimize by Size instead of speed.
