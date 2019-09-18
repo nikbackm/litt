@@ -1,7 +1,7 @@
 LITT Changelog:
 ===============
- * 2019-09-17: Simplified justification. Improved it for execute.
- * 2019-09-17: Simplified OutputQuery usage and made it more logical.
+ * 2019-09-18: Simplified justification. Improved it for execute.
+ * 2019-09-18: Simplified OutputQuery usage and made it more logical.
  * 2019-09-17: Optimize by Size instead of speed.
  * 2019-09-17: Simplify reset methods.
  * 2019-09-17: Factored out eIDARGI, renamed selTitle to selBook for needed naming consistency.
