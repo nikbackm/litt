@@ -2071,50 +2071,52 @@ public:
 		std::vector<int> columnWidths; // Only set for column mode.
 		std::vector<bool> columnRight; // Only set for column mode.
 
-		OutputQuery(Litt& litt) : litt(litt) {}
+		OutputQuery(Litt& litt) : litt(litt) {} // For queries built piecemeally.
+
+		OutputQuery(Litt& litt, const char* userSql) : OutputQuery(litt) // For custom SQL queries.
+		{
+			addExplain(); a(userSql);
+		}
+
+		OutputQuery(Litt& litt, const char* defColumns, const char* from, const char* defOrderBy, SelectOption selOpt = SelectOption::normal)
+			: OutputQuery(litt, defColumns, nullptr/*with*/, from, defOrderBy, selOpt) {}
+
+		OutputQuery(Litt& litt, const char* defColumns, const char* with, const char* from, const char* defOrderBy, SelectOption selOpt = SelectOption::normal)
+			: OutputQuery(litt)
+		{
+			showDefaultColumns(defColumns, defOrderBy);
+			addWithSelect(with, selOpt);
+			addResultColums(defColumns);
+			m_query.append("\nFROM ").append(from);
+			initOrderBy(defOrderBy);
+		}
 
 		void addExplain()
 		{
 			if (litt.m_explainQuery != ExQ::None) {
-				m_query += "EXPLAIN ";
-				if (litt.m_explainQuery != ExQ::VMCode) m_query += "QUERY PLAN ";
+				m_query.append("EXPLAIN ");
+				if (litt.m_explainQuery != ExQ::VMCode) m_query.append("QUERY PLAN ");
 			}
-		}
-
-		void init()
-		{
-			addExplain();
 		}
 
 		void addDistinct(SelectOption selectOption)
 		{
 			if (litt.m_selectDistinct || selectOption == SelectOption::distinct) {
-				m_query += "DISTINCT ";
+				m_query.append("DISTINCT ");
 			}
 		}
 
-		void initSelectBare(SelectOption selectOption = SelectOption::normal)
+		void addSelect(SelectOption selectOption = SelectOption::normal)
 		{
-			init();
-			m_query += "SELECT ";
-			addDistinct(selectOption);
+			addWithSelect(nullptr, selectOption);
 		}
 
-		void initWithSelectBare(const char* with, SelectOption selectOption = SelectOption::normal)
+		void addWithSelect(const char* with, SelectOption selectOption = SelectOption::normal)
 		{
-			init();
-			m_query.append("WITH\n").append(with).append("\n");
-			m_query += "SELECT ";
+			addExplain();
+			if (with != nullptr) m_query.append("WITH\n").append(with).append("\n");
+			m_query.append("SELECT ");
 			addDistinct(selectOption);
-		}
-
-		void initColumnWidths()
-		{
-			if (litt.m_displayMode == DisplayMode::column && litt.m_explainQuery != ExQ::None) {
-				if (litt.m_explainQuery == ExQ::VMCode)   columnWidths = { 5, 20, 6, 6, 6, 30, 6, 7/*comment, not in LITT*/ };
-				else if (litt.m_explainQuery == ExQ::Raw) columnWidths = { 5/*id*/, 6/*parent*/, 0/*not used*/, 100/*detail*/ };
-				columnRight.clear();
-			} // else assumes columnWidths are properly set!
 		}
 
 		void addResultColums(const char* defColumns)
@@ -2134,7 +2136,6 @@ public:
 					columnRight.push_back(ci->justifyRight);
 				}
 			}
-			initColumnWidths();
 		}
 
 		void showDefaultColumns(const char* defColumns, const char* defOrderBy)
@@ -2142,26 +2143,6 @@ public:
 			if (litt.m_showDefaults) {
 				printf("defColumns: %s\ndefOrderBy: %s\n\n", defColumns, defOrderBy);
 			}
-		}
-
-		void initSelect(const char* defColumns, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
-		{
-			showDefaultColumns(defColumns, defOrderBy);
-			initSelectBare(selectOption);
-			addResultColums(defColumns);
-			m_query.append("\nFROM ").append(from);
-			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
-			initOrderBy(defOrderBy);
-		}
-
-		void initWithSelect(const char* defColumns, const char* with, const char* from, const char* defOrderBy, SelectOption selectOption = SelectOption::normal)
-		{
-			showDefaultColumns(defColumns, defOrderBy);
-			initWithSelectBare(with, selectOption);
-			addResultColums(defColumns);
-			m_query.append("\nFROM ").append(from);
-			// Not used here, but we must "run" it anyway in order to finalize all columns used in the query for later "addIfColumns" calls.
-			initOrderBy(defOrderBy);
 		}
 
 		void initOrderBy(const char* defOrderBy, bool allowActualNames = false)
@@ -2573,17 +2554,15 @@ public:
 		void addOrderBy()
 		{
 			if (!m_orderBy.empty()) { 
-				m_query += "\nORDER BY ";
+				m_query.append("\nORDER BY ");
 				for (unsigned i = 0; i < m_orderBy.size(); ++i) {
-					if (i != 0) {
-						m_query += ",";
-					}
+					if (i != 0) m_query.append(",");
 					auto ci = m_orderBy[i].first;
 					auto order = (ColumnSortOrder)m_orderBy[i].second;
 					// Use label if column is used in result(select), otherwise, have to use the name/def.
 					// For window function based columns the latter may cause an out of memory error for some reason!
 					// But only if the column is also included in the result, if the column is only used in order by it works!
-					m_query += (ci->usedInResult ? ci->labelName() : ci->nameDef);
+					m_query.append(ci->usedInResult ? ci->labelName() : ci->nameDef);
 					if (ci->collation != nullptr) {
 						m_query.append(" COLLATE ").append(ci->collation);
 					}
@@ -3131,15 +3110,19 @@ public:
 			}
 		}
 	}
-	
-	void runListData(const char* defColumns, const char* defOrderBy, Table startTable = Table::books, SelectOption selectOption = SelectOption::normal)
+
+	void runStandardOutputQuery(OutputQuery& query, Table startTable = Table::books)
 	{
-		OutputQuery query(*this);
-		query.initSelect(defColumns, getTableName(startTable), defOrderBy, selectOption);
 		query.addAuxTables(startTable);
 		query.addWhere();
 		query.addOrderBy();
 		runOutputQuery(query);
+	}
+	
+	void runListData(const char* defColumns, const char* defOrderBy, Table startTable = Table::books, SelectOption selOpt = SelectOption::normal)
+	{
+		OutputQuery query(*this, defColumns, getTableName(startTable), defOrderBy, selOpt);
+		runStandardOutputQuery(query, startTable);
 	}
 
 	void listAuthors(std::string const& action, std::string const& ln, std::string const& fn)
@@ -3248,19 +3231,14 @@ public:
 
 	void listRereads()
 	{
-		OutputQuery query(*this);
 		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
-		query.initSelect("brc.bt.bi.dr.ng", from, "dr.bi");
+		OutputQuery query(*this, "brc.bt.bi.dr.ng", from, "dr.bi");
 		query.add("JOIN Books USING(BookID)");
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);
+		runStandardOutputQuery(query);
 	}
 
 	void listReot()
 	{
-		OutputQuery query(*this);
 		const char* with = 
 R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks GROUP BY BookID),
 	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID) WHERE BookID NOT IN (SELECT BookID FROM OriginalTitles)),
@@ -3269,61 +3247,42 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION
 	         SELECT q1.BookID FROM qot q1 JOIN qot q2 ON (q1.ais = q2.ais AND q1.ot = q2.ot AND q1.BookID <> q2.BookID AND q1.bli <> q2.bli)))r";
 		const char* from = "reot JOIN Books USING(BookID)";
-		query.initWithSelect("ng.ra.bt.dr.so.gg", with, from, "dr.bi");
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);
+		OutputQuery query(*this, "ng.ra.bt.dr.so.gg", with, from, "dr.bi");
+		runStandardOutputQuery(query);
 	}
 
 	void listSametitle()
 	{
-		OutputQuery query(*this);
 		const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
-		query.initSelect("bi.bt.ng.btc", from, "bt.bi");
+		OutputQuery query(*this, "bi.bt.ng.btc", from, "bt.bi");
 		query.add("JOIN Books USING(Title)");
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);
+		runStandardOutputQuery(query);
 	}
 
 	void listSameISBN()
 	{
-		OutputQuery query(*this);
 		const char* from = "(SELECT ISBN, Count(ISBN) As ISBNCount FROM Books GROUP BY ISBN HAVING Count(ISBN) > 1)";
-		query.initSelect("bi.bt.isbn.dr.ng", from, "isbn.dr.bi");
+		OutputQuery query(*this, "bi.bt.isbn.dr.ng", from, "isbn.dr.bi");
 		query.add("JOIN Books USING(ISBN)");
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);
+		runStandardOutputQuery(query);
 	}
 
 	void listSamestory() 
 	{
-		OutputQuery query(*this);
 		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
-		query.initSelect("stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
+		OutputQuery query(*this, "stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
 		query.add("JOIN BookStories USING(StoryID)");
 		query.add("JOIN Books USING(BookID)");
 		m_tableInfos.authorbooks.included = true; // Already have AuthorID from above so skip to avoid need for SELECT DISTINCT.
 		m_tableInfos.stories.included = true; // Already have Stories content from above so skip to avoid ambigous column error.
 		m_tableInfos.bookStories.included = true; // See above.
-		query.addAuxTables();
-		query.addWhere();
-		query.addOrderBy();
-		runOutputQuery(query);
+		runStandardOutputQuery(query);
 	}
 
 	void listTitlestory()
 	{
-		OutputQuery query(*this);
-		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
-		query.initColumnWidths();
-		query.initSelectBare();
-		query.a(
-R"(B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
+		auto sql =
+R"(SELECT B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
 BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
 CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
 S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title",  
@@ -3345,7 +3304,9 @@ JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRa
 	JOIN Sources USING(SourceID)
 ) as S 
 WHERE B.Title = S.Story AND B.BookID <> S.BookID
-ORDER BY Dupe DESC, "Book read")");
+ORDER BY Dupe DESC, "Book read")";
+		OutputQuery query(*this, sql);
+		query.columnWidths = { 6,4,20,15,10,15,20,10,15,20,10,15 };
 		runOutputQuery(query);
 	}
 
@@ -3384,8 +3345,7 @@ ORDER BY Dupe DESC, "Book read")");
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
 		getColumn(snGroupBy)->usedInQuery = true;
 
-		OutputQuery query(*this);
-		query.initSelect(selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
+		OutputQuery query(*this, selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
 		query.addAuxTables(startTable);
 		query.addWhere();
 		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
@@ -3410,7 +3370,6 @@ ORDER BY Dupe DESC, "Book read")");
 
 		OutputQuery q(*this);
 		q.columnWidths = { 3 }; for (int y = firstYear; y <= lastYear; ++y) q.columnWidths.push_back(30);
-		q.initColumnWidths();
 		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
 		q.add("CREATE TABLE mdb.Res (\n\"#\" INTEGER PRIMARY KEY"); // Create result set in-place due to SQLite's 64-way join limit.
 		for (int year = firstYear; year <= lastYear; ++year) q.adf(",\"%i\" TEXT", year);
@@ -3432,7 +3391,7 @@ ORDER BY Dupe DESC, "Book read")");
 			q.a("\n");
 		}
 		resetTablesAndColumns();
-		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res ORDER BY \"#\";");
+		q.a("\n"); q.addSelect(); q.a("* FROM mdb.Res ORDER BY \"#\";");
 		q.add("END TRANSACTION; DETACH DATABASE mdb");
 		runOutputQuery(q);
 	}
@@ -3440,23 +3399,21 @@ ORDER BY Dupe DESC, "Book read")");
 	void listBooksReadPerDate(std::string countCond)
 	{
 		if (countCond.empty()) countCond = "2";
-
 		// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
-		std::string calcDRTimeWindow = "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end";
+		auto calcDRTimeWindow = "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end";
 
-		OutputQuery query(*this);
-		query.initSelect("dr.bt.nn", "Books", "dr.bt.nn"); 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
-		query.addAuxTables();
-		query.add("WHERE " + calcDRTimeWindow + " IN");
-		query.add(" (SELECT CalcDR FROM (SELECT " + calcDRTimeWindow + " as CalcDR FROM DatesRead)");
-		query.add("  GROUP BY CalcDR");
-		query.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
+		OutputQuery q(*this, "dr.bt.nn", "Books", "dr.bt.nn");
+		q.addAuxTables();
+		q.add("WHERE "); q.a(calcDRTimeWindow); q.a(" IN");
+		q.add(" (SELECT CalcDR FROM (SELECT "); q.a(calcDRTimeWindow); q.a(" AS CalcDR FROM DatesRead)");
+		q.add("  GROUP BY CalcDR");
+		q.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
 		if (!m_whereCondition.empty()) {
-		query.add(" AND " + m_whereCondition);
+		q.add(" AND " + m_whereCondition);
 		}
-		query.addOrderBy();
-		runOutputQuery(query);
+		q.addOrderBy();
+		runOutputQuery(q);
 	}
 
 	struct PeriodColumn {
@@ -3534,7 +3491,6 @@ ORDER BY Dupe DESC, "Book read")");
 		OutputQuery q(*this);
 		q.columnWidths.push_back(colWidth(period)); q.columnRight.push_back(false);
 		for (auto& c : columns) { q.columnWidths.push_back(std::max(colWidths, c.colWidth())); q.columnRight.push_back(true); }
-		q.initColumnWidths();
 		std::string periodFunc;
 		if      (periodDef == "%Y")    periodFunc = "substr(\"Date Read\",1,4)";
 		else if (periodDef == "%m")    periodFunc = "substr(\"Date Read\",6,2)";
@@ -3563,7 +3519,7 @@ ORDER BY Dupe DESC, "Book read")");
 			q.add(" ON CONFLICT(" + period  + ") DO UPDATE SET " + c.name + "=excluded." + c.name + ";\n");
 		}
 
-		q.a("\n"); q.initSelectBare(); q.a("* FROM mdb.Res");
+		q.a("\n"); q.addSelect(); q.a("* FROM mdb.Res");
 		q.initOrderBy(period.c_str(), true);
 		q.aIf("WHERE " + period + " LIKE " + likeArg(cond + WcS), !cond.empty() && cond != WcS);
 		q.addOrderBy();
@@ -3589,10 +3545,7 @@ ORDER BY Dupe DESC, "Book read")");
 	int executeWriteSql(std::string const& userSql)
 	{
 		if (m_explainQuery != ExQ::None) {
-			OutputQuery q(*this); 
-			q.initColumnWidths();
-			q.init();
-			q.a(userSql);
+			OutputQuery q(*this, userSql.c_str());
 			runOutputQuery(q);
 			return 0;
 		}
@@ -4225,16 +4178,9 @@ ORDER BY Dupe DESC, "Book read")");
 	{
 		if (auto sql = argi(0, "sql", optional); !sql.empty()) {
 			if (confirm("Execute SQL")) {
-				OutputQuery q(*this); // Note: May not be a pure query, could also be DELETE etc.
-				// Set first few columns to width 30, better than letting label and/or first value determine it.
-				// (Don't include too many columns, then fitWidth will shrink them!)
-				q.columnWidths.assign(5, 30);
-				q.initColumnWidths();
-				q.init();
-				q.a(sql);
-				runOutputQuery(q); 
-				int changes = sqlite3_changes(m_conn.get());
-				if (changes != 0) {
+				OutputQuery q(*this, sql.c_str()); // Note: May not be a pure query, could also be DELETE etc.
+				runOutputQuery(q); // columnSettings not set here, handled during query output.
+				if (int changes = sqlite3_changes(m_conn.get()); changes != 0) {
 					if (m_rowCount > 0) { printf("\n"); }
 					printf("Modified %i rows\n", changes);
 				}
@@ -4242,7 +4188,6 @@ ORDER BY Dupe DESC, "Book read")");
 		}
 	}
 
-	// Compute the action hash for use in action switch.
 	constexpr static unsigned short actionHash(const char* action)
 	{
 		/* // Commented out, as VS2017 litt.exe is 632 bytes smaller without it, no diff on VS2019.
