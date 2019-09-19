@@ -1990,10 +1990,7 @@ public:
 		return m_tableData[(int)table].tableInfo;
 	}
 
-	enum class SelectOption {
-		normal,
-		distinct,
-	};
+	enum class SelectOption { normal, distinct };
 
 	struct QueryBuilder {
 		std::string m_query;
@@ -2049,9 +2046,9 @@ public:
 
 		OutputQuery(Litt& litt) : litt(litt) {} // For queries built piecemeally.
 
-		OutputQuery(Litt& litt, const char* userSql) : OutputQuery(litt) // For custom SQL queries.
+		OutputQuery(Litt& litt, const char* sql) : OutputQuery(litt) // For custom SQL queries.
 		{
-			addExplain(); a(userSql);
+			addExplain(); a(sql);
 		}
 
 		OutputQuery(Litt& litt, const char* defColumns, const char* from, const char* defOrderBy, SelectOption selOpt = SelectOption::normal)
@@ -3391,7 +3388,7 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		std::vector<PeriodColumn> res;
 		size_t width = 0;
-		for (int i = fromActionArgIndex; ; ) {
+		for (int i = fromActionArgIndex;;) {
 			auto def = arg(i++);
 			if (def.empty()) {
 				break;
@@ -3489,9 +3486,9 @@ ORDER BY Dupe DESC, "Book read")";
 		runOutputQuery(q);
 	}
 
-	int executeSql(std::string const& userSql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr, bool enableShowQuery = true) const
+	int executeSql(std::string const& sql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr, bool enableShowQuery = true) const
 	{
-		auto encSql = encodeSqlFromInput(userSql);
+		auto encSql = encodeSqlFromInput(sql);
 		if (enableShowQuery && m_showQuery) {
 			m_output.write(encSql); m_output.write('\n'); m_output.flush();
 			return 0;
@@ -3503,22 +3500,22 @@ ORDER BY Dupe DESC, "Book read")";
 			return sqlite3_changes(m_conn.get());
 	}
 
-	int executeWriteSql(std::string const& userSql)
+	int executeWriteSql(std::string const& sql)
 	{
 		if (m_explainQuery != ExQ::None) {
-			OutputQuery q(*this, userSql.c_str());
+			OutputQuery q(*this, sql.c_str());
 			runOutputQuery(q);
 			return 0;
 		}
 		else {
-			int const changes = executeSql(userSql);
+			int const changes = executeSql(sql);
 			if (!m_showQuery) {
 				const char* verb = "Modified";
-				if (userSql.find("UPDATE") != std::string::npos && userSql.find("INSERT") == std::string::npos) verb = "Updated";
-				else if (userSql.find("DELETE")  != std::string::npos) verb = "Deleted";
-				else if (userSql.find("REPLACE") != std::string::npos) verb = "Added/Updated";
-				else if (userSql.find("UPDATE")  != std::string::npos) verb = "Added/Updated";
-				else if (userSql.find("INSERT")  != std::string::npos) verb = "Added";
+				if (sql.find("UPDATE") != std::string::npos && sql.find("INSERT") == std::string::npos) verb = "Updated";
+				else if (sql.find("DELETE")  != std::string::npos) verb = "Deleted";
+				else if (sql.find("REPLACE") != std::string::npos) verb = "Added/Updated";
+				else if (sql.find("UPDATE")  != std::string::npos) verb = "Added/Updated";
+				else if (sql.find("INSERT")  != std::string::npos) verb = "Added";
 				printf("%s %i rows\n", verb, changes);
 			}
 			return changes;
@@ -3527,58 +3524,56 @@ ORDER BY Dupe DESC, "Book read")";
 
 	int executeWriteSqlf(_In_z_ _Printf_format_string_ const char* sqlFmtStr, ...)
 	{
-		std_string_fmt_impl(sqlFmtStr, userSql);
-		return executeWriteSql(userSql);
+		std_string_fmt_impl(sqlFmtStr, sql);
+		return executeWriteSql(sql);
 	}
 
-	void executeInsert(const char* name, std::string const& userSql)
+	void executeInsert(const char* name, std::string const& sql)
 	{
-		if (executeWriteSql(userSql) > 0) {
-			if (auto const id = sqlite3_last_insert_rowid(m_conn.get()); id != EmptyId) {
+		if (executeWriteSql(sql) > 0) {
+			if (auto const id = sqlite3_last_insert_rowid(m_conn.get()); id != EmptyId)
 				printf("Added with %s ID %llu\n", name, id);
-			}
 		}
 	}
 
-	std::vector<std::vector<std::string>> selectRowValues(std::string const& userSql) const
+	std::vector<std::vector<std::string>> selectRows(std::string const& sql) const
 	{
-		decltype(selectRowValues("")) res;
+		decltype(selectRows("")) res;
 		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
 		{
 			auto pRes = static_cast<decltype(&res)>(pArg);
 			std::transform(argv, argv + argc, pRes->emplace_back(size_t(argc)).begin(), rowValue);
 			return 0;
 		};
-		executeSql(userSql, callback, &res, false);
+		executeSql(sql, callback, &res, false);
 		return res;
 	}
 
-	std::vector<IdValue> selectRowIdValues(std::string const& userSql) const
+	std::vector<IdValue> selectIds(std::string const& sql) const
 	{
-		std::vector<IdValue> res;
-		for (auto const& row : selectRowValues(userSql))
+		std::vector<IdValue> ids;
+		for (auto const& r : selectRows(sql))
 		{
-			if (IdValue id; toIdValue(row.at(0), id)) res.push_back(id);
-			else throw std::runtime_error(fmt("Invalid ID value '%s' in '%s'", S(row[0]), S(userSql)));
+			if (IdValue id; toIdValue(r.at(0), id)) ids.push_back(id);
+			else throw std::runtime_error(fmt("Invalid ID value '%s' in '%s'", S(r[0]), S(sql)));
 		}
-		return res;
+		return ids;
 	}
 
-	bool hasRows(std::string const& userSql)
+	bool hasRows(std::string const& sql) { return !selectRows(sql).empty(); }
+
+	std::string selectValue(std::string const& sql, const char* name) const
 	{
-		return !selectRowValues(userSql).empty(); // Could optimize and retrieve only first row, but hardly needed.
+		auto const rs = selectRows(sql);
+		return !rs.empty() ? rs[0].at(0) : throw std::runtime_error(fmt("Could not find %s", name));
 	}
 
-	std::string selectSingleValue(std::string const& userSql, const char* valueName) const
-	{
-		if (auto res = selectRowValues(userSql); !res.empty()) return res[0].at(0);
-		throw std::runtime_error(fmt("Could not find %s", valueName));
-	}
+	void checkExists(std::string const& sql, const char* name) const { selectValue(sql, name); }
 
 	std::string selDV(const char* valCol, Table table, const char* idCol, IdValue id) const
 	{
 		auto sql = fmt("SELECT %s FROM %s WHERE %s=%llu", valCol, getTableName(table), idCol, id);
-		return fromUtf8(selectSingleValue(sql, idCol)); // Convert to console code page, it will be displayed there.
+		return fromUtf8(selectValue(sql, idCol)); // Convert to console code page, it will be displayed there.
 	}
 	std::string selBook(IdValue id) const         { return selDV("Title", Table::books, "BookID", id); }
 	std::string selSeries(IdValue id) const       { return selDV("Series", Table::series, "SeriesID", id); }
@@ -3615,7 +3610,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 	IdValue getNextIdValue(const char* idCol, const char* table)
 	{
-		auto idStr = selectSingleValue(fmt("SELECT ifnull(max(%s), 0) + 1 FROM %s", idCol, table), idCol);
+		auto idStr = selectValue(fmt("SELECT ifnull(max(%s), 0) + 1 FROM %s", idCol, table), idCol);
 		IdValue id = 1; toIdValue(idStr, id); return id;
 	}
 
@@ -3720,7 +3715,7 @@ ORDER BY Dupe DESC, "Book read")";
 					if (getStoryId(ad.storyId, ad.story)) {
 						ad.storyRating.clear(); // no rating => existing story, so don't add to Stories or StoryGenres
 						// Lookup existing genres so they can be added to the book.
-						ad.storyGenres = selectRowIdValues("SELECT GenreID from StoryGenres WHERE StoryID=" + std::to_string(ad.storyId));
+						ad.storyGenres = selectIds("SELECT GenreID from StoryGenres WHERE StoryID=" + std::to_string(ad.storyId));
 					}
 					else {
 						ad.storyId = nextStoryId++;
@@ -3964,7 +3959,7 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto genreId = gidargi(1);
-			auto checkExists = selectSingleValue(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
+			checkExists(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
 				fmt("GenreID %llu for BookID %llu", genreId, bookId).c_str());
 			if (auto newGI = gidargi(2, "New GenreID", optional)) {
 				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selBook(bookId)))) {
@@ -3983,7 +3978,7 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto storyId = stidargi(0)) {
 			auto genreId = gidargi(1);
-			auto checkExists = selectSingleValue(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
+			checkExists(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
 				fmt("GenreID %llu for StoryID %llu", genreId, storyId).c_str());
 			if (auto newGI = gidargi(2, "New GenreID", optional)) {
 				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selStory(storyId)))) {
@@ -4011,7 +4006,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 	std::string getDrArg(IdValue bookId, int argIndex)
 	{
-		auto const rs = selectRowValues(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
+		auto const rs = selectRows(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
 		if (rs.empty()) throw std::runtime_error(fmt("No DRs for book %llu", bookId));
 
 		if (!hasArg(argIndex) && rs.size() == 1) 
