@@ -2872,13 +2872,7 @@ public:
 		}
 	}
 
-	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName)
-	{
-		auto query = static_cast<OutputQuery const*>(pArg);
-		return query->litt.outputQueryCallBack(*query, argc, argv, azColName);
-	}
-
-	int outputQueryCallBack(OutputQuery const& query, int argc, char **argv, char **azColName)
+	int outputCallBack(OutputQuery const& query, int argc, char **argv, char **azColName)
 	{
 		try {
 			if (m_rowCount == 0) {
@@ -3002,7 +2996,7 @@ public:
 		}
 	}
 
-	void runOutputQuery(OutputQuery& query)
+	void runOutputQuery(OutputQuery const& query)
 	{
 		std::string sql = encodeSqlFromInput(query.m_query);
 
@@ -3012,8 +3006,14 @@ public:
 			return;
 		}
 
-		m_rowCount = 0;
-		if (int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputQueryCallBack, &query, nullptr); res == SQLITE_OK) {
+		auto outputCallBack = [](void *pArg, int argc, char **argv, char **azColName)
+		{
+			auto query = static_cast<OutputQuery const*>(pArg);
+			return query->litt.outputCallBack(*query, argc, argv, azColName);
+		};
+
+		m_rowCount = 0; auto pQ = &const_cast<OutputQuery&>(query);
+		if (int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputCallBack, pQ, nullptr); res == SQLITE_OK) {
 			if (m_eqpGraph) {
 				m_eqpGraph->render();
 				m_eqpGraph.reset();
@@ -3455,8 +3455,7 @@ ORDER BY Dupe DESC, "Book read")";
 	int executeWriteSql(std::string const& sql)
 	{
 		if (m_explainQuery != ExQ::None) {
-			OutputQuery q(*this, sql.c_str());
-			runOutputQuery(q);
+			runOutputQuery(OutputQuery(*this, sql.c_str()));
 			return 0;
 		}
 		else {
@@ -4057,9 +4056,8 @@ ORDER BY Dupe DESC, "Book read")";
 	void executeUserSql()
 	{
 		if (auto sql = argi(0, "sql", optional); !sql.empty()) {
-			if (confirm("Execute SQL")) {
-				OutputQuery q(*this, sql.c_str()); // Note: May not be a pure query, could also be DELETE etc.
-				runOutputQuery(q); // columnSettings not set here, handled during query output.
+			if (confirm("Execute SQL")) { // Note: May not be a pure query, could also be DELETE etc.
+				runOutputQuery(OutputQuery(*this, sql.c_str())); // columnSettings init:ed during output.
 				if (int changes = sqlite3_changes(m_conn.get()); changes != 0) {
 					if (m_rowCount > 0) { printf("\n"); }
 					printf("Modified %i rows\n", changes);
