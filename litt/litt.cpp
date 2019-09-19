@@ -4143,34 +4143,8 @@ ORDER BY Dupe DESC, "Book read")";
 
 	constexpr static unsigned short actionHash(const char* action)
 	{
-		/* // Commented out, as VS2017 litt.exe is 632 bytes smaller without it, no diff on VS2019.
-		// So that <c> and <cc> returns consecutive values to help optimize the jump table.
-		// Similar for h and h<1..2>
-		if (action[1] == 0)             return 10 * action[0];
-		if (action[2] == 0) {
-			if (action[0] == action[1]) return 10 * action[0] + 1;
-			if (action[0] == 'h')       return 10 * action[0] + (action[1] - ('0' - 1));
-		}
-		else {
-			// Consecutivize <c>bc and <>bcy
-			if (action[1] == 'b' && action[2] == 'c') {
-				const unsigned short offset = (action[3] == 0) ? 0 : 6; // Assume 'y' if not 0.
-				switch (action[0]) {
-				case 'a': return 1 + offset;
-				case 'g': return 2 + offset;
-				case 's': return 3 + offset;
-				case 'c': return 4 + offset;
-				case 'l': return 5 + offset;
-				case 'o': return 6 + offset;
-				}
-			}
-		}*/
-		// General case, enough for the above actions as well if we comment that code out.
-		unsigned short hash = 0;
-		while (*action) {
-			hash = 23 * (hash ^ (unsigned short)(*action++));
-		}
-		return hash;
+		unsigned short h=0; while (*action) h = 23 * (h ^ (unsigned short)(*action++));
+		return h;
 	}
 	
 	void executeAction() 
