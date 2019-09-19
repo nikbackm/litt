@@ -4202,13 +4202,7 @@ ORDER BY Dupe DESC, "Book read")";
 int main(int argc, char **argv)
 {
 	try {
-		if (argc <= 1) {
-			showHelp();
-		}
-		else {
-			Litt litt(argc, argv);
-			litt.executeAction();
-		}
+		(argc < 2) ? showHelp() : Litt(argc, argv).executeAction();
 		return 0;
 	}
 	catch (std::exception& ex) {
