@@ -1844,11 +1844,6 @@ public:
 		m_havingCondition = appendConditions(logicalOp, m_havingCondition, condition);
 	}
 
-	void addCountCondToHavingCondition(const char* sn, std::string const& countCond) const
-	{
-		appendToHavingCondition(LogOp_OR, parseCountCondition(getColumn(sn)->nameDef, countCond));
-	}
-
 	void appendToWhereCondition(const char* logicalOp, std::string const& condition) const
 	{
 		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
@@ -3317,13 +3312,13 @@ ORDER BY Dupe DESC, "Book read")";
 
 	void listBookCounts(std::string const& countCond, bool includeReReads, const char* columns, const char* snGroupBy, Table startTable = Table::books)
 	{
-		std::string ccol = getCountColumn();
-		auto selCols = columns + std::string(".") + ccol;
-		if (!countCond.empty()) { addCountCondToHavingCondition(ccol.c_str(), countCond); }
+		std::string cc = getCountColumn();
+		auto selCols = columns + std::string(".") + cc;
+		if (!countCond.empty()) appendToHavingCondition(LogOp_AND, parseCountCondition(getColumn(cc)->nameDef, countCond));
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
 		getColumn(snGroupBy)->usedInQuery = true;
 
-		OutputQuery query(*this, selCols.c_str(), getTableName(startTable), (ccol + ".desc").c_str());
+		OutputQuery query(*this, selCols.c_str(), getTableName(startTable), (cc + ".desc").c_str());
 		query.addAuxTables(startTable);
 		query.addWhere();
 		query.add("GROUP BY " + getColumn(snGroupBy)->nameDef);
