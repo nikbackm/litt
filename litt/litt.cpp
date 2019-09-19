@@ -1744,25 +1744,21 @@ public:
 
 	std::regex getRegex(std::string const& reVal)
 	{
-		return std::regex(
-			toUtf8(reVal),
-			std::regex_constants::ECMAScript |
-			std::regex_constants::optimize |
-			std::regex_constants::nosubs);
+		namespace r = std::regex_constants;
+		return std::regex(toUtf8(reVal), r::ECMAScript|r::optimize|r::nosubs);
 	}
 
 	std::string getWhereCondition(std::string const& value) const // Will also update included columns!
 	{
 		OptionParser opts(value, "where");
-		std::string wcond;
-		std::string hcond;
+		std::string whereCond, havingCond;
 
 		for (std::string sn; opts.getNext(sn); ) {
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
-			bool glob = false; // Must not replace wildcard if globbing.
 
 			auto val = opts.getNext(); // Either a value or an operation for the value coming up.
+			bool glob = false; // Must not replace wildcard if globbing.
 			std::string oper;
 			if      (val == "lt")  oper = "<";
 			else if (val == "lte") oper = "<=";
@@ -1775,57 +1771,48 @@ public:
 			else if (val == "isnull" || val == "notnull" || val == "isempty" || val == "range" || val == "nrange") oper = val; 
 			else if (val == "and" || val == "or" || val == "nand" || val == "nor") oper = val;
 			
-			if (oper.empty()) {
-				oper = "LIKE";
-			}
-			else {
-				if (oper != "isnull" && oper != "notnull" && oper != "isempty") {
-					val = opts.getNext();
-				}
-			}
+			if (oper.empty()) oper = "LIKE"; // And (current) val is the operand
+			else if (oper != "isnull" && oper != "notnull" && oper != "isempty") val = opts.getNext();
 
-			auto getOperand = [&col, this, glob](std::string val) -> std::string {
+			auto getOperand = [this, col, glob](std::string val) -> std::string {
 				if (auto valCol = m_columnInfos.find(val); valCol != m_columnInfos.end()) {
 					valCol->second.usedInQuery = true;
 					return valCol->second.nameDef;
 				}
 				return col->getLikeArg(std::move(val), glob);
 			};
-
 			val = getOperand(val);
 
-			std::string snCond;
-			std::string colName(col->nameDef);
-						
-			if (oper == "notlike") snCond = "ifnull(" + colName + ", '') NOT LIKE " + val;
-			else if (oper == "isnull")  snCond = colName + " IS NULL";
-			else if (oper == "notnull") snCond = colName + " IS NOT NULL";
-			else if (oper == "isempty") snCond = colName + " = ''";
-			else if (oper == "range")   snCond = val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext());
-			else if (oper == "nrange")  snCond = "NOT (" + val + " <= " + colName + " AND " + colName + " <= " + getOperand(opts.getNext()) + ")";
+			auto const& cn = col->nameDef;
+			std::string cond;
+			if (oper == "notlike") cond = "ifnull(" + cn + ", '') NOT LIKE " + val;
+			else if (oper == "isnull")  cond = cn + " IS NULL";
+			else if (oper == "notnull") cond = cn + " IS NOT NULL";
+			else if (oper == "isempty") cond = cn + " = ''";
+			else if (oper == "range")   cond = val + " <= " + cn + " AND " + cn + " <= " + getOperand(opts.getNext());
+			else if (oper == "nrange")  cond = "NOT (" + val + " <= " + cn + " AND " + cn + " <= " + getOperand(opts.getNext()) + ")";
 			else if (oper == "and" || oper == "or" || oper == "nand" || oper == "nor") {
-				snCond = "(";
+				cond = "(";
 				bool not = (oper[0] == 'n');
 				for (;;) {
-					snCond.append("ifnull(" + colName + ", '')"
+					cond.append("ifnull(" + cn + ", '')"
 						+ (val[0] == '\'' ? (not ? " NOT LIKE " : " LIKE ") : (not ? " <> " : " = "))
 						+ val);
 					if (!opts.getNext(val)) break;
-					snCond.append(oper.back() == 'd' ? LogOp_AND : LogOp_OR);
+					cond.append(oper.back() == 'd' ? LogOp_AND : LogOp_OR);
 					val = getOperand(val);
 				}
-				snCond.append(")");
+				cond.append(")");
 			}
 			else {
-				snCond = colName + " " + oper + " " + val;
+				cond = cn + " " + oper + " " + val;
 			}
-
-			auto appendSnCondTo = [&](std::string& c) { c = ((c.empty()) ? snCond : c + LogOp_AND + snCond); };
-			appendSnCondTo(col->aggr ? hcond : wcond);
+			auto& toCond = col->aggr ? havingCond : whereCond;
+			toCond = toCond.empty() ? cond : (toCond + LogOp_AND + cond);
 		}
 
-		appendToHavingCondition(LogOp_OR, hcond); // HACK: always merged, not returned. Works for now though!
-		return wcond;
+		appendToHavingCondition(LogOp_OR, havingCond); // HACK: always merged, not returned. Works for now though!
+		return whereCond;
 	}
 
 	static std::string parseCountCondition(std::string const& name, std::string const& value)
