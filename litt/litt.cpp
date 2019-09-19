@@ -4028,25 +4028,17 @@ ORDER BY Dupe DESC, "Book read")";
 
 	std::string getDrArg(IdValue bookId, int argIndex)
 	{
-		auto const drRows = selectRowValues(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
-		if (drRows.empty())
-			throw std::runtime_error(fmt("No date read:s for book %llu", bookId));
+		auto const rs = selectRowValues(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
+		if (rs.empty()) throw std::runtime_error(fmt("No DRs for book %llu", bookId));
 
-		if (!hasArg(argIndex) && drRows.size() == 1) {
-			return drRows[0].at(0);
-		}
-		else {
-			auto const drOrIndex = argi(argIndex, "Current date read value or index");
-			if (int index; toInt(drOrIndex, index)) {
-				if (0 <= index && index < (int)drRows.size()) {
-					return drRows[index].at(0);
-				}
-				else {
-					throw std::runtime_error(fmt("No date read found at index %i for book %llu", index, bookId));
-				}
-			}
-			return drOrIndex;
-		}
+		if (!hasArg(argIndex) && rs.size() == 1) 
+			return rs[0].at(0); // No need to query the user in this case.
+
+		auto const dri = argi(argIndex, "Current date read value or index");
+		if (int i; toInt(dri, i))
+			return (0<=i && i<(int)rs.size()) ? rs[i].at(0) : throw std::runtime_error(fmt("No DR #%i for book %llu", i, bookId));
+		else 
+			return dri;
 	}
 
 	void setBookDateRead()

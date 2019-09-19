@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-19: Tighten up getDrArg.
  * 2019-09-19: Tighten up getWhereCondition.
  * 2019-09-18: Inline addDistinct and showDefaultColumns, only called once.
  * 2019-09-18: Simplified justification. Improved it for execute.
