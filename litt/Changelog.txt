@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-19: Allow inputting NULL values for ISBN values. (Just enter NULL).
  * 2019-09-19: Inline addActionWhereCondition overload for argIndex, only used once.
  * 2019-09-19: Inline addCountCondToHavingCondition, only called once. Also changed OR to AND.
  * 2019-09-19: Tighten up getDrArg.

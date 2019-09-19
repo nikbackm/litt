@@ -334,16 +334,6 @@ namespace Utils
 		return res;
 	}
 
-	// Escape the SQL value and add the SQL quotes (if needed).
-	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
-	{
-		if (int intVal; !(tryToTreatAsNumeric && toInt(str, intVal))) {
-			replaceAll(str, "'", "''");
-			str = "'" + str + "'";
-		}
-		return str;
-	}
-
 	void toLowerCase(std::string& str)
 	{
 		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return static_cast<char>(tolower(c)); });
@@ -455,10 +445,21 @@ namespace LittDefs
 	const char*   LogOp_OR = " OR ";
 	const char*   LogOp_AND = " AND ";
 	const IdValue EmptyId = 0;
+	const char*   NullInput = "NULL"; // Used for inputing NULL values.
 	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
 	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|\.\.\d{4}-\d\d-\d\d)?)x";
 	const char*   PubDateRegEx = R"x(\d{4}(-\d\d(-\d\d)?)?)x";
 	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
+
+	// Escape the SQL value and add the SQL quotes (if needed).
+	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
+	{
+		if (int intVal; str != NullInput && !(tryToTreatAsNumeric && toInt(str, intVal))) {
+			replaceAll(str, "'", "''");
+			str = "'" + str + "'";
+		}
+		return str;
+	}
 
 	// Replace our wildcard with SQL's wildcard. Also escape and add SQL quoting if needed.
 	std::string likeArg(std::string str, bool tryToTreatAsNumeric = false, bool glob = false)
@@ -786,7 +787,7 @@ namespace Input
 	{
 		do {
 			input(value, prompt, options);
-		} while (!checkIsbn(value.c_str(), value.length()) &&
+		} while (value != NullInput && !checkIsbn(value.c_str(), value.length()) &&
 			ask("yn", fmt("Use invalid %s '%s'", prompt, value.c_str()), 'n') == 'n');
 	}
 
@@ -1177,46 +1178,38 @@ class Litt {
 */
 	static void isbn10(sqlite3_context* context, int argc, sqlite3_value** argv)
 	{
-		if (argc == 1) {
-			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0]) {
+		if (argc == 1)
+			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0])
 				if (int const len = strlen(isbn); checkIsbn(isbn, len)) {
 					if (len == 10) {
-						sqlite3_result_text(context, isbn, 10, SQLITE_TRANSIENT);
-						return;
+						return sqlite3_result_text(context, isbn, 10, SQLITE_TRANSIENT);
 					}
 					else if (len == 13 && isbn[0] == '9' && isbn[1] == '7' && isbn[2] == '8') {
 						char i10[10];
 						strncpy(i10, isbn+3, 9);
 						i10[9] = (char)calcIsbn10CheckDigit(i10);
-						sqlite3_result_text(context, i10, 10, SQLITE_TRANSIENT);
-						return;
+						return sqlite3_result_text(context, i10, 10, SQLITE_TRANSIENT);
 					}
 				}
-			}
-		}
-		sqlite3_result_null(context);
+		return sqlite3_result_null(context);
 	}
 
 	static void isbn13(sqlite3_context *context, int argc, sqlite3_value **argv)
 	{
-		if (argc == 1) {
-			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0]) {
+		if (argc == 1)
+			if (auto isbn = reinterpret_cast<const char*>(sqlite3_value_text(argv[0])); isbn && isbn[0])
 				if (int const len = strlen(isbn); checkIsbn(isbn, len)) {
 					if (len == 13) {
-						sqlite3_result_text(context, isbn, 13, SQLITE_TRANSIENT);
-						return;
+						return sqlite3_result_text(context, isbn, 13, SQLITE_TRANSIENT);
 					}
 					else if (len == 10) {
 						char i13[13] = { '9', '7', '8' };
 						strncpy(i13 + 3, isbn, 9);
 						i13[12] = (char)calcIsbn13CheckDigit(i13);
-						sqlite3_result_text(context, i13, 13, SQLITE_TRANSIENT);
-						return;
+						return sqlite3_result_text(context, i13, 13, SQLITE_TRANSIENT);
 					}
 				}
-			}
-		}
-		sqlite3_result_null(context);
+		return sqlite3_result_null(context);
 	}
 
 #define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
