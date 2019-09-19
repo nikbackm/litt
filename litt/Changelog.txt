@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-19: Removed braces for confirm-ifs and list actions.
  * 2019-09-19: Added checkExists, selectSingleValue => selectValue, selectRowValues => selectRows, selectRowIdValues => selectIds, userSql => sql.
  * 2019-09-19: Removed commented out extra code for actionHash.
  * 2019-09-19: Allow inputting NULL values for ISBN values. (Just enter NULL).

@@ -3087,12 +3087,10 @@ public:
 	{
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
-		if (action == "a") {
+		if (action == "a")
 			runListData("ai.nn.30", "ai", Table::authors); 
-		}
-		else {
+		else
 			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi", Table::authors);
-		}
 	}
 
 	void listPseudonyms(std::string const& ln, std::string const& fn)
@@ -3105,36 +3103,29 @@ public:
 
 	void listBooks(std::string const& action, std::string const& title)
 	{
-		if (action == "b") {
-			addActionWhereCondition("bt", title);
+		addActionWhereCondition(action=="b" ? "bt" : "btst", title);
+		if (action == "b")
 			runListData("bi.bt.60", "bi", Table::books);
-		}
-		else {
-			addActionWhereCondition("btst", title);
+		else
 			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.stid.ln.fn", Table::books);
-		}
 	}
 
 	void listSeries(std::string const& action, std::string const& series)
 	{
 		addActionWhereCondition("se", series);
-		if (action == "s") {
+		if (action == "s")
 			runListData("si.se.70", "si", Table::series);
-		}
-		else {
+		else
 			runListData("bi.sp.nn.ra.bt.dr", "dr.bi.ln.fn", Table::series);
-		}
 	}
 
 	void listGenres(std::string const& action, std::string const& genre)
 	{
 		addActionWhereCondition("ge", genre);
-		if (action == "g") {
+		if (action == "g")
 			runListData("gi_n.ge.50", "ge", Table::genres);
-		}
-		else {
+		else
 			runListData("ge.bi.bt.ra.dr.ng.gg", "ge.dr.bi", Table::genres);
-		}
 	}
 
 	void listOriginalTitles()
@@ -3146,45 +3137,37 @@ public:
 	void listStories(std::string const& action, std::string const& story)
 	{
 		addActionWhereCondition("st", story);
-		if (action == "st") {
+		if (action == "st")
 			runListData("stid.st", "stid.st", Table::stories);
-		}
-		else {
+		else
 			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
-		}
 	}
 
 	void listSources(std::string const& action, std::string const& sourceName)
 	{
 		addActionWhereCondition("so", sourceName);
-		if (action == "so") {
+		if (action == "so")
 			runListData("soid.so.50", "so", Table::sources);
-		}
-		else {
+		else
 			runListData("so.bi.bt.dr.nn", "so.dr.bi.ln.fn", Table::sources);
-		}
 	}
 
 	void listBookCategories(std::string const& action, std::string const& catName)
 	{
 		addActionWhereCondition("cat", catName);
-		if (action == "c") {
+		if (action == "c")
 			runListData("catid.cat.30", "catid", Table::bookCategory);
-		}
-		else {
+		else
 			runListData("cat.bi.bt.dr.nn", "dr.bi.ln.fn", Table::bookCategory);
-		}
 	}
 
 	void listBookLanguages(std::string const& action, std::string const& catName)
 	{
 		addActionWhereCondition("la", catName);
-		if (action == "l") {
+		if (action == "l")
 			runListData("laid_n.la", "laid_n", Table::language);
-		}
-		else {
+		else
 			runListData("la.bi.bt.dr.nn", "dr.bi.ln.fn", Table::language);
-		}
 	}
 
 	void listRereads()
@@ -3921,16 +3904,13 @@ ORDER BY Dupe DESC, "Book read")";
 			auto seriesId = idargi(1, "SeriesID", cf(&Litt::selSeries), getListSeries());
 			auto part = argi(2, "Part or 'delete' to remove");
 			if (part != "delete") {
-				if (confirmf("Add '%s [%llu]' to '%s [%llu]' as part %s",
-					S(selBook(bookId)), bookId, S(selSeries(seriesId)), seriesId, S(part))) {
+				if (confirmf("Add '%s [%llu]' to '%s [%llu]' as part %s", S(selBook(bookId)), bookId, S(selSeries(seriesId)), seriesId, S(part)))
 					executeWriteSqlf("INSERT OR REPLACE INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s)",
 						bookId, seriesId, S(escSqlVal(part, true)));
-				}
 			}
 			else {
-				if (confirmf("Remove '%s [%llu]' from '%s [%llu]'", S(selBook(bookId)), bookId, S(selSeries(seriesId)), seriesId)) {
+				if (confirmf("Remove '%s [%llu]' from '%s [%llu]'", S(selBook(bookId)), bookId, S(selSeries(seriesId)), seriesId))
 					executeWriteSqlf("DELETE FROM BookSeries WHERE BookID=%llu AND SeriesID=%llu", bookId, seriesId);
-				}
 			}
 		}
 	}
@@ -3939,9 +3919,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto genreId = gidargi(1);
-			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selBook(bookId)))) {
+			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selBook(bookId))))
 				executeWriteSqlf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)", bookId, genreId);
-			}
 		}
 	}
 
@@ -3949,9 +3928,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto storyId = stidargi(0)) {
 			auto genreId = gidargi(1);
-			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selStory(storyId)))) {
+			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selStory(storyId))))
 				executeWriteSqlf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)", storyId, genreId);
-			}
 		}
 	}
 
@@ -3962,14 +3940,12 @@ ORDER BY Dupe DESC, "Book read")";
 			checkExists(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
 				fmt("GenreID %llu for BookID %llu", genreId, bookId).c_str());
 			if (auto newGI = gidargi(2, "New GenreID", optional)) {
-				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selBook(bookId)))) {
+				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selBook(bookId))))
 					executeWriteSqlf("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", newGI, bookId, genreId);
-				}
 			}
 			else {
-				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selBook(bookId)))) {
+				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selBook(bookId))))
 					executeWriteSqlf("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId);
-				}
 			}
 		}
 	}
@@ -3981,14 +3957,12 @@ ORDER BY Dupe DESC, "Book read")";
 			checkExists(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
 				fmt("GenreID %llu for StoryID %llu", genreId, storyId).c_str());
 			if (auto newGI = gidargi(2, "New GenreID", optional)) {
-				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selStory(storyId)))) {
+				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selStory(storyId))))
 					executeWriteSqlf("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu", newGI, storyId, genreId);
-				}
 			}
 			else {
-				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selStory(storyId)))) {
+				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selStory(storyId))))
 					executeWriteSqlf("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId);
-				}
 			}
 		}
 	}
@@ -3998,9 +3972,8 @@ ORDER BY Dupe DESC, "Book read")";
 		if (auto bi = bidargi(0)) {
 			auto dr = argi(1, "Date read", DateReadRegEx);
 			auto sid = soidargi(2);
-			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selBook(bi)))) {
+			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selBook(bi))))
 				executeWriteSqlf("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
-			}
 		}
 	}
 
@@ -4027,15 +4000,13 @@ ORDER BY Dupe DESC, "Book read")";
 			auto const newDr = argi(1, "New date read or 'delete' to remove", deleteOrDrRegEx.c_str());
 			auto const dr = getDrArg(bookId, 2);
 			if (newDr != "delete") {
-				if (confirmf("Change date read '%s' => '%s' for '%s'", S(dr), S(newDr), S(selBook(bookId)))) {
+				if (confirmf("Change date read '%s' => '%s' for '%s'", S(dr), S(newDr), S(selBook(bookId))))
 					executeWriteSqlf("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
 						ESC_S(newDr), bookId, ESC_S(dr));
-				}
 			}
 			else {
-				if (confirmf("Remove date read '%s' from '%s'", S(dr), S(selBook(bookId)))) {
+				if (confirmf("Remove date read '%s' from '%s'", S(dr), S(selBook(bookId))))
 					executeWriteSqlf("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bookId, ESC_S(dr));
-				}
 			}
 		}
 	}
@@ -4045,9 +4016,8 @@ ORDER BY Dupe DESC, "Book read")";
 		if (auto const bookId = bidargi(0)) {
 			auto const sourceId = soidargi(1);
 			auto const dr = getDrArg(bookId, 2);
-			if (confirmf("Set source to '%s' for %s of '%s'", S(selSource(sourceId)), S(dr), S(selBook(bookId)))) {
+			if (confirmf("Set source to '%s' for %s of '%s'", S(selSource(sourceId)), S(dr), S(selBook(bookId))))
 				executeWriteSqlf("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND \"Date Read\"=%s", sourceId, bookId, ESC_S(dr));
-			}
 		}
 	}
 
@@ -4057,17 +4027,15 @@ ORDER BY Dupe DESC, "Book read")";
 			auto originalTitle = argi(1, "Original title or 'delete' to remove");
 			if (originalTitle != "delete") {
 				auto langId = lidargi(2);
-				if (confirmf("Set original title of '%s' => '%s'", S(selBook(bookId)), S(originalTitle))) {
+				if (confirmf("Set original title of '%s' => '%s'", S(selBook(bookId)), S(originalTitle)))
 					executeWriteSqlf(
 						"INSERT INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)"
 						" ON CONFLICT(BookID) DO UPDATE SET \"Original Title\"=excluded.\"Original Title\", LangID=excluded.LangID", 
 						bookId, ESC_S(originalTitle), langId);
-				}
 			}
 			else {
-				if (confirmf("Remove original title of '%s'", S(selBook(bookId)))) {
+				if (confirmf("Remove original title of '%s'", S(selBook(bookId))))
 					executeWriteSqlf("DELETE FROM OriginalTitles WHERE BookID=%llu", bookId);
-				}
 			}
 		}
 	}
@@ -4076,9 +4044,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto rating = argi(1, "Rating", RatingRegEx);
-			if (confirmf("Set rating of '%s' => %s", S(selBook(bookId)), S(rating))) {
+			if (confirmf("Set rating of '%s' => %s", S(selBook(bookId)), S(rating)))
 				executeWriteSqlf("UPDATE Books SET Rating = %s WHERE BookID=%llu", S(rating), bookId);
-			}
 		}
 	}
 
@@ -4086,9 +4053,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto storyId = stidargi(0)) {
 			auto rating = argi(1, "Rating", RatingRegEx);
-			if (confirmf("Set rating of '%s' => %s", S(selStory(storyId)), S(rating))) {
+			if (confirmf("Set rating of '%s' => %s", S(selStory(storyId)), S(rating)))
 				executeWriteSqlf("UPDATE Stories SET Rating = %s WHERE StoryID=%llu", S(rating), storyId);
-			}
 		}
 	}
 
@@ -4096,9 +4062,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = argi(1, "Publication date", PubDateRegEx);
-			if (confirmf("Set Date of '%s' => %s", S(selBook(bookId)), S(pubdate))) {
+			if (confirmf("Set Date of '%s' => %s", S(selBook(bookId)), S(pubdate)))
 				executeWriteSqlf("UPDATE Books SET Date = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
-			}
 		}
 	}
 
@@ -4106,9 +4071,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = argi(1, "Publication date", PubDateRegEx);
-			if (confirmf("Set otDate of '%s' => %s", S(selBook(bookId)), S(pubdate))) {
+			if (confirmf("Set otDate of '%s' => %s", S(selBook(bookId)), S(pubdate)))
 				executeWriteSqlf("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
-			}
 		}
 	}
 
@@ -4116,9 +4080,8 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (auto bookId = bidargi(0)) {
 			auto owned = intargi(1, "Owned");
-			if (confirmf("Set owned of '%s' => %i", S(selBook(bookId)), owned)) {
+			if (confirmf("Set owned of '%s' => %i", S(selBook(bookId)), owned))
 				executeWriteSqlf("UPDATE Books SET Owned = %i WHERE BookID=%llu", owned, bookId);
-			}
 		}
 	}
 
