@@ -1875,11 +1875,6 @@ public:
 		}
 	}
 
-	void addActionWhereCondition(const char* sn, unsigned actionArgIndex) const
-	{
-		addActionWhereCondition(sn, arg(actionArgIndex)); 
-	}
-
 	bool hasArg(unsigned index)
 	{
 		return index < m_actionArgs.size();
@@ -3154,7 +3149,7 @@ public:
 
 	void listOriginalTitles()
 	{
-		addActionWhereCondition("ot", 0);
+		addActionWhereCondition("ot", arg(0));
 		runListData("bi.ng.otla.ot.bt.dr.so.gg", "dr.bi", Table::originalTitles);
 	}
 
