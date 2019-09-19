@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-19: Reduced line count, got rid of unneeded mutable:s and consts. Added const for OutputQuery.
  * 2019-09-19: Minimize main.
  * 2019-09-19: Removed braces for confirm-ifs and list actions.
  * 2019-09-19: Added checkExists, selectSingleValue => selectValue, selectRowValues => selectRows, selectRowIdValues => selectIds, userSql => sql.

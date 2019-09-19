@@ -275,9 +275,8 @@ namespace Utils
 	void replaceAll(std::string& str, const std::string& from, const std::string& to)
 	{
 		if (from.empty()) return;
-		for (size_t pos = 0; (pos = str.find(from, pos)) != std::string::npos; pos += to.length()) {
-			str.replace(pos, from.length(), to);
-		}
+		for (size_t i = 0; (i = str.find(from, i)) != std::string::npos; i += to.length())
+			str.replace(i, from.length(), to);
 	}
 
 	std::wstring toWide(int codePage, const char *src, int const len)
@@ -379,11 +378,8 @@ namespace Utils
 		return false;
 	}
 
-	SYSTEMTIME getLocalTime()
-	{
-		SYSTEMTIME st{}; ::GetLocalTime(&st); return st;
-	}
-} // Utils
+	SYSTEMTIME getLocalTime() { SYSTEMTIME st{}; ::GetLocalTime(&st); return st; }
+}
 using namespace Utils;
 
 #define S(str) (str).c_str()
@@ -604,14 +600,7 @@ namespace LittDefs
 		mutable bool usedInResult = false; // Tells if column is a result (i.e. SELECT:ed) column.
 
 		ColumnInfo(std::string const& nameDef, int width, Justify j, ColumnType ct, std::string const& label, bool aggr, Tables t) :
-			nameDef(nameDef),
-			width(width),
-			justify(j),
-			type(ct),
-			label(label),
-			aggr(aggr),
-			tables(t)
-		{}
+			nameDef(nameDef), width(width), justify(j), type(ct), label(label), aggr(aggr), tables(t) {}
 
 		std::string const& labelName() const { return label.empty() ? nameDef : label; }
 
@@ -621,23 +610,16 @@ namespace LittDefs
 		}
 	};
 
-	// A collection of columns including some integer data (width, sortOrder).
+	// A collection of columns and integer data according to ColumnsDataKind.
 	using Columns = std::vector<std::pair<ColumnInfo const *, int>>;
 
-	enum class ColumnsDataKind {
-		none,
-		width,
-		sortOrder
-	};
+	enum class ColumnsDataKind { none, width, sortOrder };
 }
 using namespace LittDefs;
 
 namespace Input
 {
-	enum InputOptions : unsigned {
-		optional = 0x00,
-		required = 0x01,
-	};
+	enum InputOptions : unsigned { optional = 0x00, required = 0x01 };
 
 	std::string readLine() {
 		CONSOLE_SCREEN_BUFFER_INFO info{};
@@ -648,9 +630,7 @@ namespace Input
 
 		WORD textColor = 0;
 		if (auto strColor = getenv("LITT_INPUT_COLOR"); strColor != nullptr) {
-			if (auto color = atoi(strColor); 0 < color && color <= 0xFFFF) {
-				textColor = (WORD)color;
-			}
+			if (auto c = atoi(strColor); 0 < c && c <= 0xFFFF) textColor = (WORD)c;
 		}
 
 		SetConsoleTextAttribute(hOut, (textColor != 0) ? textColor  // else text color cyan, background as-is.
@@ -864,9 +844,8 @@ public:
 
 	std::string getNext()
 	{
-		std::string value;
-		if (!getNext(value)) { throwError(); }
-		return value;
+		if (std::string value; getNext(value)) return value;
+		throwError();
 	}
 
 	int nextInt()
@@ -992,7 +971,7 @@ public:
 	void writeHtml (const char* z) const 
 	{
 		int i;
-		while( *z ) {
+		while (*z) {
 			for (i = 0; z[i] !='\0'
 					 && z[i] !='<'
 					 && z[i] !='&'
@@ -1001,16 +980,14 @@ public:
 					 && z[i] !='\'';
 				i++) {}
 
-			if (i > 0) {
-				write(z, i);
-			}
+			if (i > 0) write(z, i);
 
 			if      (z[i]=='<')  { write("&lt;");   } 
 			else if (z[i]=='&')  { write("&amp;");  }
 			else if (z[i]=='>')  { write("&gt;");   } 
 			else if (z[i]=='\"') { write("&quot;"); } 
 			else if (z[i]=='\'') { write("&#39;");  } 
-			else                 { break;                 }
+			else                 { break;           }
 
 			z += i + 1;
 		}
@@ -1021,9 +998,8 @@ public:
 		if (len == 0) return;
 		if (m_stdOutIsConsole) {
 			auto ws = utf8ToWide(str, len);
-			if (DWORD nw; !WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &nw, 0)) {
+			if (DWORD nw; !WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &nw, 0))
 				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
-			}
 		}
 		else {
 			int res;
@@ -1070,8 +1046,8 @@ class Litt {
 	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
 	Output m_output;
-
 	int const consoleCodePage = GetConsoleCP();
+
 	bool m_headerOn = true;
 	FitWidth m_fitWidth = FitWidth::automatic;
 	int  m_fitWidthValue = 230;
@@ -1085,26 +1061,20 @@ class Litt {
 	std::string m_colSep = "  ";
 	int m_colSepSize = 2; // Avoid recalculating during output since contains character count and not code-point count.
 	std::string m_dbPath; // Path to LITT db file
-
 	Columns m_orderBy; // Overrides the default action order.
 	int m_limit = 0;
 	int m_offset = 0;
 	Columns m_selectedColumns; // Overrides the default action columns.
 	Columns m_additionalColumns; // Added to the action or overridden columns.
-
-	mutable std::string m_whereCondition;
-	mutable std::string m_havingCondition;
-
+	std::string m_whereCondition;
+	std::string m_havingCondition;
 	std::string m_action;
 	std::vector<std::string> m_actionArgs;
 	std::string m_actionRightWildCard;
 	std::string m_actionLeftWildCard;
-
 	Count m_count = Count::books;
-
 	DRRange m_drRange = DRRange::first; // Which DRR option to use when counting.
-
-	mutable int m_rowCount = 0; // The number of rows printed so far.
+	int m_rowCount = 0; // The number of rows printed so far.
 
 	ColumnInfo& ci(std::string const& sn, std::string const& nameDef, int width, ColumnType ct, Tables t, std::string const& label, bool aggr = false)
 	{
@@ -1224,7 +1194,6 @@ public:
 		const char* const CNoCase = "NOCASE";
 		const char* const CTitle = "NOCASE";
 		const char* const CLastName = "NOCASE";
-
 		auto&t = m_tableInfos;
 
 		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
@@ -1741,7 +1710,7 @@ public:
 		return std::regex(toUtf8(reVal), r::ECMAScript|r::optimize|r::nosubs);
 	}
 
-	std::string getWhereCondition(std::string const& value) const // Will also update included columns!
+	std::string getWhereCondition(std::string const& value) // Will also update included columns!
 	{
 		OptionParser opts(value, "where");
 		std::string whereCond, havingCond;
@@ -1832,12 +1801,12 @@ public:
 		return "(" + cond + ")" + logicalOp + "(" + cond2 + ")";
 	}
 
-	void appendToHavingCondition(const char* logicalOp, std::string const& condition) const
+	void appendToHavingCondition(const char* logicalOp, std::string const& condition)
 	{
 		m_havingCondition = appendConditions(logicalOp, m_havingCondition, condition);
 	}
 
-	void appendToWhereCondition(const char* logicalOp, std::string const& condition) const
+	void appendToWhereCondition(const char* logicalOp, std::string const& condition)
 	{
 		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
 	}
@@ -1858,7 +1827,7 @@ public:
 		m_whereCondition = getWhereCondition(whereCondition);
 	}
 
-	void addActionWhereCondition(const char* sn, std::string const& cond) const
+	void addActionWhereCondition(const char* sn, std::string const& cond)
 	{
 		if (!cond.empty()) {
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
@@ -2042,7 +2011,7 @@ public:
 	struct OutputQuery : QueryBuilder {
 		Columns m_orderBy;
 		Litt& litt;
-		std::vector<ColumnSetting> columnSettings; // Only set (or used at least!) for column mode.
+		mutable std::vector<ColumnSetting> columnSettings; // Only set (or used at least!) for column mode.
 
 		OutputQuery(Litt& litt) : litt(litt) {} // For queries built piecemeally.
 
@@ -2541,7 +2510,7 @@ public:
 		return (val != nullptr) ? val : "";
 	}
 
-	void outputRow(OutputQuery& query, bool isHeader, int argc, char **argv) const
+	void outputRow(OutputQuery const& query, bool isHeader, int argc, char **argv) const
 	{
 		switch (m_displayMode) {
 		case DisplayMode::column:
@@ -2746,7 +2715,7 @@ public:
 		}
 	}
 
-	void consProcessRow(OutputQuery& query, int argc, char **argv) const
+	void consProcessRow(OutputQuery const& query, int argc, char **argv) const
 	{ _ASSERT(consEnabled());
 		bool cvMatch = true, reMatch = true;
 		for (auto const& col : m_consRowColumns) {
@@ -2905,11 +2874,11 @@ public:
 
 	static int outputQueryCallBack(void *pArg, int argc, char **argv, char **azColName)
 	{
-		auto query = static_cast<OutputQuery*>(pArg);
+		auto query = static_cast<OutputQuery const*>(pArg);
 		return query->litt.outputQueryCallBack(*query, argc, argv, azColName);
 	}
 
-	int outputQueryCallBack(OutputQuery& query, int argc, char **argv, char **azColName) const
+	int outputQueryCallBack(OutputQuery const& query, int argc, char **argv, char **azColName)
 	{
 		try {
 			if (m_rowCount == 0) {
