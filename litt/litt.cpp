@@ -1043,7 +1043,7 @@ enum class ExQ { None = 0, Graph = 1, VMCode = 2, Raw = 3 };
 
 class Litt {
 	TableInfos m_tableInfos;
-	std::map<std::string, ColumnInfo> m_columnInfos; // Maps short name to column info.
+	std::map<std::string, ColumnInfo> m_columnInfos; // short name => ColumnInfo. NO operator names! E.g. asc,desc,lt,eq.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
 	Output m_output;
 	int const consoleCodePage = GetConsoleCP();
@@ -1182,11 +1182,20 @@ class Litt {
 		return sqlite3_result_null(context);
 	}
 
-#define A_NAME  "ltrim(\"First Name\"||' '||\"Last Name\")"
+#define Q(str) "\"" str "\""
+#define CAST(to, what) "CAST(" what " AS " to ")"
+#define IFNULL(e1, e2) "ifnull(" e1 "," e2 ")"
+#define SUBSTR(e, start, len) "substr(" e "," #start "," #len ")"
+#define STRFTIME(fmt, e) "strftime('" fmt "'," e ")"
+#define ROUND_TO_INT(strExpr) CAST("INTEGER", "round(" strExpr ",0)")
+#define DATE_FULL(col) "CASE WHEN length(" col ") = 10 THEN " col " ELSE " SUBSTR(col "||'-01-01'", 1, 10) " END"
+#define DAYS(col) STRFTIME("%J", col) /* No cast included, must check for NULL first sometimes */
+#define DR Q("Date Read")
+#define A_NAME  "ltrim(" Q("First Name") "||' '||" Q("Last Name") ")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
-#define SEPART "Series||' '||\"Part in Series\""
-#define APPEND_OPT_COL(mand, opt) mand " || CASE WHEN " opt " IS NULL THEN '' ELSE (' [' || " opt " || ']') END"
-
+#define SEPART "Series||' '||" Q("Part in Series")
+#define APPEND_OPT_COL(mand, opt) "CASE WHEN " opt " IS NULL THEN " mand " ELSE " mand "||' ['||" opt "||']' END"
+	
 public:
 	Litt(int argc, char** argv)
 	{
@@ -1196,27 +1205,26 @@ public:
 		const char* const CLastName = "NOCASE";
 		auto&t = m_tableInfos;
 
-		// OBS! As a sn, don't use "desc", "asc" and any other name that may appear after one in the command line options!
 		ciNum("ai", "AuthorID", -8, Tables());
-		ciNum("beb", "\"Bought Ebook\"", 3, Tables(&t.books));
+		ciNum("beb", Q("Bought Ebook"), 3, Tables(&t.books));
 		ciNum("bi", "BookID", -4, Tables());
 		ciTextL("bt", "Title", 45, Tables(&t.books), CTitle);
 		ciTextL("bd", "Date", 10, Tables(&t.books), CDefault);
 		ciTextL("otd", "otDate", 10, Tables(&t.originalTitles), CDefault);
-		ciTextL("bdo", "ifnull(otDate, Date)", 10, Tables(&t.books, &t.originalTitles), CDefault, "oDate");
-		ciNum("by", "CAST(substr(Date,1,4) AS INTEGER)", 5, Tables(&t.books), "BYear");
-		ciNum("oty", "CAST(substr(otDate,1,4) AS INTEGER)", 6, Tables(&t.originalTitles), "otYear");
-		ciTextL("dr", "\"Date Read\"", 10, Tables(&t.datesRead), CDefault);
+		ciTextL("bdo", IFNULL("otDate","Date"), 10, Tables(&t.books, &t.originalTitles), CDefault, "oDate");
+		ciNum("by", CAST("INTEGER", SUBSTR("Date",1,4)), 5, Tables(&t.books), "BYear");
+		ciNum("oty", CAST("INTEGER", SUBSTR("otDate",1,4)), 6, Tables(&t.originalTitles), "otYear");
+		ciTextL("dr", DR, 10, Tables(&t.datesRead), CDefault);
 		ciNum("dc", "DRCnt", 5, Tables(&t.dc));
-		ciTextL("dg", "\"Date(s)\"", 30, Tables(&t.dg), CDefault);
-		ciTextL("fn", "\"First Name\"", 15, Tables(&t.authors), CNoCase);
+		ciTextL("dg", Q("Date(s)"), 30, Tables(&t.dg), CDefault);
+		ciTextL("fn", Q("First Name"), 15, Tables(&t.authors), CNoCase);
 		ciTextL("ge", "GBook.Genre", 30, Tables(&t.gbook), CNoCase);
-		ciTextL("gg", "\"Genre(s)\"", 30, Tables(&t.gg), CNoCase);
+		ciTextL("gg", Q("Genre(s)"), 30, Tables(&t.gg), CNoCase);
 		ciNum("gi", "BookGenres.GenreID", -7, Tables(&t.bookGenres));
 		ciNum("gi_n", "GenreID", -7, Tables());
-		ciTextL("ln", "\"Last Name\"", 20, Tables(&t.authors), CLastName); 
+		ciTextL("ln", Q("Last Name"), 20, Tables(&t.authors), CLastName);
 		ciNum("nc", "AuthorCnt", 6, Tables(&t.nc));
-		ciTextL("ng", "\"Author(s)\"", 50, Tables(&t.ng), CNoCase);
+		ciTextL("ng", Q("Author(s)"), 50, Tables(&t.ng), CNoCase);
 		ciTextL("nn", A_NAME, 25, Tables(&t.authors), CNoCase, "Author");
 		ciNum("laid", "Books.LangID", 6, Tables(&t.books));
 		ciNum("laid_n", "LangID", 6, Tables());
@@ -1241,34 +1249,34 @@ public:
 		ciNum("wds", "Words", 6, Tables(&t.books));
 		ciNum("wpp", "Words / Pages", 4, Tables(&t.books), "WPP");
 		ciNum("kw", "(Words + 500) / 1000", 4, Tables(&t.books), "Kwords");
-		ciTextL("ot", "\"Original Title\"", 45, Tables(&t.originalTitles), CTitle);
+		ciTextL("ot", Q("Original Title"), 45, Tables(&t.originalTitles), CTitle);
 		ciTextL("se", "Series", 40, Tables(&t.series), CTitle);
-		ciTextL("sg", "\"Series(s)\"", 40, Tables(&t.sg), CNoCase);
+		ciTextL("sg", Q("Series(s)"), 40, Tables(&t.sg), CNoCase);
 		ciNum("si", "SeriesID", -8, Tables());
-		ciText("pa", "\"Part in Series\"", -4, Tables(&t.bookSeries));
-		ciText("sp", SEPART, 40, Tables(&t.series, &t.bookSeries), "\"Series #\"");
-		ciText("spg", "\"Series #\"", 40, Tables(&t.spg));
+		ciText("pa", Q("Part in Series"), -4, Tables(&t.bookSeries));
+		ciText("sp", SEPART, 40, Tables(&t.series, &t.bookSeries), Q("Series #"));
+		ciText("spg", Q("Series #"), 40, Tables(&t.spg));
 		ciTextL("st", "Story", 45, Tables(&t.stories), CTitle);
 		ciNum("stid", "StoryID", -7, Tables());
 		ciNum("stra", "Stories.Rating", 3, Tables(&t.stories), "SRating");
 		ciTextL("stge", "GStory.Genre", 30, Tables(&t.gstory), CNoCase, "SGenre");
-		ciTextL("stgg", "\"StoryGenre(s)\"", 30, Tables(&t.stgg), CNoCase);
-		ciNum("stbc", "\"BCnt\"", 4, Tables(&t.stbc));
-		ciTextL("stbg", "\"StoryBooks(s)\"", 50, Tables(&t.stbg), CNoCase);
-		ciNum("stnc", "\"ACnt\"", 4, Tables(&t.stnc));
-		ciTextL("stng", "\"Story author(s)\"", 50, Tables(&t.stng), CNoCase);
-		ciTextL("btst", APPEND_OPT_COL("Title", "Story"), 60, Tables(&t.books, &t.stories), CTitle, "\"Title [Story]\"");
-		ciNum("bsra", "ifnull(Stories.Rating, Books.Rating)", 3, Tables(&t.books, &t.stories), "BSRating");
-		ciTextL("bsge", "ifnull(GStory.Genre, GBook.Genre)", 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
-		ciTextL("bsgg", "ifnull(\"StoryGenre(s)\", \"Genre(s)\")", 30, Tables(&t.gg, &t.stgg), CNoCase, "\"BSGenre(s)\"");
+		ciTextL("stgg", Q("StoryGenre(s)"), 30, Tables(&t.stgg), CNoCase);
+		ciNum("stbc", "BCnt", 4, Tables(&t.stbc));
+		ciTextL("stbg", Q("StoryBooks(s)"), 50, Tables(&t.stbg), CNoCase);
+		ciNum("stnc", "ACnt", 4, Tables(&t.stnc));
+		ciTextL("stng", Q("Story author(s)"), 50, Tables(&t.stng), CNoCase);
+		ciTextL("btst", APPEND_OPT_COL("Title","Story"), 60, Tables(&t.books, &t.stories), CTitle, Q("Title [Story]"));
+		ciNum("bsra", IFNULL("Stories.Rating","Books.Rating"), 3, Tables(&t.books, &t.stories), "BSRating");
+		ciTextL("bsge", IFNULL("GStory.Genre","GBook.Genre"), 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
+		ciTextL("bsgg", IFNULL(Q("StoryGenre(s)"),Q("Genre(s)")), 30, Tables(&t.gg, &t.stgg), CNoCase, Q("BSGenre(s)"));
 		ciNum("bastc", "SCnt", 4, Tables(&t.bastc));
 		ciTextL("bastg", "Stories", 45, Tables(&t.bastg), CNoCase);
-		ciTextL("btbastg", APPEND_OPT_COL("Title", "Stories"), 60, Tables(&t.books, &t.bastg), CTitle, "\"Title [Stories]\"");
+		ciTextL("btbastg", APPEND_OPT_COL("Title","Stories"), 60, Tables(&t.books, &t.bastg), CTitle, Q("Title [Stories]"));
 		ciNum("astc", "AStoryCnt", 5, Tables(&t.astc));
-		ciTextL("astg", "\"Author Stories\"", 100, Tables(&t.astg), CNoCase);
+		ciTextL("astg", Q("Author Stories"), 100, Tables(&t.astg), CNoCase);
 		ciNum("bstc", "BStoryCnt", 5, Tables(&t.bstc));
-		ciTextL("bstg", "\"Book Stories\"", 100, Tables(&t.bstg), CNoCase);
-		ciTextL("bstng", "\"Book+Story author(s)\"", 50, Tables(&t.bstng), CNoCase);
+		ciTextL("bstg", Q("Book Stories"), 100, Tables(&t.bstg), CNoCase);
+		ciTextL("bstng", Q("Book+Story author(s)"), 50, Tables(&t.bstng), CNoCase);
 		ciTextL("so", "Source", 35, Tables(&t.sources), CNoCase);
 		ciNum("soid", "SourceID", -8, Tables());
 		ciTextL("ps", "ps.Pseudonyms", 25, Tables(&t.ps), CNoCase);
@@ -1277,8 +1285,8 @@ public:
 		ciNum("abc", "ABC", 4, Tables(&t.abc));
 		ciNum("abcp","ABCP",4, Tables(&t.abcp));
 		ciNum("abcr","ABCR",4, Tables(&t.abcr));
-		ciTextL("agg", "\"Author Genres\"",    135, Tables(&t.agg),  CNoCase);
-		ciTextL("aggp","\"Author(p) Genres\"", 135, Tables(&t.aggp), CNoCase);
+		ciTextL("agg",  Q("Author Genres"),    135, Tables(&t.agg),  CNoCase);
+		ciTextL("aggp", Q("Author(p) Genres"), 135, Tables(&t.aggp), CNoCase);
 		ciNum("agc", "AGC", 4, Tables(&t.agc));
 		ciNum("agcp","AGCP",4, Tables(&t.agcp));
 		ciNum("gbc", "GBC", 4, Tables(&t.gbc));
@@ -1289,104 +1297,75 @@ public:
 		ciNum("sobc","SOBC",4, Tables(&t.sobc));
 		ciNum("sebc","SEBC",4, Tables(&t.sebc));
 
-#define ROUND_TO_INT(strExpr) "CAST(round(" strExpr ",0) AS INTEGER)"
-
-#define DR_FIXED "substr(\"Date Read\",1,10)"
-#define DR_SECS "CAST(ifnull(strftime('%s',\"Date Read\"), strftime('%s'," DR_FIXED ")) AS INTEGER)"
-#define DR_DAYS "CAST(ifnull(strftime('%J',\"Date Read\"), strftime('%J'," DR_FIXED ")) AS REAL)"
-
-#define BD_FIXED "CASE WHEN length(Date) = 10 THEN Date ELSE substr(Date||'-01-01', 1,10) END"
-#define BD_DAYS "CAST(strftime('%J'," BD_FIXED ") AS REAL)"
-
-#define OTD_FIXED "CASE WHEN length(otDate) = 10 THEN otDate ELSE substr(otDate||'-01-01', 1,10) END"
-#define OTD_DAYS "CAST(strftime('%J'," OTD_FIXED ") AS REAL)"
-
-		// Columns for more formats of Date Read:
-		ciNum("dw", "CAST(strftime('%w',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "DOW");
-		ciText("dwl", "CASE CAST(strftime('%w',\"Date Read\") AS INTEGER)"
+#define DR_FIXED  SUBSTR(DR,1,10)
+#define DR_SECS   CAST("INTEGER", IFNULL(STRFTIME("%s",DR), STRFTIME("%s",DR_FIXED)))
+#define DR_DAYS   CAST("REAL", IFNULL(DAYS(DR), DAYS(DR_FIXED)))
+#define BD_DAYS   CAST("REAL", DAYS(DATE_FULL("Date")))
+#define OTD_DAYS  CAST("REAL", DAYS(DATE_FULL("otDate")))
+		// Columns for more formats of Date Read, and for book publication date(s).
+		ciNum("dw", CAST("INTEGER", STRFTIME("%w", DR)), -3, Tables(&t.datesRead), "DOW");
+		ciText("dwl", "CASE " CAST("INTEGER", STRFTIME("%w", DR))
 					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
-					  5, Tables(&t.datesRead), "DoW");
-		ciNum("dm", "CAST(strftime('%m',\"Date Read\") AS INTEGER)", -3, Tables(&t.datesRead), "Month");
-		ciNum("dy", "CAST(substr(\"Date Read\",1,4) AS INTEGER)", -4, Tables(&t.datesRead), "Year");
-		ciText("dym", "substr(\"Date Read\",1,7)", 7, Tables(&t.datesRead), "YMonth");
-		ciText("dymd", "substr(\"Date Read\",1,10)", 10, Tables(&t.datesRead), "YMDay");
-		ciText("ti", "ifnull(time(\"Date Read\"), time(" DR_FIXED "))", 5, Tables(&t.datesRead), "Time");
+					  3, Tables(&t.datesRead), "DoW");
+		ciNum("dm", CAST("INTEGER", STRFTIME("%m", DR)), -3, Tables(&t.datesRead), "Month");
+		ciNum("dy", CAST("INTEGER", SUBSTR(DR,1,4)), -4, Tables(&t.datesRead), "Year");
+		ciText("dym", SUBSTR(DR,1,7), 7, Tables(&t.datesRead), "YMonth");
+		ciText("dymd", SUBSTR(DR,1,10), 10, Tables(&t.datesRead), "YMDay");
+		ciText("ti", IFNULL("time(" DR ")", "time(" DR_FIXED ")"), 5, Tables(&t.datesRead), "Time");
 		ciNum("sec", DR_SECS, -11, Tables(&t.datesRead), "Timestamp");
 		ciNum("drbd", ROUND_TO_INT(DR_DAYS " - " BD_DAYS), -6, Tables(&t.datesRead, &t.books), "RDelay");
 		ciNum("bdod", ROUND_TO_INT(BD_DAYS " - " OTD_DAYS), -6, Tables(&t.books, &t.originalTitles), "TDelay");
 
-		// Some columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
-		// Will also display sensible values for all other supported formats.
-
-#define IS_DRR     "substr(\"Date Read\",11,2) = '..'"
-#define DRR_1      "substr(\"Date Read\",1,10)"
-#define DRR_2      "substr(\"Date Read\",13)"
+#define IS_DRR     SUBSTR(DR,11,2) " = '..'"
+#define DRR_1      SUBSTR(DR,1,10)
+#define DRR_2      "substr(" DR ",13)"
 #define DRR_IDAYS  "(julianday(" DRR_2 ") - julianday(" DRR_1 "))"
-
-#define DRR_FIRST DRR_1
-#define DRR_LAST "CASE WHEN " IS_DRR " THEN " DRR_2 " ELSE " DRR_1 " END"
-#define DRR_MID  "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", (" DRR_IDAYS " / 2) || ' days') ELSE " DRR_1 " END"
-#define DRR_RAND "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", abs(random() % " DRR_IDAYS ") || ' days') ELSE " DRR_1 " END"
-#define DRR_DAYS "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
-// We keep these macros defined so they can be used elsewhere as well.
-
+#define DRR_FIRST   DRR_1
+#define DRR_LAST   "CASE WHEN " IS_DRR " THEN " DRR_2 " ELSE " DRR_1 " END"
+#define DRR_MID    "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", (" DRR_IDAYS " / 2) || ' days') ELSE " DRR_1 " END"
+#define DRR_RAND   "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", abs(random() % " DRR_IDAYS ") || ' days') ELSE " DRR_1 " END"
+#define DRR_DAYS   "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
+		// Columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
 		ciText("drrf", DRR_FIRST, 10, Tables(&t.datesRead), "DRRFirst");
 		ciText("drrl", DRR_LAST,  10, Tables(&t.datesRead), "DRRLast");
 		ciText("drrm", DRR_MID,   10, Tables(&t.datesRead), "DRRMiddle");
 		ciText("drrr", DRR_RAND,  10, Tables(&t.datesRead), "DRRRandom");
-		ciNum("drrd", DRR_DAYS, -7, Tables(&t.datesRead), "DRRDays");
+		ciNum("drrd",  DRR_DAYS,  -7, Tables(&t.datesRead), "DRRDays");
 
-		// Some window function columns: 
-		// Note: Cannot be used in WHERE!
-		// Results may depend on what tables are joined in the query, as some tables (e.g. genre, authors, dates) might add more rows when joined.
-
-#define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
+#define LAG "(" DR_SECS " - lag(" DR_SECS ") OVER (ORDER BY " DR " ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0"
+#define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
+#define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
+#define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY " DR " ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
+#define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
+		// Window function columns. (Cannot be used in WHERE!)
+		// OBS! Results depend on the actual result rows, not on ALL applicable rows in the db.
 		ciNum("lag", "round(" LAG ", 1)", -5, Tables(&t.datesRead), "Lag");
 		ciNum("lagi", ROUND_TO_INT(LAG),  -4, Tables(&t.datesRead), "Lag");
-#undef LAG
-
-#define XIND(part) "dense_rank() OVER(PARTITION BY " part " ORDER BY BookID)"
-		ciNum("dind", XIND("date(" DR_FIXED ")"),          -4, Tables(&t.datesRead), "DInd");
-		ciNum("mind", XIND("substr(\"Date Read\",1,7)"),   -4, Tables(&t.datesRead), "MInd");
-		ciNum("yind", XIND("strftime('%Y'," DR_FIXED ")"), -4, Tables(&t.datesRead), "YInd");
-#undef XIND
-
-#define XPERIOD(part) ROUND_TO_INT("(max(" DR_SECS ") OVER (PARTITION BY " part ") - min(" DR_SECS ") OVER (PARTITION BY " part ")) / 86400.0")
-#define XLAG(part) ROUND_TO_INT("(" DR_SECS " - lag(" DR_SECS ") OVER (PARTITION BY " part " ORDER BY \"Date Read\" ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)) / 86400.0")
-#define XCOUNT(part) "count(*) OVER (PARTITION BY " part ")"
-		ciNum("aper", XPERIOD("AuthorID"),-7, Tables(), "APeriod");
-		ciNum("alag", XLAG("AuthorID"),   -5, Tables(), "ALag");
-		ciNum("acnt", XCOUNT("AuthorID"), -4, Tables(), "ACnt");
-
+		ciNum("dind", XIND("date(" DR_FIXED ")"),        -4, Tables(&t.datesRead), "DInd");
+		ciNum("mind", XIND(SUBSTR(DR,1,7)),              -4, Tables(&t.datesRead), "MInd");
+		ciNum("yind", XIND(STRFTIME("%Y", DR_FIXED)),    -4, Tables(&t.datesRead), "YInd");
+		ciNum("aper", XPERIOD("AuthorID"), -7, Tables(), "APeriod");
+		ciNum("alag", XLAG("AuthorID"),    -5, Tables(), "ALag");
+		ciNum("acnt", XCOUNT("AuthorID"),  -4, Tables(), "ACnt");
 		ciNum("gper", XPERIOD("BookGenres.GenreID"), -7, Tables(&t.datesRead, &t.bookGenres), "GPeriod");
 		ciNum("glag", XLAG("BookGenres.GenreID"),    -5, Tables(&t.datesRead, &t.bookGenres), "GLag");
-		ciNum("gcnt", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres), "GCnt");
-
-		ciNum("soper", XPERIOD("SourceID"),-8, Tables(&t.datesRead), "SOPeriod");
-		ciNum("solag", XLAG("SourceID"),   -6, Tables(&t.datesRead), "SOLag");
-		ciNum("socnt", XCOUNT("SourceID"), -5, Tables(), "SOCnt");
-#undef XCOUNT
-#undef XLAG
-#undef XPERIOD
-
-#undef ROUND_TO_INT
-#undef DR_SECS
-#undef DR_FIXED
+		ciNum("gcnt", XCOUNT("BookGenres.GenreID"),  -4, Tables(&t.bookGenres),               "GCnt");
+		ciNum("soper",XPERIOD("SourceID"), -8, Tables(&t.datesRead), "SOPeriod");
+		ciNum("solag",XLAG("SourceID"),    -6, Tables(&t.datesRead), "SOLag");
+		ciNum("socnt",XCOUNT("SourceID"),  -5, Tables(),             "SOCnt");
 		
-		// Special-purpose "virtual" columns, these are not generally usable:
-		//
+		// The rest are special-purpose "virtual" columns, i.e. not generally usable.
 		ciNum("btc", "TitleCount", -5, Tables(), "Count"); // for listSametitle
 		ciNum("brc", "ReadCount", -5, Tables(), "Reads");  // for listRereads
-		// These are for the book count actions.
-		ciAggr("bc",  "COUNT(BookID)", -6, Tables(), "Books");
-		ciAggr("bcp", "SUM(Pages)", -7, Tables(), "Pages");
-		ciAggr("bcw", "SUM(Words)", -9, Tables(), "Words");
+		ciAggr("bc",   "COUNT(BookID)", -6, Tables(), "Books"); // bc... columns for book count actions.
+		ciAggr("bcp",  "SUM(Pages)", -7, Tables(), "Pages");
+		ciAggr("bcw",  "SUM(Words)", -9, Tables(), "Words");
 		ciAggr("bckw", "(SUM(Words)+500)/1000", -6, Tables(), "Kwords");
-		ciAggr("bca", "COUNT(AuthorID)", -6, Tables(), "Authors");
-		ciAggr("bcg", "COUNT(GenreID)", -6, Tables(), "Genres");
+		ciAggr("bca",  "COUNT(AuthorID)", -6, Tables(), "Authors");
+		ciAggr("bcg",  "COUNT(GenreID)", -6, Tables(), "Genres");
 		ciAggr("bcst", "COUNT(StoryID)", -6, Tables(), "Stories");
 		ciAggr("bcso", "COUNT(SourceID)", -6, Tables(), "Sources");
-		ciAggr("bcc", "COUNT(CategoryID)", -6, Tables(), "Categories");
+		ciAggr("bcc",  "COUNT(CategoryID)", -6, Tables(), "Categories");
 
 		if (m_output.stdOutIsConsole()) {
 			CONSOLE_SCREEN_BUFFER_INFO csbi{}; GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -2269,8 +2248,8 @@ public:
 			#define NC "(SELECT BookID, count(AuthorID) AS AuthorCnt FROM AuthorBooks GROUP BY BookID)"
 			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM AuthorBooks JOIN Authors USING(AuthorID) GROUP BY BookID)"
 
-			#define DC "(SELECT BookID, count(\"Date read\") AS 'DRCnt' FROM DatesRead GROUP BY BookID)"
-			#define DG "(SELECT BookID, group_concat(\"Date read\",', ') AS 'Date(s)' FROM DatesRead GROUP BY BookID)"
+			#define DC "(SELECT BookID, count(" DR ") AS 'DRCnt' FROM DatesRead GROUP BY BookID)"
+			#define DG "(SELECT BookID, group_concat(" DR ",', ') AS 'Date(s)' FROM DatesRead GROUP BY BookID)"
 
 			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres JOIN Genres USING(GenreID) GROUP BY BookID)"
 
@@ -2284,16 +2263,14 @@ public:
 
 			#define STORY_BOOKS "(SELECT DISTINCT StoryID,BookID FROM BookStories)"
 			#define STORY_AUTHORS "(SELECT DISTINCT StoryID,AuthorID FROM BookStories)"
-
 			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)"
 			#define STNC "(SELECT StoryID, count(AuthorID) AS ACnt FROM " STORY_AUTHORS " GROUP BY StoryID)"
 			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " STORY_AUTHORS " JOIN Authors USING(AuthorID) GROUP BY StoryID)"
 			#define STBC "(SELECT StoryID, count(StoryID) AS BCnt FROM " STORY_BOOKS " GROUP BY StoryID)"
 			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " STORY_BOOKS " JOIN Books USING(BookID) GROUP BY StoryID)"
 
-			#define STORYTABLES "Stories JOIN BookStories USING(StoryID)"
 			#define BASTC "(SELECT AuthorID, BookID, count(StoryID) AS SCnt FROM BookStories GROUP BY AuthorID, BookID)"
-			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM " STORYTABLES " GROUP BY AuthorID, BookID)"
+			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories JOIN BookStories USING(StoryID) GROUP BY AuthorID,BookID)"
 			#define ASTC "(SELECT AuthorID, count(StoryID) AS AStoryCnt FROM " STORY_AUTHORS " GROUP BY AuthorID)"
 			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories JOIN " STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
 			#define BSTC "(SELECT BookID, count(StoryID) AS BStoryCnt FROM " STORY_BOOKS " GROUP BY BookID)"
@@ -3184,7 +3161,7 @@ BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book sour
 CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
 S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title",  
 "Story read", "Story source"
-FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date read" AS "Book read", Source AS "Book source", 
+FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date Read" AS "Book read", Source AS "Book source", 
       ltrim("First Name"||' '||"Last Name") AS BookAuthor FROM Books
 	JOIN AuthorBooks USING(BookID)
 	JOIN Authors USING(AuthorID)
@@ -3193,7 +3170,7 @@ FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date read" AS "B
 ) AS B
 JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRating,
       StoryID, Story, Stories.Rating AS SRating, 
-      "Date read" AS "Story read", Source AS "Story source", 
+      "Date Read" AS "Story read", Source AS "Story source", 
       ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories JOIN BookStories USING(StoryID)
 	JOIN Books USING(BookID)
 	JOIN Authors USING(AuthorID)
@@ -3297,18 +3274,16 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		if (countCond.empty()) countCond = "2";
 		// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
-		auto calcDRTimeWindow = "case when (time(\"Date Read\") > '00:00:00' and time(\"Date Read\") < '06:00:00') then date(\"Date Read\", '-6 hours') else date(\"Date Read\") end";
+		auto drTimeWindow = "CASE WHEN (time(" DR ") > '00:00:00' AND time(" DR ") < '06:00:00') THEN date(" DR ", '-6 hours') ELSE date(" DR ") END";
 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		OutputQuery q(*this, "dr.bt.nn", "Books", "dr.bt.nn");
 		q.addAuxTables();
-		q.add("WHERE "); q.a(calcDRTimeWindow); q.a(" IN");
-		q.add(" (SELECT CalcDR FROM (SELECT "); q.a(calcDRTimeWindow); q.a(" AS CalcDR FROM DatesRead)");
+		q.add("WHERE "); q.a(drTimeWindow); q.a(" IN");
+		q.add(" (SELECT CalcDR FROM (SELECT "); q.a(drTimeWindow); q.a(" AS CalcDR FROM DatesRead)");
 		q.add("  GROUP BY CalcDR");
 		q.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
-		if (!m_whereCondition.empty()) {
-		q.add(" AND " + m_whereCondition);
-		}
+		q.aIf(" AND " + m_whereCondition, !m_whereCondition.empty());
 		q.addOrderBy();
 		runOutputQuery(q);
 	}
@@ -3389,14 +3364,14 @@ ORDER BY Dupe DESC, "Book read")";
 		q.columnSettings.emplace_back(colWidth(period), JLeft);
 		for (auto& c : columns) { q.columnSettings.emplace_back(std::max(colWidths, c.colWidth()), JRight); }
 		std::string periodFunc;
-		if      (periodDef == "%Y")    periodFunc = "substr(\"Date Read\",1,4)";
-		else if (periodDef == "%m")    periodFunc = "substr(\"Date Read\",6,2)";
-		else if (periodDef == "%Y-%m") periodFunc = "substr(\"Date Read\",1,7)";
-		else                           periodFunc = fmt("strftime('%s', \"Date Read\")", S(periodDef));
+		if      (periodDef == "%Y")    periodFunc = SUBSTR(DR,1,4);
+		else if (periodDef == "%m")    periodFunc = SUBSTR(DR,6,2);
+		else if (periodDef == "%Y-%m") periodFunc = SUBSTR(DR,1,7);
+		else                           periodFunc = fmt("strftime('%s'," DR ")", S(periodDef));
 
 		q.add("ATTACH DATABASE ':memory:' AS mdb; BEGIN TRANSACTION;");
 		// Use a table for DR instead of WITH/VIEW/subquery to ensure random() in DRRR is only evaluated once per DR-value.
-		q.add("CREATE TABLE mdb.DR AS SELECT BookID, " + getDrRangeColumn() + " AS \"Date Read\", SourceID FROM DatesRead;");
+		q.add("CREATE TABLE mdb.DR AS SELECT BookID, " + getDrRangeColumn() + " AS " DR ", SourceID FROM DatesRead;");
 		q.add("CREATE TABLE mdb.Res (\n" + period + " TEXT PRIMARY KEY");
 		for (auto& c : columns) q.adf(",%s INTEGER", S(c.name));
 		q.add(");\n");
@@ -3750,7 +3725,7 @@ ORDER BY Dupe DESC, "Book read")";
 		qb.adf("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
 		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);",
 			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date));
-		qb.adf("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu);",
+		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);",
 			bid, ESC_S(dateRead), sourceId);
 		for (auto gi : genreIds) {
 			qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
@@ -3926,13 +3901,13 @@ ORDER BY Dupe DESC, "Book read")";
 			auto dr = argi(1, "Date read", DateReadRegEx);
 			auto sid = soidargi(2);
 			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selBook(bi))))
-				executeWriteSqlf("INSERT INTO DatesRead (BookID,\"Date Read\",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
+				executeWriteSqlf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
 		}
 	}
 
 	std::string getDrArg(IdValue bookId, int argIndex)
 	{
-		auto const rs = selectRows(fmt("SELECT \"Date Read\" FROM DatesRead WHERE BookID=%llu ORDER BY \"Date Read\"", bookId));
+		auto const rs = selectRows(fmt("SELECT " DR " FROM DatesRead WHERE BookID=%llu ORDER BY " DR, bookId));
 		if (rs.empty()) throw std::runtime_error(fmt("No DRs for book %llu", bookId));
 
 		if (!hasArg(argIndex) && rs.size() == 1) 
@@ -3954,12 +3929,12 @@ ORDER BY Dupe DESC, "Book read")";
 			auto const dr = getDrArg(bookId, 2);
 			if (newDr != "delete") {
 				if (confirmf("Change date read '%s' => '%s' for '%s'", S(dr), S(newDr), S(selBook(bookId))))
-					executeWriteSqlf("UPDATE DatesRead SET \"Date Read\"=%s WHERE BookID=%llu AND \"Date Read\"=%s",
+					executeWriteSqlf("UPDATE DatesRead SET " DR "=%s WHERE BookID=%llu AND " DR "=%s",
 						ESC_S(newDr), bookId, ESC_S(dr));
 			}
 			else {
 				if (confirmf("Remove date read '%s' from '%s'", S(dr), S(selBook(bookId))))
-					executeWriteSqlf("DELETE FROM DatesRead WHERE BookID=%llu AND \"Date Read\"=%s", bookId, ESC_S(dr));
+					executeWriteSqlf("DELETE FROM DatesRead WHERE BookID=%llu AND " DR "=%s", bookId, ESC_S(dr));
 			}
 		}
 	}
@@ -3970,7 +3945,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto const sourceId = soidargi(1);
 			auto const dr = getDrArg(bookId, 2);
 			if (confirmf("Set source to '%s' for %s of '%s'", S(selSource(sourceId)), S(dr), S(selBook(bookId))))
-				executeWriteSqlf("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND \"Date Read\"=%s", sourceId, bookId, ESC_S(dr));
+				executeWriteSqlf("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND " DR "=%s", sourceId, bookId, ESC_S(dr));
 		}
 	}
 
