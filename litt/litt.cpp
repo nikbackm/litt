@@ -3703,11 +3703,11 @@ ORDER BY Dupe DESC, "Book read")";
 		auto ynInt = [](int yn) { return yn == 'y' ? 1     : 0;    };
 
 		printf("\n");
-		bool hasWidth = false; size_t width = 0; again:
+		size_t width = 0; for (int hasMaxWidth = false; hasMaxWidth <= 1; ++hasMaxWidth)
 		for (auto const& a : authors) {
 			auto name = selAuthor(a.authorId);
 			width = std::max(width, name.length());
-			if (hasWidth) {
+			if (hasMaxWidth) {
 				printf("%-4llu - %-*s", a.authorId, width, S(name));
 				if (!a.story.empty()) {
 					printf("  :  %s [%llu] [Rating=%s]\n", S(a.story), a.storyId, S(a.storyRating));
@@ -3716,7 +3716,6 @@ ORDER BY Dupe DESC, "Book read")";
 				printf("\n");
 			}
 		}
-		if (!hasWidth) { hasWidth = true; goto again; }
 		printf("\n");
 		printf("Title          : %s\n", S(title));
 		printf("Date read      : %s\n", S(dateRead));

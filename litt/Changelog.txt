@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-20: Replaced calcMaxWidth goto-loop in addBook with slightly less tricky for-loop.
  * 2019-09-20: Tigthen up runOutputQuery, executeUserSql and executeSql.
  * 2019-09-19: Can now pass r-value queries to runOutputQuery! ;)
  * 2019-09-19: Reduced line count, got rid of unneeded mutable:s and consts. Added const for OutputQuery.
