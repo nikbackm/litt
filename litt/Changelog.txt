@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-20: Uses comma operator instead of " JOIN " for joining tables in hard-coded queries to save space. Tighten up titleStory query.
  * 2019-09-20: Made DWL columnInfo a bit more readable.
  * 2019-09-20: Clean up defines for columnInfos. Use more macros to check syntax, no need to undef. Factored out DR.
  * 2019-09-20: Replaced calcMaxWidth goto-loop in addBook with slightly less tricky for-loop.

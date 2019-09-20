@@ -2246,64 +2246,64 @@ public:
 			// Virtual table queries.
 
 			#define NC "(SELECT BookID, count(AuthorID) AS AuthorCnt FROM AuthorBooks GROUP BY BookID)"
-			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM AuthorBooks JOIN Authors USING(AuthorID) GROUP BY BookID)"
+			#define NG "(SELECT BookID, " A_NAMES " AS 'Author(s)' FROM AuthorBooks,Authors USING(AuthorID) GROUP BY BookID)"
 
 			#define DC "(SELECT BookID, count(" DR ") AS 'DRCnt' FROM DatesRead GROUP BY BookID)"
 			#define DG "(SELECT BookID, group_concat(" DR ",', ') AS 'Date(s)' FROM DatesRead GROUP BY BookID)"
 
-			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres JOIN Genres USING(GenreID) GROUP BY BookID)"
+			#define GG "(SELECT BookID, group_concat(Genre,', ') AS 'Genre(s)' FROM BookGenres,Genres USING(GenreID) GROUP BY BookID)"
 
-			#define SG "(SELECT BookID, group_concat(Series,', ') AS 'Series(s)' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
-			#define SPG "(SELECT BookID, group_concat(" SEPART ",', ') AS 'Series #' FROM BookSeries JOIN Series USING(SeriesID) GROUP BY BookID)"
+			#define SG "(SELECT BookID, group_concat(Series,', ') AS 'Series(s)' FROM BookSeries,Series USING(SeriesID) GROUP BY BookID)"
+			#define SPG "(SELECT BookID, group_concat(" SEPART ",', ') AS 'Series #' FROM BookSeries,Series USING(SeriesID) GROUP BY BookID)"
 
-			#define AR  "(SELECT AuthorID, avg(Rating) AS ARating  FROM AuthorBooks JOIN Books USING(BookID) GROUP BY AuthorID)"
-			#define GR  "(SELECT GenreID,  avg(Rating) AS GRating  FROM BookGenres  JOIN Books USING(BookID) GROUP BY GenreID)"
-			#define SOR "(SELECT SourceID, avg(Rating) AS SORating FROM DatesRead   JOIN Books USING(BookID) GROUP BY SourceID)"
-			#define SER "(SELECT SeriesID, avg(Rating) AS SERating FROM BookSeries  JOIN Books USING(BookID) GROUP BY SeriesID)"
+			#define AR  "(SELECT AuthorID, avg(Rating) AS ARating FROM AuthorBooks,Books USING(BookID) GROUP BY AuthorID)"
+			#define GR  "(SELECT GenreID, avg(Rating) AS GRating FROM BookGenres,Books USING(BookID) GROUP BY GenreID)"
+			#define SOR "(SELECT SourceID, avg(Rating) AS SORating FROM DatesRead,Books USING(BookID) GROUP BY SourceID)"
+			#define SER "(SELECT SeriesID, avg(Rating) AS SERating FROM BookSeries,Books USING(BookID) GROUP BY SeriesID)"
 
 			#define STORY_BOOKS "(SELECT DISTINCT StoryID,BookID FROM BookStories)"
 			#define STORY_AUTHORS "(SELECT DISTINCT StoryID,AuthorID FROM BookStories)"
-			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories JOIN StoryGenres USING(StoryID) JOIN Genres USING(GenreID) GROUP BY StoryID)"
+			#define STGG "(SELECT StoryID, group_concat(Genre,', ') AS 'StoryGenre(s)' FROM Stories,StoryGenres USING(StoryID),Genres USING(GenreID) GROUP BY StoryID)"
 			#define STNC "(SELECT StoryID, count(AuthorID) AS ACnt FROM " STORY_AUTHORS " GROUP BY StoryID)"
-			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " STORY_AUTHORS " JOIN Authors USING(AuthorID) GROUP BY StoryID)"
+			#define STNG "(SELECT StoryID, " A_NAMES " AS 'Story author(s)' FROM " STORY_AUTHORS ",Authors USING(AuthorID) GROUP BY StoryID)"
 			#define STBC "(SELECT StoryID, count(StoryID) AS BCnt FROM " STORY_BOOKS " GROUP BY StoryID)"
-			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " STORY_BOOKS " JOIN Books USING(BookID) GROUP BY StoryID)"
+			#define STBG "(SELECT StoryID, group_concat(Title ,'; ') AS 'StoryBooks(s)' FROM " STORY_BOOKS ",Books USING(BookID) GROUP BY StoryID)"
 
 			#define BASTC "(SELECT AuthorID, BookID, count(StoryID) AS SCnt FROM BookStories GROUP BY AuthorID, BookID)"
-			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories JOIN BookStories USING(StoryID) GROUP BY AuthorID,BookID)"
+			#define BASTG "(SELECT AuthorID, BookID, group_concat(Story,'; ') AS 'Stories' FROM Stories,BookStories USING(StoryID) GROUP BY AuthorID,BookID)"
 			#define ASTC "(SELECT AuthorID, count(StoryID) AS AStoryCnt FROM " STORY_AUTHORS " GROUP BY AuthorID)"
-			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories JOIN " STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
+			#define ASTG "(SELECT AuthorID, group_concat(Story,'; ') AS 'Author Stories' FROM Stories," STORY_AUTHORS "USING(StoryID) GROUP BY AuthorID)"
 			#define BSTC "(SELECT BookID, count(StoryID) AS BStoryCnt FROM " STORY_BOOKS " GROUP BY BookID)"
-			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories JOIN " STORY_BOOKS "USING(StoryID) GROUP BY BookID)"
-			#define BSTNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Book+Story author(s)' FROM BookStories JOIN Authors USING(AuthorID) GROUP BY BookID, StoryID)"
+			#define BSTG "(SELECT BookID, group_concat(Story,'; ') AS 'Book Stories' FROM Stories," STORY_BOOKS "USING(StoryID) GROUP BY BookID)"
+			#define BSTNG "(SELECT BookID, StoryID, " A_NAMES " AS 'Book+Story author(s)' FROM BookStories,Authors USING(AuthorID) GROUP BY BookID,StoryID)"
 
 			#define PSMID "(SELECT AuthorID AS psmAID, group_concat(psmain, ',') AS PSMainID FROM" \
 				          "  (SELECT AuthorID, CASE AuthorID WHEN psp.PseudonymID THEN psp.MainID WHEN psm.MainID THEN psm.MainID ELSE NULL END AS psmain" \
 				          "   FROM Authors LEFT JOIN Pseudonyms psm ON(psm.MainID = Authors.AuthorID) LEFT JOIN Pseudonyms psp ON(psp.PseudonymID = Authors.AuthorID)" \
 				          "   WHERE psmain IS NOT NULL)" \
 				          "GROUP BY AuthorID)"
-			#define PS "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors JOIN Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)"
-			#define PSF "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors JOIN Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)"
+			#define PS "(SELECT MainID, " A_NAMES " AS Pseudonyms FROM Authors,Pseudonyms ON (AuthorID = PseudonymID) GROUP BY MainID)"
+			#define PSF "(SELECT PseudonymID, " A_NAMES " AS \"Pseudonym For\" FROM Authors,Pseudonyms ON (AuthorID = MainID) GROUP BY PseudonymID)"
 
-			#define AB_PSE "(SELECT * FROM AuthorBooks UNION ALL SELECT BookID, MainID AS AuthorID FROM AuthorBooks JOIN Pseudonyms ON AuthorBooks.AuthorID = Pseudonyms.PseudonymID)"
-			#define BS_PSE "(SELECT * FROM BookStories UNION ALL SELECT BookID, MainID AS AuthorID, StoryID FROM BookStories JOIN Pseudonyms ON BookStories.AuthorID = Pseudonyms.PseudonymID)"
+			#define AB_PSE "(SELECT * FROM AuthorBooks UNION ALL SELECT BookID, MainID AS AuthorID FROM AuthorBooks,Pseudonyms ON AuthorBooks.AuthorID = Pseudonyms.PseudonymID)"
+			#define BS_PSE "(SELECT * FROM BookStories UNION ALL SELECT BookID, MainID AS AuthorID, StoryID FROM BookStories,Pseudonyms ON BookStories.AuthorID = Pseudonyms.PseudonymID)"
 
 			#define ABC  "(SELECT AuthorID, count(BookID) AS ABC FROM AuthorBooks GROUP BY AuthorID)"
 			#define ABCP "(SELECT AuthorID, count(BookID) AS ABCP FROM " AB_PSE " GROUP BY AuthorID)"
-			#define ABCR "(SELECT AuthorID, count(BookID) AS ABCR FROM AuthorBooks JOIN DatesRead USING(BookID) GROUP BY AuthorID)"
+			#define ABCR "(SELECT AuthorID, count(BookID) AS ABCR FROM AuthorBooks,DatesRead USING(BookID) GROUP BY AuthorID)"
 
 			#define AB_NOS "(SELECT * FROM AuthorBooks ab WHERE NOT EXISTS (SELECT 1 FROM BookStories bs WHERE bs.BookID = ab.BookID))"
-			#define AG_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_NOS " JOIN BookGenres USING(BookID))"
-			#define AG_S "(SELECT DISTINCT AuthorID, GenreID FROM BookStories JOIN StoryGenres USING(StoryID))"
+			#define AG_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_NOS ",BookGenres USING(BookID))"
+			#define AG_S "(SELECT DISTINCT AuthorID, GenreID FROM BookStories,StoryGenres USING(StoryID))"
 			#define AG   "(SELECT * FROM " AG_B " UNION SELECT * FROM " AG_S ")"
-			#define AGG  "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author Genres\" FROM " AG " JOIN Genres USING(GenreID) GROUP BY AuthorID)"
+			#define AGG  "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author Genres\" FROM " AG ",Genres USING(GenreID) GROUP BY AuthorID)"
 			#define AGC  "(SELECT AuthorID, count(GenreID) AS AGC FROM " AG " GROUP BY AuthorID)"
 
 			#define AB_PSE_NOS "(SELECT * FROM " AB_PSE " ab WHERE NOT EXISTS (SELECT 1 FROM BookStories bs WHERE bs.BookID = ab.BookID))"
-			#define AG_PSE_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_PSE_NOS " JOIN BookGenres USING(BookID))"
-			#define AG_PSE_S "(SELECT DISTINCT AuthorID, GenreID FROM " BS_PSE " JOIN StoryGenres USING(StoryID))"
+			#define AG_PSE_B "(SELECT DISTINCT AuthorID, GenreID FROM " AB_PSE_NOS ",BookGenres USING(BookID))"
+			#define AG_PSE_S "(SELECT DISTINCT AuthorID, GenreID FROM " BS_PSE ",StoryGenres USING(StoryID))"
 			#define AG_PSE   "(SELECT * FROM " AG_PSE_B " UNION SELECT * FROM " AG_PSE_S ")"
-			#define AGGP "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author(p) Genres\" FROM " AG_PSE " JOIN Genres USING(GenreID) GROUP BY AuthorID)"
+			#define AGGP "(SELECT AuthorID, group_concat(Genre, ', ') AS \"Author(p) Genres\" FROM " AG_PSE ",Genres USING(GenreID) GROUP BY AuthorID)"
 			#define AGCP "(SELECT AuthorID, count(GenreID) AS AGCP FROM " AG_PSE " GROUP BY AuthorID)"
 
 			#define GBC "(SELECT GenreID, count(BookID) AS GBC FROM BookGenres GROUP BY GenreID)"
@@ -2984,7 +2984,7 @@ public:
 			auto q = static_cast<OutputQuery const*>(pArg);
 			return q->litt.outputCallBack(*q, argc, argv, azColName);
 		};
-		if (int rc = sqlite3_exec(m_conn.get(), sql.c_str(), cb, &const_cast<OutputQuery&>(q), nullptr); SQLITE_OK==rc) {
+		if (sqlite3_exec(m_conn.get(), sql.c_str(), cb, &const_cast<OutputQuery&>(q), nullptr) == SQLITE_OK) {
 			if (m_eqpGraph) {
 				m_eqpGraph->render();
 				m_eqpGraph.reset();
@@ -3105,7 +3105,7 @@ public:
 
 	void listRereads()
 	{
-		const char* from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
+		auto from = "(SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)";
 		OutputQuery query(*this, "brc.bt.bi.dr.ng", from, "dr.bi");
 		query.add("JOIN Books USING(BookID)");
 		runStandardOutputQuery(query);
@@ -3113,21 +3113,21 @@ public:
 
 	void listReot()
 	{
-		const char* with = 
-R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks GROUP BY BookID),
-	qbt AS (SELECT BookID, ais, Title FROM Books JOIN ag USING(BookID) WHERE BookID NOT IN (SELECT BookID FROM OriginalTitles)),
-	qot AS (SELECT BookID, ais, "Original Title" as ot, Books.LangID as bli FROM OriginalTitles JOIN Books USING(BookID) JOIN ag USING(BookID)),
-	reot AS (SELECT qbt.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION 
-	         SELECT qot.BookID FROM qbt JOIN qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION
-	         SELECT q1.BookID FROM qot q1 JOIN qot q2 ON (q1.ais = q2.ais AND q1.ot = q2.ot AND q1.BookID <> q2.BookID AND q1.bli <> q2.bli)))r";
-		const char* from = "reot JOIN Books USING(BookID)";
-		OutputQuery query(*this, "ng.ra.bt.dr.so.gg", with, from, "dr.bi");
+		auto with = 
+R"(  ag AS (SELECT BookID, group_concat(AuthorID,',') AS ais FROM AuthorBooks GROUP BY BookID),
+  qbt AS (SELECT BookID, ais, Title FROM Books,ag USING(BookID) WHERE BookID NOT IN (SELECT BookID FROM OriginalTitles)),
+  qot AS (SELECT BookID, ais, "Original Title" as ot, Books.LangID as bli FROM OriginalTitles,Books USING(BookID),ag USING(BookID)),
+  reot AS (SELECT qbt.BookID FROM qbt,qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION 
+           SELECT qot.BookID FROM qbt,qot ON (qbt.ais = qot.ais AND qbt.BookID <> qot.BookID AND qbt.Title = qot.ot) UNION
+           SELECT q1.BookID FROM qot q1,qot q2 ON (q1.ais = q2.ais AND q1.ot = q2.ot AND q1.BookID <> q2.BookID AND q1.bli <> q2.bli)))";
+		OutputQuery query(*this, "ng.ra.bt.dr.so.gg", with, "reot", "dr.bi");
+		query.add("JOIN Books USING(BookID)");
 		runStandardOutputQuery(query);
 	}
 
 	void listSametitle()
 	{
-		const char* from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
+		auto from = "(SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)";
 		OutputQuery query(*this, "bi.bt.ng.btc", from, "bt.bi");
 		query.add("JOIN Books USING(Title)");
 		runStandardOutputQuery(query);
@@ -3135,7 +3135,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 
 	void listSameISBN()
 	{
-		const char* from = "(SELECT ISBN, Count(ISBN) As ISBNCount FROM Books GROUP BY ISBN HAVING Count(ISBN) > 1)";
+		auto from = "(SELECT ISBN, Count(ISBN) As ISBNCount FROM Books GROUP BY ISBN HAVING Count(ISBN) > 1)";
 		OutputQuery query(*this, "bi.bt.isbn.dr.ng", from, "isbn.dr.bi");
 		query.add("JOIN Books USING(ISBN)");
 		runStandardOutputQuery(query);
@@ -3143,7 +3143,7 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 
 	void listSamestory() 
 	{
-		auto from = "(SELECT DISTINCT a.* FROM Stories AS a JOIN Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
+		auto from = "(SELECT DISTINCT a.* FROM Stories AS a,Stories AS b WHERE a.Story = b.Story AND a.StoryID <> b.StoryID)";
 		OutputQuery query(*this, "stid.st.nn.bi.bt.dr.so", from, "st.nn.dr");
 		query.add("JOIN BookStories USING(StoryID)");
 		query.add("JOIN Books USING(BookID)");
@@ -3157,26 +3157,16 @@ R"r(	ag AS (SELECT BookID, group_concat(AuthorID,', ') AS ais FROM AuthorBooks G
 	{
 		auto sql =
 R"(SELECT B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
-BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
-CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
-S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title",  
-"Story read", "Story source"
-FROM (SELECT BookID, AuthorID, Title, Books.Rating AS BRating, "Date Read" AS "Book read", Source AS "Book source", 
-      ltrim("First Name"||' '||"Last Name") AS BookAuthor FROM Books
-	JOIN AuthorBooks USING(BookID)
-	JOIN Authors USING(AuthorID)
-	JOIN DatesRead USING(BookID)
-	JOIN Sources USING(SourceID)
-) AS B
-JOIN (SELECT BookID, AuthorID, Title AS "Story book title", Books.Rating AS SBRating,
-      StoryID, Story, Stories.Rating AS SRating, 
-      "Date Read" AS "Story read", Source AS "Story source", 
-      ltrim("First Name"||' '||"Last Name") AS "Story Author" FROM Stories JOIN BookStories USING(StoryID)
-	JOIN Books USING(BookID)
-	JOIN Authors USING(AuthorID)
-	JOIN DatesRead USING(BookID)
-	JOIN Sources USING(SourceID)
-) as S 
+       BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
+       CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
+       S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title", "Story read", "Story source"
+FROM (SELECT BookID,AuthorID,Title,Books.Rating AS BRating,"Date Read" AS "Book read",Source AS "Book source",)" A_NAME R"( AS BookAuthor
+      FROM Books,AuthorBooks USING(BookID),Authors USING(AuthorID),DatesRead USING(BookID),Sources USING(SourceID)
+     ) AS B
+JOIN (SELECT BookID,AuthorID,Title AS "Story book title",Books.Rating AS SBRating,StoryID,Story,Stories.Rating AS SRating,
+             "Date Read" AS "Story read",Source AS "Story source",)" A_NAME R"( AS "Story Author"
+      FROM Stories,BookStories USING(StoryID),Books USING(BookID),Authors USING(AuthorID),DatesRead USING(BookID),Sources USING(SourceID)
+     ) as S 
 WHERE B.Title = S.Story AND B.BookID <> S.BookID
 ORDER BY Dupe DESC, "Book read")";
 		OutputQuery query(*this, sql);
@@ -3408,7 +3398,7 @@ ORDER BY Dupe DESC, "Book read")";
 			return 0;
 		}
 
-		if (int rc = sqlite3_exec(m_conn.get(), encSql.c_str(), cb, cbArg, nullptr); SQLITE_OK==rc)
+		if (sqlite3_exec(m_conn.get(), encSql.c_str(), cb, cbArg, nullptr) == SQLITE_OK)
 			return sqlite3_changes(m_conn.get());
 		else
 			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
