@@ -1302,11 +1302,11 @@ public:
 #define DR_DAYS   CAST("REAL", IFNULL(DAYS(DR), DAYS(DR_FIXED)))
 #define BD_DAYS   CAST("REAL", DAYS(DATE_FULL("Date")))
 #define OTD_DAYS  CAST("REAL", DAYS(DATE_FULL("otDate")))
+#define WT(dw,name) " WHEN " #dw " THEN '" #name "'"
+#define DWLCASES WT(0,Sun) WT(1,Mon) WT(2,Tue) WT(3,Wed) WT(4,Thu) WT(5,Fri) WT(6,Sat)
 		// Columns for more formats of Date Read, and for book publication date(s).
 		ciNum("dw", CAST("INTEGER", STRFTIME("%w", DR)), -3, Tables(&t.datesRead), "DOW");
-		ciText("dwl", "CASE " CAST("INTEGER", STRFTIME("%w", DR))
-					  " WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue' WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat' ELSE NULL END",
-					  3, Tables(&t.datesRead), "DoW");
+		ciText("dwl", "CASE " CAST("INTEGER", STRFTIME("%w", DR)) DWLCASES " ELSE NULL END", 3, Tables(&t.datesRead), "DoW");
 		ciNum("dm", CAST("INTEGER", STRFTIME("%m", DR)), -3, Tables(&t.datesRead), "Month");
 		ciNum("dy", CAST("INTEGER", SUBSTR(DR,1,4)), -4, Tables(&t.datesRead), "Year");
 		ciText("dym", SUBSTR(DR,1,7), 7, Tables(&t.datesRead), "YMonth");
