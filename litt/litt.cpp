@@ -1518,8 +1518,7 @@ public:
 					else if (extName == "ansi") {
 						m_ansiEnabled = true; // On by default when using ansi option
 
-						auto nextColor = [&]() 
-						{
+						auto nextColor = [&]() {
 							auto val = extVal.getNext();
 							return (val[0] == '\x1b') ? val : "\x1b[" + val;
 						};
@@ -2372,8 +2371,7 @@ public:
 				break;
 			case Table::stories:
 				if (t.storyBooks.used && t.storyAuthors.used) {
-					// Faster to just use bookStories directly in this case.
-					t.bookStories.used = true;
+					t.bookStories.used = true; // Faster to use only bookStories directly in this case.
 				}
 				include(t.bookStories, "BookStories USING(StoryID)");
 				if (!t.bookStories.included) {
@@ -2996,45 +2994,34 @@ public:
 		}
 	}
 
-	void runOutputQuery(OutputQuery const& query)
+	void runOutputQuery(OutputQuery const& q)
 	{
-		std::string sql = encodeSqlFromInput(query.m_query);
+		m_rowCount = 0;
+		std::string sql = encodeSqlFromInput(q.m_query);
 
 		if (m_showQuery) {
-			m_output.write(sql); m_output.write('\n');
-			m_output.flush();
+			m_output.write(sql); m_output.write('\n'); m_output.flush();
 			return;
 		}
-
-		auto outputCallBack = [](void *pArg, int argc, char **argv, char **azColName)
-		{
-			auto query = static_cast<OutputQuery const*>(pArg);
-			return query->litt.outputCallBack(*query, argc, argv, azColName);
+		auto cb = [](void* pArg, int argc, char** argv, char** azColName) {
+			auto q = static_cast<OutputQuery const*>(pArg);
+			return q->litt.outputCallBack(*q, argc, argv, azColName);
 		};
-
-		m_rowCount = 0; auto pQ = &const_cast<OutputQuery&>(query);
-		if (int const res = sqlite3_exec(m_conn.get(), sql.c_str(), outputCallBack, pQ, nullptr); res == SQLITE_OK) {
+		if (int rc = sqlite3_exec(m_conn.get(), sql.c_str(), cb, &const_cast<OutputQuery&>(q), nullptr); SQLITE_OK==rc) {
 			if (m_eqpGraph) {
 				m_eqpGraph->render();
 				m_eqpGraph.reset();
 			}
 			else {
-				if (m_displayMode == DisplayMode::htmldoc) {
-					m_output.write("</table>\n</body>\n</html>\n");
-				}
-				if (consEnabled()) {
-					consOutputMatchedCount(); // In case matching was still ongoing at the last row.
-				}
+				if (m_displayMode == DisplayMode::htmldoc) m_output.write("</table>\n</body>\n</html>\n");
+				if (consEnabled()) consOutputMatchedCount(); // In case matching was still ongoing at the last row.
 			}
 			m_output.flush();
-			if (m_showNumberOfRows) {
-				printf("\n# = %i\n", m_rowCount);
-			}
+			if (m_showNumberOfRows) printf("\n# = %i\n", m_rowCount);
 		}
 		else {
-			if (! m_output.error()) {
+			if (! m_output.error()) // Don't throw new error if output already generated one (and caused exec failure).
 				throw std::runtime_error(fmt("%s\n\nSQL error: %s", S(sql), sqlite3_errmsg(m_conn.get())));
-			}
 		}
 	}
 
@@ -3438,7 +3425,7 @@ ORDER BY Dupe DESC, "Book read")";
 		runOutputQuery(q);
 	}
 
-	int executeSql(std::string const& sql, int (*callback)(void*,int,char**,char**) = nullptr, void* callBackData = nullptr, bool enableShowQuery = true) const
+	int executeSql(std::string const& sql, int (*cb)(void*,int,char**,char**) = nullptr, void* cbArg = nullptr, bool enableShowQuery = true) const
 	{
 		auto encSql = encodeSqlFromInput(sql);
 		if (enableShowQuery && m_showQuery) {
@@ -3446,10 +3433,10 @@ ORDER BY Dupe DESC, "Book read")";
 			return 0;
 		}
 
-		if (int res = sqlite3_exec(m_conn.get(), encSql.c_str(), callback, callBackData, nullptr); res != SQLITE_OK)
-			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
-		else
+		if (int rc = sqlite3_exec(m_conn.get(), encSql.c_str(), cb, cbArg, nullptr); SQLITE_OK==rc)
 			return sqlite3_changes(m_conn.get());
+		else
+			throw std::runtime_error(fmt("SQL error: %s", sqlite3_errmsg(m_conn.get())));
 	}
 
 	int executeWriteSql(std::string const& sql)
@@ -3490,8 +3477,7 @@ ORDER BY Dupe DESC, "Book read")";
 	std::vector<std::vector<std::string>> selectRows(std::string const& sql) const
 	{
 		decltype(selectRows("")) res;
-		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/)
-		{
+		auto callback = [](void *pArg, int argc, char** argv, char** /*azColName*/) {
 			auto pRes = static_cast<decltype(&res)>(pArg);
 			std::transform(argv, argv + argc, pRes->emplace_back(size_t(argc)).begin(), rowValue);
 			return 0;
@@ -4058,10 +4044,8 @@ ORDER BY Dupe DESC, "Book read")";
 		if (auto sql = argi(0, "sql", optional); !sql.empty()) {
 			if (confirm("Execute SQL")) { // Note: May not be a pure query, could also be DELETE etc.
 				runOutputQuery(OutputQuery(*this, sql.c_str())); // columnSettings init:ed during output.
-				if (int changes = sqlite3_changes(m_conn.get()); changes != 0) {
-					if (m_rowCount > 0) { printf("\n"); }
-					printf("Modified %i rows\n", changes);
-				}
+				if (int changes = sqlite3_changes(m_conn.get()))
+					printf("%sModified %i rows\n", m_rowCount>0?"\n":"", changes);
 			}
 		}
 	}
