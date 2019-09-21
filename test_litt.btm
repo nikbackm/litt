@@ -134,11 +134,15 @@ set testcmd=%testexe% %@unquotes[%testargs%]%
 echos Testing: %testcmd% -` ` 
 %testcmd% > NUL
 iff %? == %code% then
+	color green on black
 	echo OK
+	color white on black
 else
+	color bri red on black
 	echo FAILED!! Excected result = %code%.
+	color white on black
 	set failures=%@inc[failures]
 	:: Comment out quit below to continue testing after first failure.
-	quit
+	::quit
 endIff
 return
