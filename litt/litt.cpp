@@ -803,8 +803,7 @@ public:
 
 	bool getNext(std::string& next)
 	{
-		if (empty()) { return false; }
-
+		if (empty()) return false;
 		const int EscapeChar = '!';
 		bool escOn = false;
 
@@ -825,13 +824,12 @@ public:
 				}
 			}
 			else {
-				if (escOn) { throw std::invalid_argument("Illegal escape sequence"); }
+				if (escOn) throw std::invalid_argument("Illegal escape sequence");
 				str.push_back(c);
 			}
 		} while (!empty());
-
-		if (escOn) { throw std::invalid_argument("Incomplete escape sequence"); }
-		if (str.empty()) { throw std::invalid_argument("Empty option values not allowed"); }
+		if (escOn) throw std::invalid_argument("Incomplete escape sequence");
+		if (str.empty()) throw std::invalid_argument("Empty option values not allowed");
 
 		next = std::move(str);
 		return true;
@@ -895,9 +893,7 @@ public:
 			doWrite(str, len);
 		}
 		else {
-			if ((BufSize - m_bufPos) < len) {
-				flush();
-			}
+			if ((BufSize - m_bufPos) < len) flush();
 			_ASSERT(len <= (BufSize - m_bufPos));
 			memcpy(&m_buffer[m_bufPos], str, len);
 			m_bufPos += len;
@@ -941,9 +937,7 @@ public:
 			}
 			else if ((str[i] & 0xC0) == 0xC0) { // 11xx xxxx - utf8 start byte
 				int n = 1;
-				while ((str[i + n] & 0xC0) == 0x80) { // 10xx xxxx - continuation byte
-					++n;
-				}
+				while ((str[i + n] & 0xC0) == 0x80) ++n; // 10xx xxxx - continuation byte
 				if (n == 1) throw std::invalid_argument("No utf-8 continuation byte(s)!");
 				if (4 < n) throw std::invalid_argument("Too many utf-8 continuation bytes!");
 				write(&str[i], n);
@@ -956,7 +950,6 @@ public:
 			// to write complete utf-8 code points. Would not do if the buffer were flushed while
 			// we wrote a middle or starting utf-8 byte! Well, will work when writing to file,
 			// but not when writing to the console.
-
 			// Note: We assume every Unicode code point corresponds to an actual visible character.
 			// Does not take combining characters and such into account.
 			++writtenChars;
@@ -1379,24 +1372,14 @@ public:
 				switch (opt) {
 				case 'd':
 					if (val == "col" || val == "column") m_displayMode = DisplayMode::column;
-					else if (val == "html")    m_displayMode = DisplayMode::html;
-					else if (val == "htmldoc") m_displayMode = DisplayMode::htmldoc;
-					else if (val == "tabs")    m_displayMode = DisplayMode::tabs;
-					else if (val.substr(0, 4) == "list") {
+					else if (val == "html")              m_displayMode = DisplayMode::html;
+					else if (val == "htmldoc")           m_displayMode = DisplayMode::htmldoc;
+					else if (val == "tabs")              m_displayMode = DisplayMode::tabs;
+					else if (val.substr(0,4) == "list" && (val.length() == 4 || val[4] == ':')) {
 						m_displayMode = DisplayMode::list;
-						if (4 < val.length()) {
-							if (val[4] == ':' && 5 < val.length()) {
-								m_listSep = toUtf8(val.substr(5));
-							}
-							else {
-								goto invalidDisplayMode;
-							}
-						}
+						if (4 < val.length()) m_listSep = toUtf8(val.substr(5));
 					}
-					else {
-						invalidDisplayMode:
-						throw std::invalid_argument("Invalid display mode: " + val);
-					}
+					else throw std::invalid_argument("Invalid display mode: " + val);
 					break;
 				case 'e':
 					if (int enc; toInt(val, enc)) m_output.setEncoding(enc);
@@ -1432,8 +1415,7 @@ public:
 					appendToWhereCondition(LogOp_OR, getWhereCondition(val));
 					break;
 				case 's':
-					for (auto& c : getColumns(val, ColumnsDataKind::width, /*usedInQuery*/false))
-						c.first->sWidth = c.second;
+					for (auto& c : getColumns(val, ColumnsDataKind::width, false)) c.first->sWidth = c.second;
 					break;
 				case 'q':
 					m_showQuery = true;
@@ -1444,8 +1426,7 @@ public:
 					m_selectDistinct = true;
 					break;
 				case 'x':
-					if (!val.empty() && (val[0] < '0' || '3' < val[0])) 
-						throw std::invalid_argument("Invalid explain value: " + val);
+					if (!val.empty() && (val[0]<'0'||'3'<val[0])) throw std::invalid_argument("Invalid explain value: " + val);
 					m_explainQuery = (val.empty() ? ExQ::Graph : ExQ(val[0] - '0'));
 					Input::confirmEnabled = false;
 					break;
@@ -1462,7 +1443,7 @@ public:
 					auto const extName = extVal.getNext();
 					if (extName == "cons") {
 						m_consRowMinCount = extVal.nextInt();
-						for (std::string colName = extVal.getNext(); ; ) {
+						for (std::string colName = extVal.getNext();;) {
 							colName = getColumnName(colName);
 							ConsRowColumnInfo col;
 							col.name = colName; colName.clear();
@@ -1472,14 +1453,12 @@ public:
 							std::string mm;
 							if (extVal.getNext(mm)) {
 								if (mm == "regex" || mm == "re" || mm == "ren") {
-									col.matchMethod = (mm == "ren")
-										? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
+									col.matchMethod = (mm == "ren") ? ConsRowMatchMethod::regExNot : ConsRowMatchMethod::regEx;
 									col.re = getRegex(extVal.getNext());
 									extVal.getNext(colName);
 								}
 								else if (mm == "dlt" || mm == "dgt") {
-									col.matchMethod = (mm == "dlt")
-										? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
+									col.matchMethod = (mm == "dlt") ? ConsRowMatchMethod::diffLt : ConsRowMatchMethod::diffGt;
 									col.diff = extVal.nextInt();
 									extVal.getNext(colName);
 								}
@@ -1492,16 +1471,14 @@ public:
 							}
 							m_consRowColumns.push_back(col);
 							if (colName.empty()) break;
-						};
+						}
 					}
 					else if (extName == "ansi") {
 						m_ansiEnabled = true; // On by default when using ansi option
-
 						auto nextColor = [&]() {
 							auto val = extVal.getNext();
 							return (val[0] == '\x1b') ? val : "\x1b[" + val;
 						};
-
 						for (std::string subOpt; extVal.getNext(subOpt); ) {
 							toLowerCase(subOpt);
 							if (subOpt == "off") {
@@ -1566,8 +1543,8 @@ public:
 						m_colSepSize = Utils::utf8ToWide(m_colSep.c_str(), m_colSep.length()).length(); // Assumes UTF-16 length = #glyphs!
 					}
 					else throw std::invalid_argument("Unrecognized extended option: " + extName);
-					}
 					break;
+				}
 				default:
 					throw std::invalid_argument(std::string("Unrecognized option: ") + argv[i]);
 				}
@@ -1590,28 +1567,21 @@ public:
 			}
 		}
 
-		if (m_action.empty()) {
+		if (m_action.empty())
 			throw std::invalid_argument("Action argument(s) missing");
-		}
 
 		if (m_dbPath.empty()) {
 			char mydocs[MAX_PATH];
-			if (GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)) {
-				m_dbPath = std::string(mydocs) + "\\litt\\" + DefDbName;
-			}
-			else {
-				m_dbPath = DefDbName;
-			}
+			m_dbPath = GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)
+				? fmt("%s\\litt\\%s", mydocs, DefDbName) : DefDbName;
 		}
-		if (GetFileAttributesA(m_dbPath.c_str()) == -1) {
+		if (GetFileAttributesA(m_dbPath.c_str()) == -1)
 			throw std::invalid_argument("Cannot find: " + m_dbPath);
-		}
 			
 		sqlite3* conn = nullptr;
-		int res = sqlite3_open(m_dbPath.c_str(), &conn); m_conn.reset(conn);
-		if (res != SQLITE_OK) {
+		int const rc = sqlite3_open(m_dbPath.c_str(), &conn); m_conn.reset(conn);
+		if (rc != SQLITE_OK)
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
-		}
 
 		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
 			if (sqlite3_create_collation(conn, name, SQLITE_UTF8, nullptr, xCompare) != SQLITE_OK)
@@ -1651,12 +1621,8 @@ public:
 			auto const curOptPos = opts.position();
 			if (opts.getNext(sn)) {
 				if (kind == ColumnsDataKind::sortOrder) {
-					if (sn == "asc") {
-						data = (int)ColumnSortOrder::Asc;
-					}
-					else if (sn == "desc") {
-						data = (int)ColumnSortOrder::Desc;
-					}
+					if (sn == "asc")       data = (int)ColumnSortOrder::Asc;
+					else if (sn == "desc") data = (int)ColumnSortOrder::Desc;
 				}
 				else if (kind == ColumnsDataKind::width) {
 					toInt(sn, data);
@@ -1676,10 +1642,8 @@ public:
 
 	std::string getColumnName(std::string const snOrName)
 	{
-		auto colInfo = m_columnInfos.find(snOrName);
-		return (colInfo != m_columnInfos.end())
-			? unquote(colInfo->second.labelName()) 
-			: snOrName;
+		auto ci = m_columnInfos.find(snOrName);
+		return ci != m_columnInfos.end() ? unquote(ci->second.labelName()) : snOrName;
 	}
 
 	std::regex getRegex(std::string const& reVal)
@@ -1948,25 +1912,15 @@ public:
 			if (sql != nullptr) m_query.append(sql);
 		}
 
-		void a(const char* str)
-		{
-			m_query.append(str);
-		}
-
-		void a(std::string const& str)
-		{
-			m_query.append(str);
-		}
+		void a(const char* str       ) { m_query.append(str); }
+		void a(std::string const& str) { m_query.append(str); }
 
 		void add(const char* line)
 		{
 			m_query.append("\n").append(line);
 		}
 
-		void add(std::string const& line)
-		{
-			add(line.c_str());
-		}
+		void add(std::string const& line) { add(line.c_str()); }
 
 		void adf(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 		{
@@ -2460,19 +2414,13 @@ public:
 					// For window function based columns the latter may cause an out of memory error for some reason!
 					// But only if the column is also included in the result, if the column is only used in order by it works!
 					m_query.append(ci->usedInResult ? ci->labelName() : ci->nameDef);
-					if (ci->collation != nullptr) {
-						m_query.append(" COLLATE ").append(ci->collation);
-					}
-					if (order == ColumnSortOrder::Desc) {
-						m_query.append(" DESC"); // ASC is default.
-					}
+					if (ci->collation != nullptr) m_query.append(" COLLATE ").append(ci->collation);
+					if (order == ColumnSortOrder::Desc) m_query.append(" DESC"); // ASC is default.
 				}
 			}
 			if (litt.m_limit > 0) {
 				m_query.append("\nLIMIT ").append(std::to_string(litt.m_limit));
-				if (litt.m_offset > 0) {
-					m_query.append(" OFFSET ").append(std::to_string(litt.m_offset));
-				}
+				if (litt.m_offset > 0) m_query.append(" OFFSET ").append(std::to_string(litt.m_offset));
 			}
 
 			// Needed when called multiple times in same LITT session (like when listing items for book input!)
@@ -2605,9 +2553,8 @@ public:
 							}
 						}
 					}
-					if (!indexed.colIndexes.empty()) {
+					if (!indexed.colIndexes.empty())
 						m_ansiValueColorsIndexed.push_back(indexed);
-					}
 					break;
 				}
 			}
@@ -2616,17 +2563,12 @@ public:
 
 	void ansiSetRowColors(bool /*isHeader*/, int argc, char** argv) const
 	{
-		for (int i = 0; i < argc; ++i) {
-			m_ansiRowColors[i] = m_ansiColColorsIndexed[i];
-		}
+		for (int i = 0; i < argc; ++i) m_ansiRowColors[i] = m_ansiColColorsIndexed[i];
 
 		for (auto const& avc : m_ansiValueColorsIndexed) {
 			auto val = rowValue(argv[avc.colIndex]);
-			if (std::regex_search(val, avc.rowValueRegEx)) {
-				for (auto index : avc.colIndexes) {
-					m_ansiRowColors[index] = avc.ansiColor;
-				}
-			}
+			if (std::regex_search(val, avc.rowValueRegEx))
+				for (auto index : avc.colIndexes) m_ansiRowColors[index] = avc.ansiColor;
 		}
 	}
 
@@ -2657,9 +2599,7 @@ public:
 	void consInit(int argc, char **argv, char **azColName) const
 	{ _ASSERT(consEnabled());
 		m_consRowBuffer.resize(std::max(1, m_consRowMinCount - 1));
-		for (auto& row : m_consRowBuffer) {
-			row.resize(argc);
-		}
+		for (auto& row : m_consRowBuffer) row.resize(argc);
 
 		for (auto& col : m_consRowColumns) {
 			int j = 0;
@@ -2669,10 +2609,8 @@ public:
 					break;
 				}
 			}
-			if (j == argc) {
-				throw std::invalid_argument("Could not find cons column " 
-					+ col.name + " in the output columns");
-			}
+			if (j == argc)
+				throw std::invalid_argument("Could not find cons column "+col.name+" in output columns");
 		}
 		consSetBufferRow(0, argv);
 		m_consMatched = 0;
@@ -2685,9 +2623,8 @@ public:
 
 	void consOutputMatchedCount() const // OBS! This is mainly intended for use with column display mode.
 	{ 
-		if (m_consMatched >= m_consRowMinCount) {
+		if (m_consMatched >= m_consRowMinCount)
 			m_output.write(fmt("\n# = %i\n\n", m_consMatched));
-		}
 	}
 
 	void consProcessRow(OutputQuery const& query, int argc, char **argv) const
@@ -2735,12 +2672,9 @@ public:
 					auto& prevVal = m_consRowBuffer[prevIndex][col.index];
 					unsigned long long cur=0, prev=0;
 					if (toSecondsValue(val, cur) && toSecondsValue(prevVal, prev)) {
-						if (col.matchMethod == ConsRowMatchMethod::diffLt) {
-							cvMatch = (((long long)cur - (long long)prev) < col.diff);
-						}
-						else {
-							cvMatch = (((long long)cur - (long long)prev) > col.diff);
-						}
+						cvMatch = (col.matchMethod == ConsRowMatchMethod::diffLt)
+							? (((long long)cur - (long long)prev) < col.diff)
+							: (((long long)cur - (long long)prev) > col.diff);
 					}
 					else {
 						cvMatch = false;
@@ -2762,17 +2696,15 @@ public:
 				}
 			}
 			consSetBufferRow(std::min(m_consMatched - 1, std::max(0, m_consRowMinCount - 2)), argv);
-			if (m_consMatched >= m_consRowMinCount) {
+			if (m_consMatched >= m_consRowMinCount)
 				outputRow(query, false, argc, argv);
-			}
 		}
 		else {
 			consOutputMatchedCount();
 			consSetBufferRow(0, argv);
 			m_consMatched = reMatch ? 1 : 0;
-			if (m_consRowMinCount == 1 && reMatch) {
+			if (m_consRowMinCount == 1 && reMatch)
 				outputRow(query, false, argc, argv);
-			}
 		}
 	}
 
@@ -2792,8 +2724,7 @@ public:
 		int nextRowIndex(int iEqpId, int oldIndex)
 		{
 			int row = indexValid(oldIndex) ? (oldIndex + 1) : 0;
-			while (indexValid(row) && rows[row].iParentId != iEqpId)
-				++row;
+			while (indexValid(row) && rows[row].iParentId != iEqpId) ++row;
 			return row;
 		}
 
@@ -2882,9 +2813,7 @@ public:
 							requiredWidth += cs.width;
 						}
 						requiredWidth += (m_colSepSize * (query.columnSettings.size() - 1));
-						if (autoFit) {
-							fitW = (requiredWidth > m_fitWidthValue);
-						}
+						if (autoFit) fitW = (requiredWidth > m_fitWidthValue);
 					
 						if (fitW) {
 							int const target = m_fitWidthValue;
@@ -2912,9 +2841,7 @@ public:
 						}
 					}
 
-					if (m_ansiEnabled) {
-						ansiInit(argc, azColName);
-					}
+					if (m_ansiEnabled) ansiInit(argc, azColName);
 				}
 				else if (m_displayMode == DisplayMode::htmldoc) {
 					auto docStart = 
@@ -2942,9 +2869,7 @@ public:
 							m_output.write('\n');
 						}
 					}
-					if (consEnabled()) {
-						consInit(argc, argv, azColName);
-					}
+					if (consEnabled()) consInit(argc, argv, azColName);
 				}
 			} // if (m_rowCount == 0) {
 
@@ -2952,12 +2877,10 @@ public:
 				m_eqpGraph->appendRow(atoi(argv[0]), atoi(argv[1]), argv[3]);
 			}
 			else {
-				if (consEnabled()) {
+				if (consEnabled())
 					consProcessRow(query, argc, argv);
-				}
-				else {
+				else
 					outputRow(query, false, argc, argv);
-				}
 			}
 			++m_rowCount;
 			return 0;
@@ -3227,7 +3150,6 @@ ORDER BY Dupe DESC, "Book read")";
 		case Count::words: cwidth = 8u; break;
 		case Count::kwords: cwidth = 5u; break;
 		}
-
 		auto col = getColumn(snColSelect);  col->usedInQuery = true;
 		auto bc  = getColumn(getCountColumn()); bc->usedInQuery = true;
 		auto gby = getColumn(snColGroupBy); gby->usedInQuery = true;
@@ -3282,8 +3204,7 @@ ORDER BY Dupe DESC, "Book read")";
 		std::string def;
 		std::string name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
 
-		PeriodColumn(std::string d, std::string const& n) : 
-			def(std::move(d)), name(quote(n)) {}
+		PeriodColumn(std::string d, std::string const& n) : def(std::move(d)), name(quote(n)) {}
 
 		unsigned colWidth() const { return LittDefs::colWidth(name); }
 	};
@@ -3294,13 +3215,9 @@ ORDER BY Dupe DESC, "Book read")";
 		size_t width = 0;
 		for (int i = fromActionArgIndex;;) {
 			auto def = arg(i++);
-			if (def.empty()) {
-				break;
-			}
+			if (def.empty()) break;
 			auto name = arg(i++);
-			if (name.empty()) {
-				throw std::invalid_argument(std::string("No name for def: ") + def);
-			}
+			if (name.empty()) throw std::invalid_argument(std::string("No name for def: ") + def);
 			res.emplace_back(def, name);
 			width = std::max(width, res.back().name.length());
 		}
@@ -3520,17 +3437,15 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		auto ln = argi(0, "last name", optional); if (ln.empty()) return;
 		auto fn = argi(1, "first name", optional); // May be empty.
-		if (confirmf("Add author '%s, %s'", S(ln), S(fn))) {
+		if (confirmf("Add author '%s, %s'", S(ln), S(fn)))
 			executeInsert("author", fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)));
-		}
 	}
 
 	void add(const char* name, const char* tableName, unsigned argIndex = 0) // Generic add for single-column entities
 	{
 		if (auto arg = argi(argIndex, name, optional); !arg.empty()) {
-			if (confirmf("Add %s '%s'", name, S(arg))) {
+			if (confirmf("Add %s '%s'", name, S(arg)))
 				executeInsert(name, fmt("INSERT INTO %s (%s) VALUES(%s)", tableName, name, ESC_S(arg)));
-			}
 		}
 	}
 
@@ -3550,11 +3465,8 @@ ORDER BY Dupe DESC, "Book read")";
 
 	void printGenres(GenreIds const& genres)
 	{
-		bool first = true;
-		for (auto gi : genres) {
-			if (!first) printf(", "); first = false;
-			printf("%s", S(selGenre(gi)));
-		}
+		for (auto i = 0u; i < genres.size(); ++i)
+			printf("%s%s", i!=0?", ":"", S(selGenre(genres[i])));
 	}
 
 	void explainNotSupported()
@@ -3572,7 +3484,8 @@ ORDER BY Dupe DESC, "Book read")";
 	void addBook()
 	{
 		explainNotSupported();
-
+		auto const ynStr = [](int yn) { return yn == 'y' ? "yes" : "no"; };
+		auto const ynInt = [](int yn) { return yn == 'y' ? 1 : 0; };
 		struct AData { IdValue authorId; std::string story; IdValue storyId; std::string storyRating; GenreIds storyGenres; };
 		auto st = getLocalTime();
 		auto authors     = std::vector<AData>();
@@ -3602,7 +3515,7 @@ ORDER BY Dupe DESC, "Book read")";
 			AData ad = (i < authors.size()) ? authors[i] : AData{};
 			input(ad.authorId, "AuthorID", cf(&Litt::selAuthor), getListAuthor(), optional);
 			if (ad.authorId == EmptyId) {
-				if (i < authors.size()) { authors.erase(authors.begin() + i); }
+				if (i < authors.size()) authors.erase(authors.begin() + i);
 				if (i < authors.size() || (i == 0 && !title.empty())) continue; else break;
 			}
 			input(ad.story, "Story name (optional)", optional);
@@ -3629,9 +3542,8 @@ ORDER BY Dupe DESC, "Book read")";
 			if (authors.size() <= i) { authors.reserve((i+1)*2); authors.resize(i + 1); }
 			authors[i++] = std::move(ad);
 		}
-		if (authors.empty() && title.empty()) {
-			return;
-		}
+		if (authors.empty() && title.empty()) return;
+
 		input(title, "Book title");
 		input(dateRead, "Date read", DateReadRegEx);
 		input(rating, "Rating", RatingRegEx);
@@ -3643,9 +3555,10 @@ ORDER BY Dupe DESC, "Book read")";
 		input(words, "Words");
 		if (hasStories) {
 			genreIds.clear();
-			for (auto const& ad : authors) for (auto const gi : ad.storyGenres) 
-				if (std::find(genreIds.begin(), genreIds.end(), gi) == genreIds.end())
-					genreIds.push_back(gi);
+			for (auto const& ad : authors)
+				for (auto const gi : ad.storyGenres)
+					if (std::find(genreIds.begin(), genreIds.end(), gi) == genreIds.end())
+						genreIds.push_back(gi);
 		}
 		else {
 			inputGenres(genreIds, "Book GenreID");
@@ -3660,12 +3573,7 @@ ORDER BY Dupe DESC, "Book read")";
 		askInput("yn", "Own book", owns);
 		askInput("yn", "Bought ebook", boughtEbook);
 		input(seriesId, "SeriesID (optional)", cf(&Litt::selSeries), getListSeries(), optional);
-		if (seriesId != EmptyId) {
-			input(seriesPart, "Part in series");
-		}
-
-		auto ynStr = [](int yn) { return yn == 'y' ? "yes" : "no"; };
-		auto ynInt = [](int yn) { return yn == 'y' ? 1     : 0;    };
+		if (seriesId != EmptyId) input(seriesPart, "Part in series");
 
 		printf("\n");
 		size_t width = 0; for (int hasMaxWidth = false; hasMaxWidth <= 1; ++hasMaxWidth)
@@ -3715,32 +3623,22 @@ ORDER BY Dupe DESC, "Book read")";
 		qb.adf("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
 		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);",
 			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date));
-		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);",
-			bid, ESC_S(dateRead), sourceId);
-		for (auto gi : genreIds) {
-			qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
-		}
+		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);", bid, ESC_S(dateRead), sourceId);
+		for (auto gi : genreIds) qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
 		for (auto const& a : authors) {
 			qb.adf("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, a.authorId);
 			if (!a.story.empty()) {
 				if (!a.storyRating.empty()) {
-					qb.adf("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);",
-						a.storyId, ESC_S(a.story), S(a.storyRating));
-					for (auto gi : a.storyGenres) {
-						qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", a.storyId, gi);
-					}
+					qb.adf("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", a.storyId, ESC_S(a.story), S(a.storyRating));
+					for (auto gi : a.storyGenres) qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", a.storyId, gi);
 				}
 				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, a.authorId, a.storyId);
 			}
 		}
-		if (!origtitle.empty()) {
-			qb.adf("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);",
-				bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate));
-		}
-		if (seriesId != EmptyId) {
-			qb.adf("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);",
-				bid, seriesId, S(escSqlVal(seriesPart, true)));
-		}
+		if (!origtitle.empty()) qb.adf("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);",
+			bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate));
+		if (seriesId != EmptyId) qb.adf("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);",
+			bid, seriesId, S(escSqlVal(seriesPart, true)));
 		qb.add("COMMIT TRANSACTION");
 		
 		try {
@@ -3750,9 +3648,7 @@ ORDER BY Dupe DESC, "Book read")";
 		catch (std::exception& ex) {
 			printf("Failed to add book: %s\n\nSQL command was:\n\n%s\n\n", ex.what(), S(qb.m_query));
 			executeSql("ROLLBACK TRANSACTION");
-			if (confirm("Retry")) {
-				goto enterBook;
-			}
+			if (confirm("Retry")) goto enterBook;
 		}
 	}
 
@@ -3767,9 +3663,9 @@ ORDER BY Dupe DESC, "Book read")";
 				resetListingData("st.eq." + story);
 				runListData("stid.st.stra.nn.bt", "stid.st", Table::stories);
 				printf("\n");
-				if (!idValid()) { storyId = EmptyId; }
+				if (!idValid()) storyId = EmptyId;
 				input(storyId, "StoryID", nullptr, nullptr, optional);
-				if (idValid()) { return storyId != EmptyId; }
+				if (idValid()) return storyId != EmptyId;
 			}
 		}
 		return false;
