@@ -68,7 +68,6 @@ do action in /Q %listActions%
 	gosub test_success %action%
 enddo
 
-
 REM Now test things that should fail
 set listActions=
 set listActions=%listActions% "b --cons:2:so:5" "b --cons:2:TitlE"
@@ -108,16 +107,19 @@ iff %runColumnTest% == 1 then
 			gosub test_success "%action% -c%col%"
 		enddo
 	enddo
-endIf
+endIff
 
 :end
-REM DONE!
 echo ``
 iff %failures% == 0 then
+	color green on black
 	echo All tests succeeded!
+	color white on black
 	quit 0
 else
+	color bri red on black
 	echo %failures% tests failed!!
+	color white on black
 	quit 1
 endIff
 
