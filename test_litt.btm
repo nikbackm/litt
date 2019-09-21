@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+set runColumnTest=0
+if "%1" == "1" set runColumnTest=1
+
 set testexe=litt.exe
 set failures=0
 
@@ -84,15 +87,6 @@ do action in /Q %listActions%
 	gosub test_failure %action%
 enddo
 
-goto end
-
-REM Test to use every column (sn) with every action.
-REM Testing with the sn as the only output column for now to make sure all needed tables are included.
-REM Should also test what happens with more columns included so that ambiguous column errors do not appear.
-
-REM No need to test the double-letter actions (aa,bb,..), they just have different defaults as the single-letter ones.
-set testColumnActions=st so l c g s ot a b ps rereads reot
-
 set columns=bt bd by bi ot ln fn ai nn nc ng ge gi gg dr dc dg dw dwl dy dm dym dymd ti sec ra own la beb st stid stra btst ^
             stge stgg stng stbc stbg bstc bstg astc astg bstng bastc bastg btbastg bsge bsgg bsra ^
             se si pa sp sg spg so ^
@@ -101,13 +95,20 @@ set columns=bt bd by bi ot ln fn ai nn nc ng ge gi gg dr dc dg dw dwl dy dm dym 
             ar gr sor ser ^
             abc abcp abcr agg aggp agc agcp gbc gac cbc lbc obc sobc sebc
 
-REM Test all columns by running all listings where a column might be specified for only that column
-do action in /Q %testColumnActions%
-	do col in /Q %columns%
-		gosub test_success "%action% -c%col%"
-	enddo
-enddo
+REM Test to use every column (sn) with every action.
+REM Testing with the sn as the only output column for now to make sure all needed tables are included.
+REM Should also test what happens with more columns included so that ambiguous column errors do not appear.
 
+REM No need to test the double-letter actions (aa,bb,..), they just have different defaults as the single-letter ones.
+set testColumnActions=st so l c g s ot a b ps rereads reot
+
+iff %runColumnTest% == 1 then
+	do action in /Q %testColumnActions%
+		do col in /Q %columns%
+			gosub test_success "%action% -c%col%"
+		enddo
+	enddo
+endIf
 
 :end
 REM DONE!
