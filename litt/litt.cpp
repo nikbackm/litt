@@ -445,7 +445,6 @@ namespace LittDefs
 	const char*   RatingRegEx = R"x([+-]?((\d+(\.\d*)?)|(\.\d+)))x";
 	const char*   DateReadRegEx = R"x(\d{4}-\d\d-\d\d( [0-5]\d:[0-5]\d|~|\.\.\d{4}-\d\d-\d\d)?)x";
 	const char*   PubDateRegEx = R"x(\d{4}(-\d\d(-\d\d)?)?)x";
-	const unsigned EmptyUnsigned = unsigned(UINT_MAX);
 
 	// Escape the SQL value and add the SQL quotes (if needed).
 	std::string escSqlVal(std::string str, bool tryToTreatAsNumeric = false)
@@ -690,11 +689,10 @@ namespace Input
 		value = input(prompt, regex, options);
 	}
 
-	void input(unsigned& value, const char* prompt, InputOptions options = required)
-	{
-		std::string ustr = (value != EmptyUnsigned) ? std::to_string(value) : "";
-		input(ustr, prompt, R"([1-9]\d*)", options);
-		value = std::stoul(ustr);
+	void input(int& value, const char* prompt, InputOptions options = required) 
+	{   // No negative, empty or NULL values for now!
+		std::string str = (value >= 0) ? std::to_string(value) : "";
+		do input(str, prompt, R"(\d+)", options); while (!toInt(str, value));
 	}
 
 	using InputCheckIdFunction = std::function<void(IdValue)>;
@@ -1803,6 +1801,13 @@ public:
 		return index < m_actionArgs.size() ? m_actionArgs[index] : input(fmt("Enter %s", name).c_str(), iopt);
 	}
 
+	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const
+	{
+		int val = -1; return index < m_actionArgs.size()
+			? intarg(index, name, 0)
+			: (input(val, fmt("Enter %s", name).c_str(), iopt), val);
+	}
+
 	IdValue idargi(unsigned index, const char* name,
 		InputCheckIdFunction const& checkFunc,
 		InputListFunction const& listFunc,
@@ -1810,7 +1815,7 @@ public:
 	{
 		IdValue val = EmptyId; return index < m_actionArgs.size()
 			? toIdValue(m_actionArgs[index], val) ? checkFunc(val), val : throw argEx(index, name)
-			: input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt), val;
+			: (input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt), val);
 	}
 
 	std::string reargi(unsigned index, const char* name, const char* regEx, InputOptions iopt = Input::required) const
@@ -1818,11 +1823,6 @@ public:
 		return index < m_actionArgs.size()
 			? std::regex_match(m_actionArgs[index], std::regex(regEx)) ? m_actionArgs[index] : throw argEx(index, name)
 			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
-	}
-
-	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const
-	{
-		return std::stoi(reargi(index, name, R"x(\d+)x", iopt));
 	}
 
 	std::string toUtf8(std::string const& str) const { return Utils::toUtf8(consoleCodePage, str); }
@@ -3467,8 +3467,8 @@ ORDER BY Dupe DESC, "Book read")";
 		auto rating      = std::string();
 		auto isbn        = std::string();
 		auto catId       = EmptyId;
-		auto pages       = EmptyUnsigned;
-		auto words       = EmptyUnsigned;
+		auto pages       = -1;
+		auto words       = -1;
 		auto date        = std::string();
 		auto langId      = IdValue{2}; // English
 		auto owns        = int('n');
@@ -3563,7 +3563,7 @@ ORDER BY Dupe DESC, "Book read")";
 		printf("ISBN           : %s\n", S(isbn));
 		printf("Date           : %s\n", S(date));
 		printf("Category       : %s\n", S(selBookCategory(catId)));
-		printf("Pages / Words  : %u / %u\n", pages, words);
+		printf("Pages / Words  : %i / %i\n", pages, words);
 		printf("Genre(s)       : ");    printGenres(genreIds); printf("\n");
 		printf("Source         : %s\n", S(selSource(sourceId)));
 		printf("Language       : %s\n", S(selLanguage(langId)));
@@ -3588,7 +3588,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 		QueryBuilder qb("BEGIN TRANSACTION;");
 		qb.adf("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
-		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%u,%u,%s);",
+		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%i,%i,%s);",
 			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date));
 		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);", bid, ESC_S(dateRead), sourceId);
 		for (auto gi : genreIds) qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
