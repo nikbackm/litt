@@ -1,0 +1,144 @@
+@echo off
+setlocal
+
+set testexe=litt.exe
+set failures=0
+
+set brym_cnt=
+set brym_cnt=%brym_cnt% "brym --cnt:b -wbc.gt.0"        
+set brym_cnt=%brym_cnt% "brym --cnt:p -wbcp.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:w -wbcw.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:kw -wbckw.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:a -wbca.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:g -wbcg.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:st -wbcst.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:so -wbcso.gt.0"
+set brym_cnt=%brym_cnt% "brym --cnt:c -wbcc.gt.0"
+
+set brys="bry * so.Ebook* EBTotal so.Ebo*bought* Pay so.Eboo*free* Free so.neq.*ebook* PaperTotal so.Bought* Buy so.Borrow* Borrow so.Library* Library so.Gift* Gift so.Unknown* Unknown"
+
+set ansi=--ansi:defC:0m:^
+valC:so:Unknown:nn.ng.btbastg.btst.so:91m:^
+valC:so:Borrow:nn.ng.btbastg.btst.so:1m:^
+valC:so:Bought:so:93m:^
+valC:so:Ebook:dr.bt.btbastg.btst.nn.ng.so:38;2;0;150;200m:^
+valC:so:Library:nn.ng.btbastg.btst.so:90m:^
+valC:so:Dow:dr.bt.btbastg.btst.nn.ng.so:36m:^
+valC:so:Kindle:dr.bt.btbastg.btst.nn.ng.so:1;36m:^
+valC:so:Free:dr.bt.btbastg.btst.nn.ng.so:38;2;124;252;0m:^
+valC:so:Public:dr.bt.btbastg.btst.nn.ng.so:92m:^
+valC:gg:bia:gg:1;35m:^
+valC:bsgg:bia:bsgg:1;35m:^
+valC:gg:Inter:gg:38;2;185;118;0m:^
+valC:bsgg:Inter:bsgg:38;2;185;118;0m
+
+set listActions=
+set listActions=%listActions% "bb %ansi%"
+set listActions=%listActions% "bb -f50" "bb -fon" "bb -foff" "bb -fauto"
+set listActions=%listActions% "b --cons:2:bt" "b --cons:2:bt:5" "b --cons:2:bt:re:z" "b --cons:2:bt:ren:a" "b --cons:2:bt:re:a:bi:3"
+set listActions=%listActions% "b --cons:3:Title:4:BookID:2"
+set listActions=%listActions% "b -cdr.bi.bt --cons:2:dr" "b -cdr.bi.bt --cons:2:dr:10"
+set listActions=%listActions% "b -asec --cons:2:sec:dgt:10000000"
+set listActions=%listActions% "b -asec --cons:2:sec:dlt:20"
+set listActions=%listActions% "b -x" "b -x0" "b -x1" "b -x2" "b -x3"
+set listActions=%listActions% "b -dcol" "b -dcolumn" "b -dtabs" "b -dhtml" "b -dhtmldoc" 
+set listActions=%listActions% "b -dlist" "b -dlist:" "b -dlist:!" "b -dlist:." "b -dlist:|" "b -dlist:aaa"
+set listActions=%listActions% "b -wln.!!" "b -wln.!!*" "b -wln.!.*" "b -wln.!.a*" "b -wln.!!a*" "b -wln.a*!!"
+set listActions=%listActions% "b -s" "b -sbi" "b -sbi." "b -sbi.0" "b -sbi.1" "b -sbi.111" "b -sbi.1.bt" "b -sbi.1.bt." "b -sbi.1.bt.12"
+set listActions=%listActions% "b -o" "b -oln" "b -oln." "b -oln.asc" "b -oln.desc" "b -oln.desc." "b -oln.desc.fn"
+set listActions=%listActions% "b -w" "b -wln.a" "b -wln.neq.rt" "b -wbi.range.1.2"
+set listActions=%listActions% h h0 h1 h2 a aa ps b bb ot st s ss g gg so soo
+set listActions=%listActions% brd rereads reot sametitle titlestory
+set listActions=%listActions% %brys% %brym_cnt%
+set listActions=%listActions% abc abcy "abcy 7 1950 2050" "abc 1 1" gbc gbcy  "gbc 1 1" sbc sbcy lbc lbcy obc obcy cbc cbcy
+set listActions=%listActions% brmy "brmy 1900 2000" brym "brym -wge.*bia*" brm bry brwd "brp so.Ebook* EBTotal"
+set listActions=%listActions% "set-own -x 1 1" "set-own -x 1 1111"
+set listActions=%listActions% "b --limit:10" "b --limit:10 --offset:10" "b --offset:10"
+set listActions=%listActions% "add-a -q ln fn" "add-a -x ln fn"
+set listActions=%listActions% "add-g -q value" "add-g -x value"
+set listActions=%listActions% "add-s -q value" "add-s -x value"
+set listActions=%listActions% "add-c -q value" "add-c -x value"
+set listActions=%listActions% "add-l -q value" "add-l -x value"
+set listActions=%listActions% "add-so -q value" "add-so -x value"
+
+do action in /Q %listActions%
+	gosub test_success %action%
+enddo
+
+
+REM Now test things that should fail
+set listActions=
+set listActions=%listActions% "b --cons:2:so:5" "b --cons:2:TitlE"
+set listActions=%listActions% "b -obt.ascc" "b -obt.descc" "b -obt.adesc"
+set listActions=%listActions% "b -xa" "b -x4"
+set listActions=%listActions% "b -wln!" "b -wln.!" "b -wln.!a" "b -w.." "b -wln.."
+set listActions=%listActions% "b -dlista" "b -d" "b -dsldfsdiofjsdfds" "b -da" "b -d:"
+set listActions=%listActions% "set-own -q a"
+set listActions=%listActions% "set-own -q 11111111111"
+set listActions=%listActions% "set-own -q 1 a"
+set listActions=%listActions% "set-own -q 1 11a"
+set listActions=%listActions% "b --limit:aa" "b --offset:aa"
+set listActions=%listActions% "b -fadd"
+
+do action in /Q %listActions%
+	gosub test_failure %action%
+enddo
+
+goto end
+
+REM Test to use every column (sn) with every action.
+REM Testing with the sn as the only output column for now to make sure all needed tables are included.
+REM Should also test what happens with more columns included so that ambiguous column errors do not appear.
+
+REM No need to test the double-letter actions (aa,bb,..), they just have different defaults as the single-letter ones.
+set testColumnActions=st so l c g s ot a b ps rereads reot
+
+set columns=bt bd by bi ot ln fn ai nn nc ng ge gi gg dr dc dg dw dwl dy dm dym dymd ti sec ra own la beb st stid stra btst ^
+            stge stgg stng stbc stbg bstc bstg astc astg bstng bastc bastg btbastg bsge bsgg bsra ^
+            se si pa sp sg spg so ^
+            soid ps psf psmid lag lagi dind mind yind aper alag acnt gper glag gcnt soper solag socnt isbn catid cat pgs wds ^
+            btl nnl ngl dgl bsggl psfl drbd wpp kw laid otis otla otd oty otli bdod drrf drrl drrm drrr drrd is10 is13 oi10 oi13 ^
+            ar gr sor ser ^
+            abc abcp abcr agg aggp agc agcp gbc gac cbc lbc obc sobc sebc
+
+REM Test all columns by running all listings where a column might be specified for only that column
+do action in /Q %testColumnActions%
+	do col in /Q %columns%
+		gosub test_success "%action% -c%col%"
+	enddo
+enddo
+
+
+:end
+REM DONE!
+echo ``
+iff %failures% == 0 then
+	echo All tests succeeded!
+	quit 0
+else
+	echo %failures% tests failed!!
+	quit 1
+endIff
+
+
+:test_success [testargs]
+gosub test_exitcode_n 0 %testargs%
+return
+
+:test_failure [testargs]
+gosub test_exitcode_n 1 %testargs%
+return
+
+:test_exitcode_n [code testargs]
+set testcmd=%testexe% %@unquotes[%testargs%]%
+echos Testing: %testcmd% -` ` 
+%testcmd% > NUL
+iff %? == %code% then
+	echo OK
+else
+	echo FAILED!! Excected result = %code%.
+	set failures=%@inc[failures]
+	:: Comment out quit below to continue testing after first failure.
+	quit
+endIff
+return
