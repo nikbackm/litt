@@ -1779,9 +1779,11 @@ public:
 		}
 	}
 
-	bool hasArg(unsigned index)
+	bool hasArg(unsigned index) { return index < m_actionArgs.size(); }
+
+	std::invalid_argument argEx(unsigned index, const char* name) const
 	{
-		return index < m_actionArgs.size();
+		return std::invalid_argument(fmt("Invalid %s value: %s", name, S(m_actionArgs[index])));
 	}
 
 	std::string arg(unsigned index, const char* def = "") const 
@@ -1789,77 +1791,42 @@ public:
 		return index < m_actionArgs.size() ? m_actionArgs[index] : def;
 	}
 
-	IdValue idarg(unsigned index, const char* name) const 
+	int intarg(unsigned index, const char* name, int def) const
 	{
-		IdValue val;
-		return index < m_actionArgs.size()
-			? (toIdValue(m_actionArgs[index], val)
-				? val
-				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
-			: throw std::invalid_argument(fmt("%s argument missing!", name));
-	}
-
-	IdValue idargi(unsigned index, const char* name, 
-		InputCheckIdFunction const& checkFunc, 
-		InputListFunction const& listFunc,
-		InputOptions iopt = Input::required) const
-	{
-		if (index < m_actionArgs.size()) return idarg(index, name);
-		IdValue val = EmptyId;
-		input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt);
-		return val;
-	}
-
-	int intarg(unsigned index, const char* name) const 
-	{
-		int val;
-		return index < m_actionArgs.size()
-			? (toInt(m_actionArgs[index], val)
-				? val
-				: throw std::invalid_argument(fmt("Invalid %s value!", name)))
-			: throw std::invalid_argument(fmt("%s argument missing!", name));
-	}
-
-	int intarg(unsigned index, const char* name, int def) const 
-	{
-		return index < m_actionArgs.size()
-			? intarg(index, name) 
+		int val; return index < m_actionArgs.size()
+			? toInt(m_actionArgs[index], val) ? val : throw argEx(index, name)
 			: def;
 	}
 
-	std::string argm(unsigned index, const char* name) const 
+	std::string argi(unsigned index, const char* name, InputOptions iopt = Input::required) const
 	{
-		return index < m_actionArgs.size()
-			? m_actionArgs[index]
-			: throw std::invalid_argument(fmt("%s argument missing!", name));
+		return index < m_actionArgs.size() ? m_actionArgs[index] : input(fmt("Enter %s", name).c_str(), iopt);
 	}
 
-	std::string argi(unsigned index, const char* name, InputOptions iopt = Input::required) const 
+	IdValue idargi(unsigned index, const char* name,
+		InputCheckIdFunction const& checkFunc,
+		InputListFunction const& listFunc,
+		InputOptions iopt = Input::required) const
 	{
-		return index < m_actionArgs.size()
-			? m_actionArgs[index]
-			: input(fmt("Enter %s", name).c_str(), iopt);
+		IdValue val = EmptyId; return index < m_actionArgs.size()
+			? toIdValue(m_actionArgs[index], val) ? checkFunc(val), val : throw argEx(index, name)
+			: input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt), val;
 	}
 
-	std::string argi(unsigned index, const char* name, const char* regEx, InputOptions iopt = Input::required) const
+	std::string reargi(unsigned index, const char* name, const char* regEx, InputOptions iopt = Input::required) const
 	{
 		return index < m_actionArgs.size()
-			? (std::regex_match(m_actionArgs[index], std::regex(regEx)) 
-				? m_actionArgs[index] 
-				: throw std::invalid_argument(fmt("Invalid %s value: %s", name, S(m_actionArgs[index]))))
+			? std::regex_match(m_actionArgs[index], std::regex(regEx)) ? m_actionArgs[index] : throw argEx(index, name)
 			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
 	}
 
-	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const 
+	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const
 	{
-		return std::stoi(index < m_actionArgs.size()
-			? m_actionArgs[index]
-			: input(fmt("Enter %s", name).c_str(), R"x(\d+)x", iopt).c_str());
+		return std::stoi(reargi(index, name, R"x(\d+)x", iopt));
 	}
 
-	std::string toUtf8(std::string const& str) const   { return Utils::toUtf8(consoleCodePage, str); }
+	std::string toUtf8(std::string const& str) const { return Utils::toUtf8(consoleCodePage, str); }
 	std::string fromUtf8(std::string const& str) const { return Utils::fromUtf8(consoleCodePage, str); }
-
 	std::string encodeSqlFromInput(std::string const& sql) const { return toUtf8(sql); }
 
 	enum class Table { // The main tables, used to select listing source.
@@ -3682,7 +3649,7 @@ ORDER BY Dupe DESC, "Book read")";
 			std::string rating;
 			GenreIds genreIds;
 			if (!getStoryId(storyId, story)) {
-				rating = argi(3, "Rating", RatingRegEx);
+				rating = reargi(3, "Rating", RatingRegEx);
 				inputGenres(genreIds, "GenreID");
 			}
 			if (confirmf("Add story '%s' [%llu] with rating='%s' to '%s [%llu]' for author %s [%llu]",
@@ -3784,7 +3751,7 @@ ORDER BY Dupe DESC, "Book read")";
 	void addDateRead()
 	{
 		if (auto bi = bidargi(0)) {
-			auto dr = argi(1, "Date read", DateReadRegEx);
+			auto dr = reargi(1, "Date read", DateReadRegEx);
 			auto sid = soidargi(2);
 			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selBook(bi))))
 				executeWriteSqlf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
@@ -3811,7 +3778,7 @@ ORDER BY Dupe DESC, "Book read")";
 		auto const deleteOrDrRegEx = fmt("(delete)|(%s)", DateReadRegEx);
 
 		if (auto const bookId = bidargi(0)) {
-			auto const newDr = argi(1, "New date read or 'delete' to remove", deleteOrDrRegEx.c_str());
+			auto const newDr = reargi(1, "New date read or 'delete' to remove", deleteOrDrRegEx.c_str());
 			auto const dr = getDrArg(bookId, 2);
 			if (newDr != "delete") {
 				if (confirmf("Change date read '%s' => '%s' for '%s'", S(dr), S(newDr), S(selBook(bookId))))
@@ -3857,7 +3824,7 @@ ORDER BY Dupe DESC, "Book read")";
 	void setRating()
 	{
 		if (auto bookId = bidargi(0)) {
-			auto rating = argi(1, "Rating", RatingRegEx);
+			auto rating = reargi(1, "Rating", RatingRegEx);
 			if (confirmf("Set rating of '%s' => %s", S(selBook(bookId)), S(rating)))
 				executeWriteSqlf("UPDATE Books SET Rating = %s WHERE BookID=%llu", S(rating), bookId);
 		}
@@ -3866,7 +3833,7 @@ ORDER BY Dupe DESC, "Book read")";
 	void setStoryRating()
 	{
 		if (auto storyId = stidargi(0)) {
-			auto rating = argi(1, "Rating", RatingRegEx);
+			auto rating = reargi(1, "Rating", RatingRegEx);
 			if (confirmf("Set rating of '%s' => %s", S(selStory(storyId)), S(rating)))
 				executeWriteSqlf("UPDATE Stories SET Rating = %s WHERE StoryID=%llu", S(rating), storyId);
 		}
@@ -3875,7 +3842,7 @@ ORDER BY Dupe DESC, "Book read")";
 	void setBookPubDate()
 	{
 		if (auto bookId = bidargi(0)) {
-			auto pubdate = argi(1, "Publication date", PubDateRegEx);
+			auto pubdate = reargi(1, "Publication date", PubDateRegEx);
 			if (confirmf("Set Date of '%s' => %s", S(selBook(bookId)), S(pubdate)))
 				executeWriteSqlf("UPDATE Books SET Date = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
 		}
@@ -3884,7 +3851,7 @@ ORDER BY Dupe DESC, "Book read")";
 	void setBookOriginalTitlePubDate()
 	{
 		if (auto bookId = bidargi(0)) {
-			auto pubdate = argi(1, "Publication date", PubDateRegEx);
+			auto pubdate = reargi(1, "Publication date", PubDateRegEx);
 			if (confirmf("Set otDate of '%s' => %s", S(selBook(bookId)), S(pubdate)))
 				executeWriteSqlf("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
 		}
@@ -3963,7 +3930,7 @@ ORDER BY Dupe DESC, "Book read")";
 		case a("brwd"): listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1)); break;
 		case a("brm"):  listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1)); break;
 		case a("bry"):  listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1)); break;
-		case a("brp"):  listBooksReadPerPeriod(argm(0,"periodDef"), argm(1,"periodName"), arg(2, WcS), getPeriodColumns(3)); break;
+		case a("brp"):  listBooksReadPerPeriod(argi(0,"periodDef"), argi(1,"periodName"), arg(2, WcS), getPeriodColumns(3)); break;
 		case a("brym"): {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 			std::vector<PeriodColumn> cols;
