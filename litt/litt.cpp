@@ -1060,7 +1060,7 @@ class Litt {
 	std::string m_whereCondition;
 	std::string m_havingCondition;
 	std::string m_action;
-	std::vector<std::string> m_actionArgs;
+	std::vector<std::string> m_args;
 	std::string m_actionRightWildCard;
 	std::string m_actionLeftWildCard;
 	Count m_count = Count::books;
@@ -1560,7 +1560,7 @@ public:
 					}
 				}
 				else {
-					m_actionArgs.push_back(argv[i]);
+					m_args.push_back(argv[i]);
 				}
 			}
 		}
@@ -1777,33 +1777,33 @@ public:
 		}
 	}
 
-	bool hasArg(unsigned index) { return index < m_actionArgs.size(); }
+	bool hasArg(unsigned index) { return index < m_args.size(); }
 
 	std::invalid_argument argEx(unsigned index, const char* name) const
 	{
-		return std::invalid_argument(fmt("Invalid %s value: %s", name, S(m_actionArgs[index])));
+		return std::invalid_argument(fmt("Invalid %s value: %s", name, S(m_args[index])));
 	}
 
 	std::string arg(unsigned index, const char* def = "") const 
 	{
-		return index < m_actionArgs.size() ? m_actionArgs[index] : def;
+		return index < m_args.size() ? m_args[index] : def;
 	}
 
 	int intarg(unsigned index, const char* name, int def) const
 	{
-		int val; return index < m_actionArgs.size()
-			? toInt(m_actionArgs[index], val) ? val : throw argEx(index, name)
+		int val; return index < m_args.size()
+			? toInt(m_args[index], val) ? val : throw argEx(index, name)
 			: def;
 	}
 
 	std::string argi(unsigned index, const char* name, InputOptions iopt = Input::required) const
 	{
-		return index < m_actionArgs.size() ? m_actionArgs[index] : input(fmt("Enter %s", name).c_str(), iopt);
+		return index < m_args.size() ? m_args[index] : input(fmt("Enter %s", name).c_str(), iopt);
 	}
 
 	int intargi(unsigned index, const char* name, InputOptions iopt = Input::required) const
 	{
-		int val = -1; return index < m_actionArgs.size()
+		int val = -1; return index < m_args.size()
 			? intarg(index, name, 0)
 			: (input(val, fmt("Enter %s", name).c_str(), iopt), val);
 	}
@@ -1813,15 +1813,15 @@ public:
 		InputListFunction const& listFunc,
 		InputOptions iopt = Input::required) const
 	{
-		IdValue val = EmptyId; return index < m_actionArgs.size()
-			? toIdValue(m_actionArgs[index], val) ? checkFunc(val), val : throw argEx(index, name)
+		IdValue val = EmptyId; return index < m_args.size()
+			? toIdValue(m_args[index], val) ? checkFunc(val), val : throw argEx(index, name)
 			: (input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt), val);
 	}
 
 	std::string reargi(unsigned index, const char* name, const char* regEx, InputOptions iopt = Input::required) const
 	{
-		return index < m_actionArgs.size()
-			? std::regex_match(m_actionArgs[index], std::regex(regEx)) ? m_actionArgs[index] : throw argEx(index, name)
+		return index < m_args.size()
+			? std::regex_match(m_args[index], std::regex(regEx)) ? m_args[index] : throw argEx(index, name)
 			: input(fmt("Enter %s", name).c_str(), regEx, iopt);
 	}
 
