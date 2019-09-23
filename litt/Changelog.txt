@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-23: Make where condition handling more robust and clear.
  * 2019-09-21: Removed unsigned arguments, always use int. Use toInt instead of std::stoi (control the error message).
  * 2019-09-21: Cleaned up arg functions.
  * 2019-09-21: Tigthen up addBook and Litt constructor, allow empty -dlist separator. Misc other minor changes.

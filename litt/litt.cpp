@@ -1057,8 +1057,8 @@ class Litt {
 	int m_offset = 0;
 	Columns m_selectedColumns; // Overrides the default action columns.
 	Columns m_additionalColumns; // Added to the action or overridden columns.
-	std::string m_whereCondition;
-	std::string m_havingCondition;
+	std::string m_whereBase, m_whereAdditional;
+	std::string m_having;
 	std::string m_action;
 	std::vector<std::string> m_args;
 	std::string m_actionRightWildCard;
@@ -1409,8 +1409,8 @@ public:
 				case 'a': 
 					m_additionalColumns += getColumns(val, ColumnsDataKind::width, true);
 					break;
-				case 'w': 
-					appendToWhereCondition(LogOp_OR, getWhereCondition(val));
+				case 'w':
+					m_whereAdditional = appendConditions(LogOp_OR, m_whereAdditional, getWhereCondition(val));
 					break;
 				case 's':
 					for (auto& c : getColumns(val, ColumnsDataKind::width, false)) c.first->sWidth = c.second;
@@ -1713,7 +1713,7 @@ public:
 			toCond = toCond.empty() ? cond : (toCond + LogOp_AND + cond);
 		}
 
-		appendToHavingCondition(LogOp_OR, havingCond); // HACK: always merged, not returned. Works for now though!
+		appendToHaving(LogOp_OR, havingCond); // HACK: always merged, not returned. Works for now though!
 		return whereCond;
 	}
 
@@ -1741,15 +1741,17 @@ public:
 		return "(" + cond + ")" + logicalOp + "(" + cond2 + ")";
 	}
 
-	void appendToHavingCondition(const char* logicalOp, std::string const& condition)
+	void appendToHaving(const char* logicalOp, std::string const& condition)
 	{
-		m_havingCondition = appendConditions(logicalOp, m_havingCondition, condition);
+		m_having = appendConditions(logicalOp, m_having, condition);
 	}
 
-	void appendToWhereCondition(const char* logicalOp, std::string const& condition)
+	void appendToWhere(std::string const& condition)
 	{
-		m_whereCondition = appendConditions(logicalOp, m_whereCondition, condition);
+		m_whereBase = appendConditions(LogOp_AND, m_whereBase, condition);
 	}
+
+	std::string whereCondition() const { return appendConditions(LogOp_AND, m_whereBase, m_whereAdditional); }
 
 	// Needed when listing output multiple times in same LITT session (like when listing items for book input!)
 	// Note that usedInResult is used/checked and reset in addOrderBy. Cannot do that here since addAuxTables
@@ -1762,9 +1764,9 @@ public:
 
 	void resetListingData(std::string const& whereCondition) // For use from listings during add actions.
 	{
-		m_selectedColumns.clear(); m_orderBy.clear(); m_additionalColumns.clear();
 		resetTablesAndColumns();
-		m_whereCondition = getWhereCondition(whereCondition);
+		m_selectedColumns.clear(); m_orderBy.clear(); m_additionalColumns.clear();
+		m_whereBase = getWhereCondition(whereCondition); m_whereAdditional.clear();
 	}
 
 	void addActionWhereCondition(const char* sn, std::string const& cond)
@@ -1773,7 +1775,7 @@ public:
 			auto val = m_actionLeftWildCard + cond + m_actionRightWildCard;
 			auto col = getColumn(sn);
 			col->usedInQuery = true;
-			appendToWhereCondition(LogOp_AND, col->nameDef + " LIKE " + col->getLikeArg(val));
+			appendToWhere(col->nameDef + " LIKE " + col->getLikeArg(val));
 		}
 	}
 
@@ -1895,10 +1897,7 @@ public:
 			add(res);
 		}
 
-		void aIf(std::string const& line, bool cond)
-		{
-			if (cond) add(line);
-		}
+		void aIf(std::string const& line, bool cond) { if (cond) add(line); }
 	};
 
 	struct ColumnSetting {
@@ -1976,18 +1975,14 @@ public:
 				: litt.m_orderBy;
 		}
 
-		void addWhere(int indentSize = 0)
+		void addWhere(const char* prefixKeyword = "WHERE")
 		{
-			if (!litt.m_whereCondition.empty()) {
-				m_query.append("\n").append(std::string(indentSize, ' ')).append("WHERE ").append(litt.m_whereCondition);
-			}
+			if (auto wc = litt.whereCondition(); !wc.empty()) adf("%s %s", prefixKeyword, S(wc));
 		}
 
-		void addHaving()
+		void addHaving(const char* prefix = "")
 		{
-			if (!litt.m_havingCondition.empty()) {
-				m_query.append("\nHAVING ").append(litt.m_havingCondition);
-			}
+			if (!litt.m_having.empty()) adf("%sHAVING %s", prefix, S(litt.m_having));
 		}
 
 		void xad(std::string const& line)
@@ -2918,7 +2913,7 @@ public:
 
 	void listPseudonyms(std::string const& ln, std::string const& fn)
 	{
-		appendToWhereCondition(LogOp_AND, (getWhereCondition("psf.*") + LogOp_OR + getWhereCondition("ps.*"))); 
+		appendToWhere(getWhereCondition("psf.*") + LogOp_OR + getWhereCondition("ps.*")); 
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
 		runListData("psmid.ai.nn.ps.psf", "psmid.ps.desc.ln", Table::authors);
@@ -3095,7 +3090,7 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		std::string cc = getCountColumn();
 		auto selCols = columns + std::string(".") + cc;
-		if (!countCond.empty()) appendToHavingCondition(LogOp_AND, parseCountCondition(getColumn(cc)->nameDef, countCond));
+		if (!countCond.empty()) appendToHaving(LogOp_AND, parseCountCondition(getColumn(cc)->nameDef, countCond));
 		if (includeReReads) { getColumn("dr")->usedInQuery = true; }
 		getColumn(snGroupBy)->usedInQuery = true;
 
@@ -3129,7 +3124,7 @@ ORDER BY Dupe DESC, "Book read")";
 		q.add(");");
 		q.xaf("INSERT INTO mdb.Res (\"#\") WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x<%i) SELECT * FROM c;\n", count);
 		for (int year = firstYear; year <= lastYear; ++year) {
-			auto ycond = appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(fmt("dr.%i-*", year)));
+			auto ycond = appendConditions(LogOp_AND, whereCondition(), getWhereCondition(fmt("dr.%i-*", year)));
 			if (year == firstYear) q.initTablesAndColumns(startTable); // Need to call after getWhereCondition, once is enough since similar cond for whole loop.
 			q.xaf("CREATE TABLE mdb.Year%i AS SELECT printf('%%%ui - %%s',%s,%s) AS \"%i\"", year, cwidth, S(bc->nameDef), S(col->nameDef), year);
 			q.adf("FROM %s", getTableName(startTable));
@@ -3162,7 +3157,7 @@ ORDER BY Dupe DESC, "Book read")";
 		q.add(" (SELECT CalcDR FROM (SELECT "); q.a(drTimeWindow); q.a(" AS CalcDR FROM DatesRead)");
 		q.add("  GROUP BY CalcDR");
 		q.add("  HAVING " + parseCountCondition("Count(CalcDR)", countCond) + ")");
-		q.aIf(" AND " + m_whereCondition, !m_whereCondition.empty());
+		q.addWhere(" AND ");
 		q.addOrderBy();
 		runOutputQuery(q);
 	}
@@ -3251,7 +3246,7 @@ ORDER BY Dupe DESC, "Book read")";
 		q.add(");\n");
 
 		for (auto& c : columns) {
-			auto ccond = c.def.empty() ? m_whereCondition : appendConditions(LogOp_AND, m_whereCondition, getWhereCondition(c.def));
+			auto ccond = c.def.empty() ? whereCondition() : appendConditions(LogOp_AND, whereCondition(), getWhereCondition(c.def));
 			q.xad("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
 			q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
 			q.add("  FROM Books JOIN mdb.DR USING(BookID)");
@@ -3261,7 +3256,7 @@ ORDER BY Dupe DESC, "Book read")";
 			q.aIf("  WHERE " + ccond, !ccond.empty());
 			q.add(" )");
 			q.add(" GROUP BY " + period);
-			q.aIf(" HAVING " + m_havingCondition, !m_havingCondition.empty());
+			q.addHaving(" ");
 			q.add(" ON CONFLICT(" + period  + ") DO UPDATE SET " + c.name + "=excluded." + c.name + ";\n");
 		}
 
@@ -3944,7 +3939,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto last = intarg(1, "lastYear", st.wYear);
 			std::vector<PeriodColumn> cols;
 			for (int y = first; y <= last; ++y) cols.emplace_back(fmt("dr.%04d-*", y), std::to_string(y));
-			appendToWhereCondition(LogOp_AND, getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", first, last)));
+			appendToWhere(getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", first, last)));
 			listBooksReadPerPeriod("%m", "Month", WcS, std::move(cols));
 			break;
 		}
