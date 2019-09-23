@@ -50,7 +50,7 @@ set listActions=%listActions% "b -wln.!!" "b -wln.!!*" "b -wln.!.*" "b -wln.!.a*
 set listActions=%listActions% "b -s" "b -sbi" "b -sbi." "b -sbi.0" "b -sbi.1" "b -sbi.111" "b -sbi.1.bt" "b -sbi.1.bt." "b -sbi.1.bt.12"
 set listActions=%listActions% "b -o" "b -oln" "b -oln." "b -oln.asc" "b -oln.desc" "b -oln.desc." "b -oln.desc.fn"
 set listActions=%listActions% "b -w" "b -wln.a" "b -wln.neq.rt" "b -wbi.range.1.2"
-set listActions=%listActions% h h0 h1 h2 a aa ps b bb ot st s ss g gg so soo
+set listActions=%listActions% h h0 h1 h2 a aa ps b bb ot st s g so
 set listActions=%listActions% brd rereads reot sametitle titlestory
 set listActions=%listActions% %brys% %brym_cnt%
 set listActions=%listActions% abc abcy "abcy 7 1950 2050" "abc 1 1" gbc gbcy  "gbc 1 1" sbc sbcy lbc lbcy obc obcy cbc cbcy
@@ -98,7 +98,7 @@ REM Test to use every column (sn) with every action.
 REM Testing with the sn as the only output column for now to make sure all needed tables are included.
 REM Should also test what happens with more columns included so that ambiguous column errors do not appear.
 
-REM No need to test the double-letter actions (aa,bb,..), they just have different defaults as the single-letter ones.
+REM No need to test the double-letter actions (aa,bb,stt), they just have different defaults than the single-letter ones.
 set testColumnActions=st so l c g s ot a b ps rereads reot
 
 iff %runColumnTest% == 1 then

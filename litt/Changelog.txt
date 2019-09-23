@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-23: Removed redundant listings: ll, ss, gg, soo, cc. 
  * 2019-09-23: Added -i option for including additional columns and adding non-null to where condition.
  * 2019-09-23: Make where condition handling more robust and clear.
  * 2019-09-21: Removed unsigned arguments, always use int. Use toInt instead of std::stoi (control the error message).

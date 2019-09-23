@@ -9,16 +9,16 @@ R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
    h[0|1|2]                       Show help, level 0..2, level 2 is default.
-   a|aa   [lastName] [firstName]  List authors - without/with books.
-   ps     [lastName] [firstName]  List pseudonyms.
    b|bb   [title]                 List books - with minimum/full details.
+   a|aa   [lastName] [firstName]  List authors - without/with books.
+   st|stt [story]                 List stories - without/with books.
+   ps     [lastName] [firstName]  List pseudonyms.
    ot     [origTitle]             List original titles for books.
-   st|stt [story]                 List (anthology) stories for books.
-   s|ss   [series]                List series - without/with books.
-   g|gg   [genre]                 List genre - without/with books.
-   so|soo [source]                List book sources where a certain book "read" was gotten - without/with books.
-   c|cc   [bookCategory]          List book category - without/with books.
-   l|ll   [language]              List language - without/with books.
+   s      [series]                List series.
+   g      [genre]                 List genres.
+   so     [source]                List book sources where a certain book "read" was gotten.
+   c      [bookCategory]          List book categories.
+   l      [language]              List languages.
 
    rereads                        List re-read books. Can use virtual column "brc" - Book Read Count.
    reot                           List re-read original titles; translated books also read as original title books.
@@ -2930,22 +2930,16 @@ public:
 			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.stid.ln.fn", Table::books);
 	}
 
-	void listSeries(std::string const& action, std::string const& series)
+	void listSeries(std::string const& series)
 	{
 		addActionWhereCondition("se", series);
-		if (action == "s")
-			runListData("si.se.70", "si", Table::series);
-		else
-			runListData("bi.sp.nn.ra.bt.dr", "dr.bi.ln.fn", Table::series);
+		runListData("si.se.70", "si", Table::series);
 	}
 
-	void listGenres(std::string const& action, std::string const& genre)
+	void listGenres(std::string const& genre)
 	{
 		addActionWhereCondition("ge", genre);
-		if (action == "g")
-			runListData("gi_n.ge.50", "ge", Table::genres);
-		else
-			runListData("ge.bi.bt.ra.dr.ng.gg", "ge.dr.bi", Table::genres);
+		runListData("gi_n.ge.50", "ge", Table::genres);
 	}
 
 	void listOriginalTitles()
@@ -2963,31 +2957,22 @@ public:
 			runListData("bi.bt.ra.dr.stid.st.stra.stng.stgg", "dr.bi.stid", Table::stories);
 	}
 
-	void listSources(std::string const& action, std::string const& sourceName)
+	void listSources(std::string const& sourceName)
 	{
 		addActionWhereCondition("so", sourceName);
-		if (action == "so")
-			runListData("soid.so.50", "so", Table::sources);
-		else
-			runListData("so.bi.bt.dr.nn", "so.dr.bi.ln.fn", Table::sources);
+		runListData("soid.so.50", "so", Table::sources);
 	}
 
-	void listBookCategories(std::string const& action, std::string const& catName)
+	void listBookCategories(std::string const& catName)
 	{
 		addActionWhereCondition("cat", catName);
-		if (action == "c")
-			runListData("catid.cat.30", "catid", Table::bookCategory);
-		else
-			runListData("cat.bi.bt.dr.nn", "dr.bi.ln.fn", Table::bookCategory);
+		runListData("catid.cat.30", "catid", Table::bookCategory);
 	}
 
-	void listBookLanguages(std::string const& action, std::string const& catName)
+	void listBookLanguages(std::string const& lang)
 	{
-		addActionWhereCondition("la", catName);
-		if (action == "l")
-			runListData("laid_n.la", "laid_n", Table::language);
-		else
-			runListData("la.bi.bt.dr.nn", "dr.bi.ln.fn", Table::language);
+		addActionWhereCondition("la", lang);
+		runListData("laid_n.la", "laid_n", Table::language);
 	}
 
 	void listRereads()
@@ -3373,14 +3358,14 @@ ORDER BY Dupe DESC, "Book read")";
 	}
 
 	#define LIST_F(listCode) [&](std::string const& s) { resetListingData(""); listCode; }
-	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS));       }
-	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, ""));   }
-	InputListFunction getListSource() { return LIST_F(listSources("so", WcS + s + WcS)); }
-	InputListFunction getListGenre()  { return LIST_F(listGenres ("g",  WcS + s + WcS)); }
-	InputListFunction getListSeries() { return LIST_F(listSeries ("s",  WcS + s + WcS)); }
-	InputListFunction getListStory()  { return LIST_F(listStories("st", s + WcS));       }
-	InputListFunction getListBookCategory() { return LIST_F(listBookCategories("c", s + WcS)); }
-	InputListFunction getListLanguage() { return LIST_F(listBookLanguages("l", s + WcS)); }
+	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS)); }
+	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, "")); }
+	InputListFunction getListStory()  { return LIST_F(listStories("st", s + WcS)); }
+	InputListFunction getListSource() { return LIST_F(listSources(WcS + s + WcS)); }
+	InputListFunction getListGenre()  { return LIST_F(listGenres (WcS + s + WcS)); }
+	InputListFunction getListSeries() { return LIST_F(listSeries (WcS + s + WcS)); }
+	InputListFunction getListBookCategory() { return LIST_F(listBookCategories(s + WcS)); }
+	InputListFunction getListLanguage() { return LIST_F(listBookLanguages(s + WcS)); }
 	#undef LIST_F
 
 	#define eIDARGI(entity) idargi(index, name, cf(&Litt::sel##entity), getList##entity(), iopt)
@@ -3885,16 +3870,16 @@ ORDER BY Dupe DESC, "Book read")";
 		constexpr auto a = actionHash;
 		switch (auto const& action = m_action; a(action.c_str())) {
 		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp((action.length()!=2) ? 2 : (action[1]-'0')); break;
-		case a("a"): case a("aa"):  listAuthors(action, arg(0), arg(1)); break;
-		case a("ps"):               listPseudonyms(arg(0), arg(1)); break;
-		case a("b"): case a("bb"):  listBooks(action, arg(0)); break;
-		case a("s"): case a("ss"):  listSeries(action, arg(0)); break;
-		case a("g"): case a("gg"):  listGenres(action, arg(0)); break;
-		case a("ot"):               listOriginalTitles(); break;
-		case a("st"):case a("stt"): listStories(action, arg(0)); break;
-		case a("so"):case a("soo"): listSources(action, arg(0)); break;
-		case a("c"): case a("cc"):  listBookCategories(action, arg(0)); break;
-		case a("l"): case a("ll"):  listBookLanguages(action, arg(0)); break;
+		case a("b"):  case a("bb"):  listBooks(action, arg(0)); break;
+		case a("a"):  case a("aa"):  listAuthors(action, arg(0), arg(1)); break;
+		case a("st"): case a("stt"): listStories(action, arg(0)); break;
+		case a("ps"): listPseudonyms(arg(0), arg(1)); break;
+		case a("ot"): listOriginalTitles(); break;
+		case a("s"):  listSeries(arg(0)); break;
+		case a("g"):  listGenres(arg(0)); break;
+		case a("so"): listSources(arg(0)); break;
+		case a("c"):  listBookCategories(arg(0)); break;
+		case a("l"):  listBookLanguages(arg(0)); break;
 		case a("rereads"):    listRereads(); break;
 		case a("reot"):       listReot(); break;
 		case a("sametitle"):  listSametitle(); break;
