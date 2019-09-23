@@ -87,6 +87,7 @@ Options:
     -h[on|off]        Header row on/off. Default is on.
     -c[selColumns]    Override the default columns of the action.
     -a[addColumns]    Include additional columns.
+    -i[addColumns]    Include additional columns AND only list rows where they are not null.
     -o[colOrder]      Override sort order. By default sorts by used (-c or default) columns starting from left.
     -w[whereCond]     Add a WHERE condition - will be AND:ed with the one specified by the action and arguments.
                       If several -w options are included their values will be OR:ed together.
@@ -1390,8 +1391,7 @@ public:
 					else if (v == "off")                             m_fitWidth = FitWidth::off;
 					else if (v == "auto")                            m_fitWidth = FitWidth::automatic;
 					else throw std::invalid_argument("Invalid fit width value: " + val);
-					break;
-				}
+					break; }
 				case 'h':
 					if (val == "on"  || val == "") m_headerOn = true;
 					else if (val == "off")         m_headerOn = false;
@@ -1406,10 +1406,12 @@ public:
 				case 'l': 
 					m_dbPath = val;
 					break;
-				case 'a': 
-					m_additionalColumns += getColumns(val, ColumnsDataKind::width, true);
-					break;
-				case 'w':
+				case 'a': case 'i': {
+					auto const acs = getColumns(val, ColumnsDataKind::width, true);
+					m_additionalColumns += acs;
+					if (opt == 'i') for (auto const& c : acs) appendToWhere(c.first->labelName() + " IS NOT NULL");
+					break; }
+				case 'w': 
 					m_whereAdditional = appendConditions(LogOp_OR, m_whereAdditional, getWhereCondition(val));
 					break;
 				case 's':
