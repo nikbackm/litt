@@ -21,15 +21,15 @@ set brym_cnt=%brym_cnt% "brym --cnt:c -wbcc.gt.0"
 set brys="bry * so.Ebook* EBTotal so.Ebo*bought* Pay so.Eboo*free* Free so.neq.*ebook* PaperTotal so.Bought* Buy so.Borrow* Borrow so.Library* Library so.Gift* Gift so.Unknown* Unknown"
 
 set ansi=--ansi:defC:0m:^
-valC:so:Unknown:nn.ng.btbastg.btst.so:91m:^
-valC:so:Borrow:nn.ng.btbastg.btst.so:1m:^
+valC:so:Unknown:nn.ng.btbastg.bs.so:91m:^
+valC:so:Borrow:nn.ng.btbastg.bs.so:1m:^
 valC:so:Bought:so:93m:^
-valC:so:Ebook:dr.bt.btbastg.btst.nn.ng.so:38;2;0;150;200m:^
-valC:so:Library:nn.ng.btbastg.btst.so:90m:^
-valC:so:Dow:dr.bt.btbastg.btst.nn.ng.so:36m:^
-valC:so:Kindle:dr.bt.btbastg.btst.nn.ng.so:1;36m:^
-valC:so:Free:dr.bt.btbastg.btst.nn.ng.so:38;2;124;252;0m:^
-valC:so:Public:dr.bt.btbastg.btst.nn.ng.so:92m:^
+valC:so:Ebook:dr.bt.btbastg.bs.nn.ng.so:38;2;0;150;200m:^
+valC:so:Library:nn.ng.btbastg.bs.so:90m:^
+valC:so:Dow:dr.bt.btbastg.bs.nn.ng.so:36m:^
+valC:so:Kindle:dr.bt.btbastg.bs.nn.ng.so:1;36m:^
+valC:so:Free:dr.bt.btbastg.bs.nn.ng.so:38;2;124;252;0m:^
+valC:so:Public:dr.bt.btbastg.bs.nn.ng.so:92m:^
 valC:gg:bia:gg:1;35m:^
 valC:bsgg:bia:bsgg:1;35m:^
 valC:gg:Inter:gg:38;2;185;118;0m:^
@@ -86,7 +86,7 @@ do action in /Q %listActions%
 	gosub test_failure %action%
 enddo
 
-set columns=bt bd by bi ot ln fn ai nn nc ng ge gi gg dr dc dg dw dwl dy dm dym dymd ti sec ra own la beb st stid stra btst ^
+set columns=bt bd by bi ot ln fn ai nn nc ng ge gi gg dr dc dg dw dwl dy dm dym dymd ti sec ra own la beb st stid stra bs ^
             stge stgg stng stbc stbg bstc bstg astc astg bstng bastc bastg btbastg bsge bsgg bsra ^
             se si pa sp sg spg so ^
             soid ps psf psmid lag lagi dind mind yind aper alag acnt gper glag gcnt soper solag socnt isbn catid cat pgs wds ^

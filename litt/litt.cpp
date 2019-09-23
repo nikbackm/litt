@@ -192,7 +192,7 @@ Column short name values:
     bdo              - otd if exists else bd (i.e. always the first publication date)
     st, stid, stra   - Story, StoryID, Story rating
     ar, gr, sor, ser - Average rating for Author, Genre, Source and Series
-    btst             - Title combined with story (if there is one)
+    bs               - Book title combined with story (if there is one)
     stbc, stbg       - Book count and book(s) for story
     stnc, stng       - Author count and author(s) for story
     stge, stgg       - Genre and Genre(s) for story
@@ -1257,7 +1257,7 @@ public:
 		ciTextL("stbg", Q("StoryBooks(s)"), 50, Tables(&t.stbg), CNoCase);
 		ciNum("stnc", "ACnt", 4, Tables(&t.stnc));
 		ciTextL("stng", Q("Story author(s)"), 50, Tables(&t.stng), CNoCase);
-		ciTextL("btst", APPEND_OPT_COL("Title","Story"), 60, Tables(&t.books, &t.stories), CTitle, Q("Title [Story]"));
+		ciTextL("bs", APPEND_OPT_COL("Title","Story"), 60, Tables(&t.books, &t.stories), CTitle, Q("Title [Story]"));
 		ciNum("bsra", IFNULL("Stories.Rating","Books.Rating"), 3, Tables(&t.books, &t.stories), "BSRating");
 		ciTextL("bsge", IFNULL("GStory.Genre","GBook.Genre"), 30, Tables(&t.gbook, &t.gstory), CNoCase, "BSGenre");
 		ciTextL("bsgg", IFNULL(Q("StoryGenre(s)"),Q("Genre(s)")), 30, Tables(&t.gg, &t.stgg), CNoCase, Q("BSGenre(s)"));
@@ -2910,7 +2910,7 @@ public:
 		if (action == "a")
 			runListData("ai.nn.30", "ai", Table::authors); 
 		else
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "ai.dr.bi", Table::authors);
+			runListData("bi.nn.bsra.bs.dr.so.bsgg", "ai.dr.bi", Table::authors);
 	}
 
 	void listPseudonyms(std::string const& ln, std::string const& fn)
@@ -2923,11 +2923,11 @@ public:
 
 	void listBooks(std::string const& action, std::string const& title)
 	{
-		addActionWhereCondition(action=="b" ? "bt" : "btst", title);
+		addActionWhereCondition(action=="b" ? "bt" : "bs", title);
 		if (action == "b")
 			runListData("bi.bt.60", "bi", Table::books);
 		else
-			runListData("bi.nn.bsra.btst.dr.so.bsgg", "dr.bi.stid.ln.fn", Table::books);
+			runListData("bi.nn.bsra.bs.dr.so.bsgg", "dr.bi.stid.ln.fn", Table::books);
 	}
 
 	void listSeries(std::string const& series)
