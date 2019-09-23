@@ -384,7 +384,7 @@ namespace Utils
 using namespace Utils;
 
 #define S(str) (str).c_str()
-#define ESC_S(str) escSqlVal(str).c_str()
+#define ESV(str) escSqlVal(str).c_str()
 
 namespace LittDefs
 {
@@ -3387,14 +3387,14 @@ ORDER BY Dupe DESC, "Book read")";
 		auto ln = argi(0, "last name", optional); if (ln.empty()) return;
 		auto fn = argi(1, "first name", optional); // May be empty.
 		if (confirmf("Add author '%s, %s'", S(ln), S(fn)))
-			executeInsert("author", fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESC_S(ln), ESC_S(fn)));
+			executeInsert("author", fmt("INSERT INTO Authors (\"Last Name\",\"First Name\") VALUES(%s,%s)", ESV(ln), ESV(fn)));
 	}
 
 	void add(const char* name, const char* tableName, unsigned argIndex = 0) // Generic add for single-column entities
 	{
 		if (auto arg = argi(argIndex, name, optional); !arg.empty()) {
 			if (confirmf("Add %s '%s'", name, S(arg)))
-				executeInsert(name, fmt("INSERT INTO %s (%s) VALUES(%s)", tableName, name, ESC_S(arg)));
+				executeInsert(name, fmt("INSERT INTO %s (%s) VALUES(%s)", tableName, name, ESV(arg)));
 		}
 	}
 
@@ -3571,21 +3571,21 @@ ORDER BY Dupe DESC, "Book read")";
 		QueryBuilder qb("BEGIN TRANSACTION;");
 		qb.adf("INSERT INTO Books (BookID,Title,LangID,Owned,\"Bought Ebook\",Rating,ISBN,CategoryID,Pages,Words,Date)"
 		                          " VALUES(%llu,%s,%llu,%i,%i,%s,%s,%llu,%i,%i,%s);",
-			bid, ESC_S(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESC_S(isbn), catId, pages, words, ESC_S(date));
-		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);", bid, ESC_S(dateRead), sourceId);
+			bid, ESV(title), langId, ynInt(owns), ynInt(boughtEbook), S(rating), ESV(isbn), catId, pages, words, ESV(date));
+		qb.adf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu);", bid, ESV(dateRead), sourceId);
 		for (auto gi : genreIds) qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
 		for (auto const& a : authors) {
 			qb.adf("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, a.authorId);
 			if (!a.story.empty()) {
 				if (!a.storyRating.empty()) {
-					qb.adf("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", a.storyId, ESC_S(a.story), S(a.storyRating));
+					qb.adf("INSERT OR IGNORE INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", a.storyId, ESV(a.story), S(a.storyRating));
 					for (auto gi : a.storyGenres) qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", a.storyId, gi);
 				}
 				qb.adf("INSERT INTO BookStories (BookID,AuthorID,StoryID) VALUES(%llu,%llu,%llu);", bid, a.authorId, a.storyId);
 			}
 		}
 		if (!origtitle.empty()) qb.adf("INSERT INTO OriginalTitles (BookID,\"Original Title\",LangID,otISBN,otDate) VALUES(%llu,%s,%llu,%s,%s);",
-			bid, ESC_S(origtitle), otLangId, ESC_S(otIsbn), ESC_S(otDate));
+			bid, ESV(origtitle), otLangId, ESV(otIsbn), ESV(otDate));
 		if (seriesId != EmptyId) qb.adf("INSERT INTO BookSeries (BookID,SeriesID,\"Part in Series\") VALUES(%llu,%llu,%s);",
 			bid, seriesId, S(escSqlVal(seriesPart, true)));
 		qb.add("COMMIT TRANSACTION");
@@ -3603,9 +3603,9 @@ ORDER BY Dupe DESC, "Book read")";
 
 	bool getStoryId(IdValue& storyId, std::string const& story)
 	{
-		if (hasRows(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESC_S(story)))) {
+		if (hasRows(fmt("SELECT 1 FROM Stories WHERE Story=%s", ESV(story)))) {
 			auto idValid = [&]() { return storyId == EmptyId || hasRows(fmt(
-				"SELECT 1 FROM Stories WHERE StoryID=%llu AND Story=%s", storyId, ESC_S(story)));
+				"SELECT 1 FROM Stories WHERE StoryID=%llu AND Story=%s", storyId, ESV(story)));
 			};
 			for (;;) {
 				printf("\nStory name exists, select storyID from below or leave empty to add a new story.\n\n");
@@ -3640,7 +3640,7 @@ ORDER BY Dupe DESC, "Book read")";
 				qb.adf("INSERT OR IGNORE INTO AuthorBooks (BookID,AuthorID) VALUES(%llu,%llu);", bid, aid);
 				if (!rating.empty()) {
 					storyId = getNextIdValue("StoryID", "Stories");
-					qb.adf("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESC_S(story), S(rating));
+					qb.adf("INSERT INTO Stories (StoryID,Story,Rating) VALUES(%llu,%s,%s);", storyId, ESV(story), S(rating));
 					for (auto gi : genreIds) {
 						qb.adf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES(%llu,%llu);", storyId, gi);
 						qb.adf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES(%llu,%llu);", bid, gi);
@@ -3736,7 +3736,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto dr = reargi(1, "Date read", DateReadRegEx);
 			auto sid = soidargi(2);
 			if (confirmf("Add date read '%s' with source '%s' to '%s'", S(dr), S(selSource(sid)), S(selBook(bi))))
-				executeWriteSqlf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu)", bi, ESC_S(dr), sid);
+				executeWriteSqlf("INSERT INTO DatesRead (BookID," DR ",SourceID) VALUES(%llu,%s,%llu)", bi, ESV(dr), sid);
 		}
 	}
 
@@ -3765,11 +3765,11 @@ ORDER BY Dupe DESC, "Book read")";
 			if (newDr != "delete") {
 				if (confirmf("Change date read '%s' => '%s' for '%s'", S(dr), S(newDr), S(selBook(bookId))))
 					executeWriteSqlf("UPDATE DatesRead SET " DR "=%s WHERE BookID=%llu AND " DR "=%s",
-						ESC_S(newDr), bookId, ESC_S(dr));
+						ESV(newDr), bookId, ESV(dr));
 			}
 			else {
 				if (confirmf("Remove date read '%s' from '%s'", S(dr), S(selBook(bookId))))
-					executeWriteSqlf("DELETE FROM DatesRead WHERE BookID=%llu AND " DR "=%s", bookId, ESC_S(dr));
+					executeWriteSqlf("DELETE FROM DatesRead WHERE BookID=%llu AND " DR "=%s", bookId, ESV(dr));
 			}
 		}
 	}
@@ -3780,7 +3780,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto const sourceId = soidargi(1);
 			auto const dr = getDrArg(bookId, 2);
 			if (confirmf("Set source to '%s' for %s of '%s'", S(selSource(sourceId)), S(dr), S(selBook(bookId))))
-				executeWriteSqlf("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND " DR "=%s", sourceId, bookId, ESC_S(dr));
+				executeWriteSqlf("UPDATE DatesRead SET SourceID=%llu WHERE BookID=%llu AND " DR "=%s", sourceId, bookId, ESV(dr));
 		}
 	}
 
@@ -3794,7 +3794,7 @@ ORDER BY Dupe DESC, "Book read")";
 					executeWriteSqlf(
 						"INSERT INTO OriginalTitles (BookID, \"Original Title\", LangID) VALUES (%llu, %s, %llu)"
 						" ON CONFLICT(BookID) DO UPDATE SET \"Original Title\"=excluded.\"Original Title\", LangID=excluded.LangID", 
-						bookId, ESC_S(originalTitle), langId);
+						bookId, ESV(originalTitle), langId);
 			}
 			else {
 				if (confirmf("Remove original title of '%s'", S(selBook(bookId))))
@@ -3826,7 +3826,7 @@ ORDER BY Dupe DESC, "Book read")";
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = reargi(1, "Publication date", PubDateRegEx);
 			if (confirmf("Set Date of '%s' => %s", S(selBook(bookId)), S(pubdate)))
-				executeWriteSqlf("UPDATE Books SET Date = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
+				executeWriteSqlf("UPDATE Books SET Date = %s WHERE BookID=%llu", ESV(pubdate), bookId);
 		}
 	}
 
@@ -3835,7 +3835,7 @@ ORDER BY Dupe DESC, "Book read")";
 		if (auto bookId = bidargi(0)) {
 			auto pubdate = reargi(1, "Publication date", PubDateRegEx);
 			if (confirmf("Set otDate of '%s' => %s", S(selBook(bookId)), S(pubdate)))
-				executeWriteSqlf("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", ESC_S(pubdate), bookId);
+				executeWriteSqlf("UPDATE OriginalTitles SET otDate = %s WHERE BookID=%llu", ESV(pubdate), bookId);
 		}
 	}
 
