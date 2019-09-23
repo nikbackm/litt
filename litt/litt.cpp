@@ -192,10 +192,10 @@ Column short name values:
     bdo              - otd if exists else bd (i.e. always the first publication date)
     st, stid, stra   - Story, StoryID, Story rating
     ar, gr, sor, ser - Average rating for Author, Genre, Source and Series
-    bs               - Book title combined with story (if there is one)
     stbc, stbg       - Book count and book(s) for story
     stnc, stng       - Author count and author(s) for story
     stge, stgg       - Genre and Genre(s) for story
+    bs               - Book title combined with story (if there is one)
     bsra, bsge, bsgg - Rating, Genre and Genre(s) for story or book (if there is no story)
     astc, astg       - Story count and stories for author
     bstc, bstg       - Story count and stories for book
