@@ -227,20 +227,20 @@ Window function columns:
 
 namespace Utils
 {
-	#define std_string_fmt_impl(fmtStr,resVar) \
-		va_list ap; \
-		va_start(ap, fmtStr); \
-		size_t size = vsnprintf(nullptr, 0, fmtStr, ap) + 1; /* Extra space for '\0' */ \
-		va_end(ap); \
-		std::string resVar(size, '\0'); \
-		va_start(ap, fmtStr); \
-		vsnprintf(&resVar[0], size, fmtStr, ap); \
-		resVar.pop_back(); /* Remove the trailing '\0' */ \
-		va_end(ap)
+	#define std_string_fmt_impl(strf,resv) va_list ap;va_start(ap,strf); auto resv=fmtv(strf,ap); va_end(ap)
+
+	std::string fmtv(_In_z_ _Printf_format_string_ const char* strf, va_list ap)
+	{
+		va_list apcopy; va_copy(apcopy, ap);
+		size_t const size = vsnprintf(nullptr, 0, strf, ap) + 1; // Extra space for '\0'
+		std::string res(size, '\0');
+		vsnprintf(&res[0], size, strf, apcopy);
+		res.pop_back(); return res; // Remove the trailing '\0' and return
+	}
 
 	std::string fmt(_In_z_ _Printf_format_string_ const char* fmtStr, ...)
 	{
-		std_string_fmt_impl(fmtStr,res);
+		std_string_fmt_impl(fmtStr, res);
 		return res;
 	}
 
