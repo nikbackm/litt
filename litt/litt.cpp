@@ -3852,11 +3852,11 @@ ORDER BY Dupe DESC, "Book read")";
 	void executeAction() 
 	{
 		constexpr auto a = actionHash;
-		switch (auto const& action = m_action; a(action.c_str())) {
-		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp((action.length()!=2) ? 2 : (action[1]-'0')); break;
-		case a("b"):  case a("bb"):  listBooks(action, arg(0)); break;
-		case a("a"):  case a("aa"):  listAuthors(action, arg(0), arg(1)); break;
-		case a("st"): case a("stt"): listStories(action, arg(0)); break;
+		switch (auto const& act = m_action; a(act.c_str())) {
+		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp(act=="h" ? 2 : act[1]-'0'); break;
+		case a("b"):  case a("bb"):  listBooks(act, arg(0)); break;
+		case a("a"):  case a("aa"):  listAuthors(act, arg(0), arg(1)); break;
+		case a("st"): case a("stt"): listStories(act, arg(0)); break;
 		case a("ps"): listPseudonyms(arg(0), arg(1)); break;
 		case a("ot"): listOriginalTitles(); break;
 		case a("s"):  listSeries(arg(0)); break;
@@ -3881,7 +3881,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
 			auto lastYear  = intarg(2, "lastYear", firstYear + 4);
 			auto snSel = "nn"; auto snGby = "ai"; auto startTable = Table::books; // init for 'a'bcy action.
-			switch (action[0]) {
+			switch (act[0]) {
 				case 'g': snSel = "ge";   snGby = "gi"; break;
 				case 's': snSel = "so";   snGby = "soid"; break;
 				case 'c': snSel = "cat";  snGby = "catid"; break;
@@ -3931,7 +3931,7 @@ ORDER BY Dupe DESC, "Book read")";
 		case a("set-own"): setBookOwned(); break;
 		case a("execute"): executeUserSql(); break;
 		default:
-			throw std::invalid_argument("Invalid action: " + action);
+			throw std::invalid_argument("Invalid action: " + act);
 		}
 	}
 }; // Litt
