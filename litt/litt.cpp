@@ -3893,21 +3893,19 @@ ORDER BY Dupe DESC, "Book read")";
 		case a("lbc"): listBookCounts(arg(0), arg(1) == "1", "la", "laid"); break;
 		case a("obc"): listBookCounts(arg(0), arg(1) == "1", "otla", "otli", Table::originalTitles); break;
 		case a("abcy"): case a("gbcy"): case a("sbcy"): case a("cbcy"): case a("lbcy"): case a("obcy"): {
-			auto count = intarg(0, "count", 10);
+			auto count     = intarg(0, "count", 10);
 			auto firstYear = intarg(1, "firstYear", getLocalTime().wYear - 4);
-			auto lastYear = intarg(2, "lastYear", firstYear + 4);
-			auto snSel = "nn"; auto snGby = "ai"; // assume 'a' by default.
-			auto startTable = Table::books;
+			auto lastYear  = intarg(2, "lastYear", firstYear + 4);
+			auto snSel = "nn"; auto snGby = "ai"; auto startTable = Table::books; // init for 'a'bcy action.
 			switch (action[0]) {
-				case 'g': snSel = "ge"; snGby = "gi"; break;
-				case 's': snSel = "so"; snGby = "soid"; break;
-				case 'c': snSel = "cat"; snGby = "catid"; break;
-				case 'l': snSel = "la"; snGby = "laid"; break;
+				case 'g': snSel = "ge";   snGby = "gi"; break;
+				case 's': snSel = "so";   snGby = "soid"; break;
+				case 'c': snSel = "cat";  snGby = "catid"; break;
+				case 'l': snSel = "la";   snGby = "laid"; break;
 				case 'o': snSel = "otla"; snGby = "otli"; startTable = Table::originalTitles; break;
 			}
 			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, startTable);
-			break;
-		}
+			break; }
 		case a("brd"):  listBooksReadPerDate(arg(0)); break;
 		case a("brwd"): listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1)); break;
 		case a("brm"):  listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1)); break;
@@ -3915,21 +3913,16 @@ ORDER BY Dupe DESC, "Book read")";
 		case a("brp"):  listBooksReadPerPeriod(argi(0,"periodDef"), argi(1,"periodName"), arg(2, WcS), getPeriodColumns(3)); break;
 		case a("brym"): {
 			const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-			std::vector<PeriodColumn> cols;
-			for (int m = 1; m <= 12; ++m) cols.emplace_back(fmt("dr.____-%02d-*", m), months[m - 1]);
-			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), std::move(cols));
-			break;
-		}
+			std::vector<PeriodColumn> pcs; int n=1; for (auto m : months) pcs.emplace_back(fmt("dr.____-%02d-*", n++), m);
+			listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), std::move(pcs));
+			break; }
 		case a("brmy"): {
-			auto st = getLocalTime();
-			auto first = intarg(0, "firstYear", st.wYear);
-			auto last = intarg(1, "lastYear", st.wYear);
-			std::vector<PeriodColumn> cols;
-			for (int y = first; y <= last; ++y) cols.emplace_back(fmt("dr.%04d-*", y), std::to_string(y));
-			appendToWhere(getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", first, last)));
-			listBooksReadPerPeriod("%m", "Month", WcS, std::move(cols));
-			break;
-		}
+			auto fy = intarg(0, "firstYear", getLocalTime().wYear - 4);
+			auto ly = intarg(1, "lastYear", fy + 4);
+			appendToWhere(getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", fy, ly)));
+			std::vector<PeriodColumn> pcs; for (int y = fy; y <= ly; ++y) pcs.emplace_back(fmt("dr.%04d-*", y), std::to_string(y));
+			listBooksReadPerPeriod("%m", "Month", WcS, std::move(pcs));
+			break; }
 		case a("add-a"):   addAuthor(); break;
 		case a("add-g"):   add("genre", "Genres"); break;
 		case a("add-s"):   add("series", "Series"); break;
