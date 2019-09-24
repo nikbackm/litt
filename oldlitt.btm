@@ -1,0 +1,1704 @@
+@echo off
+:: ************************************** Changelog **************************************************
+:: * 2017-05-08
+::   - Added set-g option for setting/changing genre for a book.
+::   - aa now includes genre by default
+:: * 2016-09-24
+::   - Removed "Add another book?" after adding a book.
+:: * 2015-08-27
+::   - Added gbc option.
+:: * 2015-08-24
+::   - Added more Genre help. Fixed Genre bug. (gi did not work when not ge specified too)
+:: * 2015-08-18
+::   - Added new "one-off" setGenre.
+:: * 2015-08-17
+::   - Added listing support for Genre. Started to add Genre to new book.
+::   - Added support for adding new Genres and setting genres for new books.
+:: * 2015-08-11
+::   - Fixes for @isdigit change in TCC 18, it now returs 1 for empty parameters. 
+::     Uses own @isnumber function instead.
+:: * 2014-02-17
+::   - Added virtual columninfo for time; tiCI.
+:: * 2013-12-28
+::   - Bug fix: Forgot to use @unquote for %dr% passed on the command line as set-bs argument.
+:: * 2013-10-12
+::   - addBook: Can now list sources (sameas last name) while entering book info.
+:: * 2013-10-05
+::   - Bug fix: @unquote needed for dr in setBookSource for dr:s containing spaces (like when time is included)
+:: * 2013-09-29
+::   - Bug fix: listAuthor did not work when called from addBook (needed to re-add action as param)
+::     - At the same time, clears aid after listing authors (when not a number)
+:: * 2013-09-23
+::   - Removed "extra" from all whereCond-related names.
+::   - Neatified parsing loop in bookPerPeriod.
+::   - resetWhereCond now takes new column(s) and parsedValue as optional args (avoid having to use variable to set dr in bpp).
+::   - Avoids having "%=" in SET statements using bppCol*
+::   - Bug fix: bpp now works also when using "ln" in the custom columns (Had to qualify Books.BookID in SELECT to avoid
+::     ambiguous column name error from SQLITE (3.7, works in 3.8+).
+:: * 2013-09-21
+::   - Generalized brm and bry to use common sub-routine (brp) which can also be used for several other functions
+::     like brmy, brym, brwd etc.
+::     * echoAuxTables now supports an optional indent argument (needed to align -q output for brp-subqueries)
+::     * removed brdOld (use the version history instead if needed)
+::     * createOrderBy takes an new optional argument for allowing ordering by custom columns (added by brp)
+::     * added resetExtraWhereCond routine (to allow calling extractExtraWhereCond many times in brp).
+::     * brp allows changing ORDER BY and column widths.
+::     * Uses a less collision-prone loop variable in echoIfCols!
+::   - Observations during coding: (learnt by hard experience!)
+::     * Avoid having the same loop variable (for or do) in nested loops! If you do, then it seems to matter
+::       whether the variable has a trailing % or not. DO works better with, FOR without.
+::     * The _do_loop variable does not seem to work to well with nested DO loops. Which is understandable, to work
+::       correctly the variable would need to know which DO-loop that evaluates it!
+::     * Do add % to the loop variable declaration in FOR as the docs say, strange things might happen otherwise!
+:: * 2013-09-17
+::   - Added virtual column abc to listAuthorBookCounts.
+::   - Added bRRs (include re-reads) second optional parameter to listAuthorBookCounts.
+::   - Bug fix: Invalid DateReads (BE, PO etc.) no longer listed as 'Lördag' with dwl, but are left empty ''.
+::   - Bug fix: Had to change "@if[defined..." back to "iff defined..." in extractExtraWhereCond, otherwise commas in the
+::     variables to be combined would mess with the @if! :(
+:: * 2013-09-16
+::   - Bug fix (likely due to listdata): listauthors did not work if fn.ln columns not included as Author tables where not
+::     included in the query, even if the fields where included in WHERE. Was fixed by using extractExtraWhereCond for adding
+::     the action parameters to the query instead of hand-coding it (extractExtraWhereCond makes sure the referenced columns
+::     are "included"). 
+::   - Now supports "" strings in all query values (-w and action main parameters). (Just added @unquotes[] to getwf in 
+::     extractExtraWhereCond) NOTE: If "" is used then the WHOLE param value should ne inside them, no "..."* values will work!
+::   - The wild-card handling for action main parameters is now done generically for every action, it's not hand-coded only for 
+::     a/aa and b/bb only.
+::   - extractExtraWhereCond now takes a LOGOP (and/or) parameter, needs to use AND when called for action main param(s), OR for -w.
+::     It also needs to add "(" ")" around %extraWhereCondParsed% when AND/OR:ing another condition (would not work too well when adding
+::     main params(s) whereCond otherwise).
+::   - Added two more run-aliases to factor out common code.
+:: * 2013-09-13
+::   - Added -x (EXPLAIN QUERY PLAN) option.
+::   - listbook bb now includes Source (so that bb alias don't have to).
+::   - Added more flexible and usable rereads and sametitle actions. The old ones still around as *Old.
+::     * Added virtual column btc for use (only) in (list)sametitle.
+::     * Added virtual column brc for use (only) in (list)rereads.
+::   - Added virtual column dg which groups dr.
+::   - Renamed virtual column nng to ng, so that there's no overlap with nn.
+::   - Renamed lang column (short-name) to la, so that there's no overlap with ng.
+::   - listData: Does not need to include Authors tabel for stories (st), AuthorBooks is enough.
+::   - Factored out the book aux tables listings/echos from listData for re-use elsewhere.
+::   - Group columns ng and dg now generically usable by being included in echoBookAuxTables and by using sub-queries
+::     with own group by:s to get their values.
+::   - Got rid of separate variables for WHERE and HAVING for parsed -w values. (Always use either now, and whole -w goes there)
+::   - Made the parameter(s) for @makeWhereCond[] optional.
+::   - Removed undocumented and obsolete -t switch from parseSingleOption.
+::   - Got rid of echoAlways, no longer needed (due to echoBookAuxTables) for lining up code and getting justified -q output.
+::   - Improved formatting/layout a little.
+:: * 2013-09-12
+::   - Now possible to use -a to add new columns also when -c is used (useful when alias uses -c and you want to
+::     add more columns on the command line).
+::   - Uses runSqlOutputCmd for running the pre-defined queries (all, bflat, etc.)
+::   - Uses new routine extractCountConditionForColumn for abc and brd.
+::   - Cleaned up query for abc, removed unneeded outer select.
+::   - bb and abc now uses nn instead of ln.fn by default.
+:: * 2013-09-11
+::   - Lade till virtuell kolumn "nng" som innehåller "FirstName LastName" för ALLA författare för en bok.
+::   - Lade samtidigt till virtuell kolumn "nn" som innehåller "FirstName LastName".
+::   - Lade samtidigt till kolumn listnings-namn (används som "AS label" i SELECT) till columnInfo
+::   - Lade till "isempty" WHERE operator.
+::   - drm och dry stöder nu -wdrc for Count("Date Read") via drcCI
+::   - Använder nu nya "listdata" för aa, bb, ss och soo listningar. (Undviker duplicerad kod.)
+::   - Använder runSqlOutputCmd för enrads-listningar (a, b, s, so) (Lite smidigare)
+::   - Uppdaterade hjälptexten.
+::   - Diverse mindre ändringar/korrigeringar. (t.ex @makeWhereCond[] => @likearg[] i brm och bry)
+:: * 2013-09-10
+::   - Lade till booksReadPerMonth (brm) och booksReadPerYear (bry)
+::   - Replaced Y with TYPE when listing query code.
+:: * 2013-09-09
+::   - Använder CalcDR i booksReadPerDate, som räknar datum med klockslag mellan 00:00 och 06:00 till föregående dag. Detta för att räkna 
+::     dessa till dagen "innan" vid brd-listningar.
+::   - Strippar även bort klockslaget från datumet vid brd, annars skulle det ju inte funka alls! (Ifall jag inte läser ut två böcker vid
+::     samma tidpunkt - på minuten när!)
+::   - Behåller "brdOld" för tillfället för jämförelser.
+:: * 2013-09-07
+::   - Matar nu in BookSourceId "för hand" när en ny bok läggs till. (Lättare så, eftersom jag oftast använder 36 eller 52
+::     ändå. Den speciella setBookSource proceduren funkar heller inte när det finns mellanrum i %dr%, klockslaget
+::     lämnas bort vide anrop, så det borde fixas när den behövs.
+:: * 2013-09-03
+::   - Lade till dwl för Veckodag (med bokstäver)
+::   - Added support for dw (Date Read DOW) calculated column (can be used as a real column).
+::     - At the same time, uses TPIPE to handle * => % conversion and CP1252 => UTF-8, since that
+::       makes it far easier to manage % in dynamic query strings. (Letting TPIPE handle utf8 conversion here
+::       instead of ICONV saves a pipe and makes it faster. Or at least no slower than it was before TPIPE was added)
+::     - Also added btl, lnl och fnl at the same time, which is length(Field	), can be fun.
+::     - Also added isColNumeric to the colummInfos, so we can determine if the WHERE params should have '' around it or not.
+::       Useful, since strftime() works well only WITH '', while length() works the other way around.
+::   - Lägger nu till HH:MM till "Date Read" för att klara fallet när en bok läses om samma dag som också andra
+::     läses och ändå alltid sortera i rätt ordning.
+:: * 2013-08-26
+::   - Added booksReadPerDate (brd) view command
+:: * 2013-04-01
+::   - Removed hard-coded path to db-file.
+::   - Removed unoptional (and unnecessary) chcp 1252
+::   - Disables DuplicateBugs at startup and restores the setting at the end.
+:: * 2013-03-31
+::   - Removed unneeded trailing &:s. Fixed position of ";" in addBook. (Seems to have worked anyway though!)
+:: * 2013-03-17
+::   - Added b* action, renamed bbb action to bb*.
+::   - Now aa* only lists %arg%* instead of *%arg%*, ditto for a*, b* and bb*.
+:: * 2013-03-05
+::   - Removed "Own" and "Bough e-book" from default result columns for listbook and listauthor. (Source covers both anyway!)
+:: * 2013-01-25
+::   - edited the help a little (made shorter)
+::   - added option "-q" for dumping SQLITE commands instead of doing anything with them.
+::   - BUG FIX: extractExtraWhereCond now only outputs the short column names and not the values to match for them as well.
+::              otherwise the values might well contain additional short column names => extraneous tables used in query.
+::   - "NOT LIKE" conditions (ne, nq) now allows NULL values to pass the test.
+::   - added option "-u" to list only DISTICT values.
+::   - added new where cond cmp operator "isnull".
+::   - BUG FIX: listBook must include author tables if st (story) is used.
+::   - Removed echoIfCol, always uses echoIfCols instead to avoid extra testing.
+:: * 2012-12-14
+::   - listauthors (a) now lists by AuthorID by default instead of LastName.
+:: * 2012-11-05
+::   - Now uses "%MYDOCS%\litt\litt.sqlite" as default db instead of "c:\user\litt\litt.sqlite"
+:: * 2012-10-14
+::   - BUG FIX: parseOptions use i as loop variable, and so does extractExtraWhereCond. This causes erratic problems! Like
+::              infinite loops with some whereConds.
+::   - Now also allows "ne" as cmdOper for whereCond since I cannot remember if it's nq or ne :)
+:: * 2012-08-09
+::   - Can now have manu -a options (additional columns)
+::   - Now checks if ALL batch params/args are options (not only from start and from end until there are no more).
+::     This makes it possible to have options anywhere, for example between the command arg (aa) and the command value (last name).
+::   - Allows use of "-" as command argument (special-case in option parsing).
+:: * 2012-02-01
+::   - always include author tables in listauthors (OBVIOUSLY!)
+:: * 2011-12-27
+::   - lade till mera options: twomore, rereads, sametitle
+:: * 2011-12-05
+::   - "nq" operator använder nu "NOT LIKE" istället för "<>" (support wildcards)
+::   - createOrderBy lägger nu inte till kolumner (till variabler som påverkar inkluderade tabeller och
+::     således resultatet) som inte används. Dvs använder selColumns i stället för defArg ifall det är satt.
+:: * 2011-12-03/4
+::   - Kan nu ange ett start bookId for set-bs kommandot, så börjar det gå igenom alla böcker/dateread utan bs från det.
+:: * 2011-11-21
+::   - BUG FIX: Måste enabla & när man anropas setBookSource från addBook! Också problem med unset ot, konstigt?
+:: * 2011-07-02
+::   - Can now list authors when adding book so you don't have to know the authorID before.
+:: * 2011-01-14
+::   - Now uses MYSQLITE.EXE for output, which adds proper padding for UTF8-sequences longer than one BYTE.
+::     This also makes sure no UTF8 byte sequence is cut in two for column output so ICONC -c does not have to be used.
+:: * 2011-01-02
+::   - Added -s[colSize] option to change the default column sizes (useful for columns included by default for an action)
+:: * 2010-12-24
+::   - listauthor (aa) använder nu samma QUERY som listbook (bb)
+:: * 2010-12-18
+::   - ICONV för att convertera mellan utf-8, utf-16 och cp1252. Endast i set-bs för tillfället.
+:: * 2010-12-14
+::   - Implementerade setBookSource och började lägga till Source värden för böcker.
+:: * 2010-12-11
+::   - Lade till addAuthor (så det fungerar)
+:: * 2010-12-08/09
+::   - Började ändra gamla datum till "hyfsade" gissningar och slutledningar enligt gamla brev etc.
+::   - Lägger nu till äldre (tidigare "glömda" böcker) med "nya" bokID istället för att shifta rum åt dem
+::     enligt gissning på när del lästes. Använder i stället "flytande" DateRead för att visa deras "ålder".
+:: * 2010-12-04
+::   - Fick äntligen add-book att fungera
+:: * 2010-11-30: 
+::   - started this log :)
+::   - Now @unquotes[] given search args (author, title, series, story) so spaces can be includes.
+::   - @makeWhereCond[] now protects itself against comma:s in arguments.
+:: --------------------------------------------------------------------------------------------------
+:: * 2001/2 (runt jul/nyår)
+::   - Lade till DateRead (till Books, inte som skild tabell som nu). Första bok med "riktigt" DateRead kanske 
+::     "Stjärnor utan svindel" (ID 480 läst 13-01-2002)? Lade också till det för böcker lästa tidigare enligt kvalificerade
+::    gissningar (köp/leveransdatum från bokus etc) ända tillbaka till ID 453 i rad) (ID 470 blev dock utan, no info available)
+:: * "2001-07-16" (mycket ungefärligt) Lades också till DR för tidigare böcker än 453 när någorlunda god info (bokus o.dy.) fanns.
+::   - Började med BookID from (ID 453 2001-07-16 Goodkind Terry Faith of the Fallen). Tidigare böcker förlorade
+::     "läsordning" och är till synes sorterade enligt författens LastName (ln.fn band samman books med authors
+::     och var primärnyckel).
+:: * 1997 (däromkring) Började med Litteratur databasen i Paradox i samband med kursen i Databaser.
+:: * 1994 vår/sommar - började använda Paradox på KKC.
+:: ***************************************************************************************************
+
+setlocal
+on errormsg goto end
+on break goto end
+
+set littdb=%MYDOCS%\litt\litt.sqlite
+iff not exist %littdb% then
+	echoerr The database '%littdb%' does not exist!
+	goto end
+endiff
+
+:: ***************************************************************************************
+:: Setup code page and stuff; we need to handle at least åäöÅÄÖ and some umlauts and stuff.
+:: ***************************************************************************************
+
+REM Let's go with CP1252 
+set prevcp=%_codepage%
+iff %_codepage% != 1252 then
+	chcp 1252 > NUL
+endiff
+
+REM Used to enable debugging with -q(ueryMode) option. 
+REM Dumps the assembled query string instead of sending to SQLITE.
+set qMode=0
+
+REM Works best with DuplicateBugs Off!
+set prevbugs=%@option[DuplicateBugs]
+option //DuplicateBugs=No
+
+REM Convert SQLITE3.EXE output to 1253. 
+REM Note: We ignore errors (-c) since might be SQLITE3.EXE outputs invalid UTF8 if a column is cut in the middle of a UTF8 character.
+REM Note2: No longer need to ignore errors (-c) as using mysqlite.exe instead which adds proper padding for multi-utf8-bytes
+REM        and NEVER breaks a UTF8 character mid-sequence will prevent such.
+alias utf8_cp1252=`iconv -f UTF-8 -t CP1252`
+
+REM Convert CP1252 to UTF8. Should be no incomplete characters there.
+alias cp1252_utf8=`iconv -f CP1252 -t UTF-8`
+
+REM For redirecting to UTF-16LE files. (Not used anymore)
+::alias utf8=`iconv --binary -f UTF-16LE -t UTF-8`
+::alias utf16=`iconv --binary -f UTF-8 -t UTF-16LE`
+
+REM LITT_OUTPUT will be used to produce the results from an action.
+REM Note: We support aliases for some "problematic" characters to be sent to SQLITE:
+REM - SQL_PERCENT = %
+REM - SQL_COMMA = ,
+REM - SQL_CC = ||
+REM It's much easier to build the query strings with environment variables without these getting in the way!
+REM TPIPE is used to replace them globally in the query string just before we send it to SQLITE.
+alias litt_output=`tpipe ^
+	/replace=0,1,0,0,0,0,0,0,0,SQL_PERCENT,%% ^
+	/replace=0,1,0,0,0,0,0,0,0,SQL_COMMA,"," ^
+	/replace=0,1,0,0,0,0,0,0,0,SQL_CC,"||" ^
+	/unicode=CP1252,UTF-8 | (if %qMode% == 1 (type) else (mysqlite %littdb%)) | utf8_cp1252`
+	
+::chcp 65001
+::alias litt_output=`sqlite3 %littdb%`
+::alias litt_output=`sqlite3 %littdb% | utf8_cp1252`
+::alias litt_output=`(if %qMode% == 1 (type) else (mysqlite %littdb%))`
+
+REM This will be used to output extra info during input actions.
+REM We won't use any non-ascii chars in the SQL commands, so no need to convert from CP1252 there.
+REM Will also not be affected by -q option.
+alias litt_out_helper=`sqlite3.EXE %littdb% | utf8_cp1252`
+
+REM This is used for actions that update data.
+alias litt_input=`(if %qMode% == 1 (type) else (cp1252_utf8 | sqlite3.exe %littdb%))`
+
+REM We will not use redirection in this file, but we WILL use lt and gt in WHERE conditions
+REM Do this after "> NUL" above :)
+setdos /x-6
+
+:: ***********************************************************************
+:: Define needed functions, aliases and environment data.
+:: ***********************************************************************
+
+function optarg=`%@if[%# LT 2,%1,%2]`
+function isnumber=`%@if[%@len[%$] GT 0,%@isdigit[%$],0]`
+
+alias pipeoff=`setdos /x-5` 
+alias pipeon=`setdos /x+5`
+
+REM echo the common option values to SQLITE
+alias echoHeaderDump=`((echo .header %@optarg[on,%headerOnOff%]) & (echo .mode %@optarg[column,%dumpMode%]))`
+alias echoOptionValues=`(echoHeaderDump & (if defined EXPLAIN_QUERY_PLAN (echo .width 10 10 10 100) else (if defined outWidths echo .width %outWidths%)))`
+
+REM Runs the specified SQL command with options.
+alias runSqlOutputCmd=`(echoOptionValues & echo %$) | litt_output`
+
+REM Runs the standard SELECT SQL-cmd for a single table with options.
+alias runSingleTableOutputCmd=`gosub extractSelectedColumns %1 & gosub createOrderBy %3 & ^
+	runSqlOutputCmd %SELECT% %outSelect% from %2 WHERE %@makeWhereCond[] ORDER BY %outOrderBy%;`
+	
+REM Runs listdata with the selected columns and column order.
+alias runListData=`gosub extractSelectedColumns %1 & gosub createOrderBy %2 & gosub listdata`
+
+REM Echo %2$ if specified column %1 (short name) is used in action. Can be used for skipping some JOINs when making queries.
+alias echoIfCols=`(do iEchoIfCols = 0 to %@eval[%@fields[".",%1] - 1] ^
+   (if %@index[%userOrderColumns%.%usedDisplayColumns%.%whereCondCols%,%@field[".",%iEchoIfCols%,%1]] != -1 ^
+      ((echo %2$) & leave)))`
+      
+REM Justify output
+alias echojustify=`(echos %2$ %@repeat[` `,%@max[0,%@eval[%1 - %@len[%2$]]]])%@char[20]`
+
+REM Replace our wildcard "*" with SQL's wildcard "%".
+function likearg=`%@replace[*,SQL_PERCENT,%$]`
+
+REM For convenience.
+alias inc=`(set %1=%@inc[%1])`
+
+REM Makes a proper WHERE <condition> value from %whereCondParsed% and the optional %$ argument(s).
+REM Note: Adding and removing quotes is in case args would contain comma:s.
+function makeWhereCond=`%@likearg[%@unquotes[^
+	%@if[%# == 0,^
+		%@if[defined whereCondParsed,^
+			"(%whereCondParsed%)",^
+			"(1 == 1)"],^
+		%@if[DEFINED whereCondParsed,^
+			"(%$) AND (%whereCondParsed%)",^
+			"(%$)"]]]]`
+
+REM Define some data and functions/aliases for columns. 
+REM Each data will be <shortname>CI=<Column Name>,<Default Width>,<bIsNumeric>,<Label/Desc>,<bIsGroupAggregate>
+REM These "short names" are reserved as operators: asc,desc,lt,gt,eq,nq. (Can still use e.g. "gt*" though, just not "NN.gt.NN" by itself).
+REM NOTE: Avoid having a short name appear as substring in another! (We use substring matching to check if certain tables are included)
+REM       And if that is the case, make sure it makes sense (like for bt and btl, where XXl can use XX to get needed stuff. 
+
+function getColField=`%@field[",",%2,%[%1CI]]`
+function getColName=`%@getColField[%@optarg[XX,%1],0]`
+function getColWidth=`%@if["%[ovrSize%1]" != "",%[ovrSize%1],%@getColField[%@optarg[XX,%1],1]]`
+function isColNumeric=`%@getColField[%@optarg[XX,%1],2]`
+function getColLabel=`%@getColField[%@optarg[XX,%1],3]`
+function isGroupAgg=`%@getColField[%@optarg[XX,%1],4]`
+
+set aiCI=Authors."AuthorID",8,1
+set bebCI="Bought Ebook",3,1
+set biCI=Books."BookID",6,1
+set btCI="Title",40,0
+set drCI="Date read",10,0
+set dgCI="Date(s)",30,0,,1
+set dgSQL=(SELECT BookID, group_concat("Date read"SQL_COMMA"SQL_COMMA ") AS %@getColName[dg] ^
+	       FROM Books INNER JOIN DatesRead USING(BookID) GROUP BY BookID)
+set fnCI="First Name",15,0
+set geCI="Genre",25,0
+set giCI="GenreID",8,1
+set lnCI="Last Name",15,0
+REM ltrim used to remove the added space between FN and LN in case FN is empty.
+set ngCI="Author(s)",35,0,,1
+set ngSQL=(SELECT BookID, ltrim(group_concat("First Name"SQL_CC' 'SQL_CC"Last Name"SQL_COMMA"SQL_COMMA ")) AS %@getColName[ng] ^
+	       FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) GROUP BY BookID)
+set nnCI=ltrim("First Name"SQL_CC' 'SQL_CC"Last Name"),20,0,"Author"
+set laCI="Language",4,0
+set ownCI="Owned",3,1
+set otCI="Original Title",30,0
+set seCI="Series",27,0
+set siCI="SeriesID",8,1
+set spCI="Part in Series",4,0
+set stCI="Story",30,0
+set stidCI="StoryID",7,1
+set soCI="Source",40,0
+set soidCI=Sources."SourceID",7,1
+set dwCI=strftime('SQL_PERCENTw'SQL_COMMA"Date Read"),3,0,DOW
+set btlCI=length("Title"),4,1
+set lnlCI=length("Last Name"),4,1
+set fnlCI=length("First Name"),4,1
+set dwlCI=case cast (strftime('SQL_PERCENTw'SQL_COMMA"Date Read") as integer)^
+  when 0 then 'Söndag' when 1 then 'Måndag' when 2 then 'Tisdag' when 3 then 'Onsdag' ^
+  when 4 then 'Torsdag' when 5 then 'Fredag' when 6 then 'Lördag' else '' end,9,0,Veckodag
+set tiCI=time("Date Read"),5,0,Time
+REM
+REM Some special-purpose virtual columns, these are not generally usable:
+REM
+REM Intended for use in -w for booksReadPerPeriod. Will end up in the HAVING clause of Total sub-query.
+set drcCI=Count(BookID),0,1,,1
+REM Intended for use in (list)sametitle
+set btcCI=TitleCount,11,1,"Title count"
+REM Intended for use in (list)rereads
+set brcCI=ReadCount,10,1,"Read count"
+REM This is for the "number of books" column in listAuthorBookCounts
+set abcCI=COUNT(Books."BookID"),6,1,"Books"
+REM This is for the "number of books" column in listGenreBookCounts
+set gbcCI=COUNT(Books."BookID"),6,1,"Books"
+
+REM Set %2 to the column name of shortColName %1. 
+REM Will output error and goto end on failure.
+alias setColName=`((set %2=%@getColName[%1]) & (if not defined %2 ((echoerr Error: '%1' is not a short column name!) & (goto end))))`
+
+REM Used for running output queries. We might add stuff like "EXPLAIN QUERY PLAN" to it
+set SELECT=SELECT
+
+:: *********************************************************************************************************
+:: *********************************************************************************************************
+:: main - this is where the program "really" starts
+:: *********************************************************************************************************
+:: *********************************************************************************************************
+
+iff %# == 0 .or. "%1" == "h" then
+	gosub showhelp
+	goto end
+endiff
+
+REM Must call BEFORE *using* any command line arguments!
+gosub parseOptions
+set action=%1
+if "%@right[1,%action]" = "*" (set rightWildcard=* & set action=%@left[-1,%action])
+if "%@left[1,%action]" = "*" (set leftWildcard=* & set action=%@right[-1,%action])
+alias addMainWhereCond=`if %@len[%1] GT 0 gosub extractWhereCond AND %2."%[leftWildcard]%@unquotes[%1]%[rightWildcard]"`
+
+switch "%action%"
+	case "a" .OR. "aa"
+		gosub listauthor %action% %2 %3
+		
+	case "b" .OR. "bb"
+		gosub listbook %action% %2
+		
+	case "s" .OR. "ss"
+		gosub listseries %2
+		
+	case "g" .OR. "gg"
+		gosub listgenre %action% %2
+		
+	case "st"
+		gosub liststories %2
+		
+	case "so" .OR. "soo"
+		gosub listSources %action% %2
+		
+	case "all"
+		runSqlOutputCmd %SELECT% * from Everything;
+		
+	case "bflat"
+		runSqlOutputCmd %SELECT% * from BooksFlat;
+		
+	case "two"
+		REM drd is similar, but better.
+		runSqlOutputCmd %SELECT% * from TwoOrMoreBookDates;
+
+	case "rereads"
+		gosub listRereads %2
+	case "rereadsOld"
+		runSqlOutputCmd %SELECT% * from ReReads;
+		
+	case "sametitle"
+		gosub listSametitle
+	case "sametitleOld"
+		runSqlOutputCmd %SELECT% * from BooksWithSameTitle;
+		
+	case "dump"
+		sqlite3.exe %littdb% .dump
+		
+	case "abc"
+		gosub listAuthorBookCounts %2 %3
+		
+	case "gbc"
+		gosub listGenreBookCounts %2 %3
+		
+	case "brd"
+		gosub booksReadPerDate %2
+		
+	case "brwd"
+		gosub booksReadPerPeriod SQL_PERCENTw              "Weekday"    %@optarg[*,%2] 3 %#
+	case "brm"
+		gosub booksReadPerPeriod SQL_PERCENTY-SQL_PERCENTm "Year-Month" %@optarg[*,%2] 3 %#
+	case "bry"
+		gosub booksReadPerPeriod SQL_PERCENTY              "Year"       %@optarg[*,%2] 3 %#
+	case "brp"
+		gosub booksReadPerPeriod %2                        %3           %@optarg[*,%4] 5 %#
+		
+	case "brym"
+		set bppColCnt=12
+		do %bppColCnt%
+			set bppColDef%[_do_loop]=dr.*-%@formatn[02.0,%_do_loop%]-*
+			set bppColName%[_do_loop]="%@field[%_do_loop%,,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec]"
+		enddo
+		gosub booksReadPerPeriodParsed SQL_PERCENTY "Year"
+	case "brmy"
+		set bppColCnt=%@eval[%_year% - 2002 + 1]
+		do %bppColCnt%
+			set year=%@eval[2002 + %_do_loop% - 1]
+			set bppColDef%[_do_loop]=dr.%year%-*
+			set bppColName%[_do_loop]="%year%"
+		enddo
+		gosub booksReadPerPeriodParsed SQL_PERCENTm "Month"
+		
+	case "add-a"
+		gosub addauthor
+		
+	case "add-s"
+		gosub addSeries
+		
+	case "add-g"
+		gosub addGenre
+		
+	case "add-b"
+		gosub addBook
+		
+	case "b2s"
+		gosub addBookToSeries
+		
+	case "set-dr"
+		gosub setDateRead
+		
+	case "set-bs" .OR. "set-bs-clean"
+		gosub setBookSource %2 %3
+
+	case "set-g"
+		gosub setBookGenre %2 %3 %4
+		
+	REM Some "one off" undocumented actions
+	case "set-lang"
+		gosub setLang
+	case "set-owned"
+		gosub setOwned
+	case "set-bought-ebook"
+		gosub setBoughtEbook
+	case "set-genre"
+		gosub setGenre
+	
+	default
+		iff defined action then
+			echoerr Invalid action "%action%"! 
+		else
+			echoerr Action argument missing.
+		endiff
+		echo Try to run %0 without arguments to see the valid arguments and actions.
+endswitch
+
+goto end
+
+:
+:listauthor [action ln fn]
+:
+addMainWhereCond %ln% ln & addMainWhereCond %fn% fn
+iff %action% == a then
+	runSingleTableOutputCmd ai.ln.fn Authors ai
+else
+	runListData  bi.ln.fn.bt.dr.so.ge  ln.fn.dr.bi
+endiff
+return
+
+:
+:addauthor
+:
+input Enter the last name: %%lname
+if not defined lname return
+input Enter the first name: %%fname
+if not defined fname return
+
+inkey /K"yn" Add author "%lname%, %fname%?" (Y/N)  %%answer
+iff "%answer%" == "y" then
+	(echo INSERT INTO Authors ("Last Name","First Name") VALUES('%lname%','%fname%');) | litt_input
+	(echo SELECT * FROM Authors Where AuthorID IN (SELECT max(AuthorID) FROM Authors)); | litt_out_helper
+endiff
+return
+
+:
+:listbook [action title]
+:
+addMainWhereCond %title% bt
+iff %action% == b then
+	runSingleTableOutputCmd bi.bt.100 Books bi
+else
+	runListData  bi.nn.bt.dr.so.ge  dr.bi.ln.fn.bt
+endiff
+return
+
+
+REM Generic listdata routine, used by other list* routines for advanced/full listings.
+REM takes %listDataWhereClause% as input for WHERE clause in addition to the standard listing 
+REM variables (outSelect, outOrderBy, whereCondParsed, ...)
+:listdata
+(
+	echoOptionValues
+	echo %SELECT% %outSelect% FROM Books
+	gosub echoBookAuxTables
+	echo WHERE %@makeWhereCond[%listDataWhereClause%]
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+REM We can re-use this part from other routines as well. Make sure at least THESE short names do not overlap!
+:echoBookAuxTables [lenIndent]
+set indent=%@repeat[ ,%@optarg[0,%lenIndent%]]``
+echoIfCols dr.so       %indent%INNER JOIN DatesRead USING(BookID)
+echoIfCols ng          %indent%INNER JOIN %ngSQL% USING(BookID)
+echoIfCols dg          %indent%INNER JOIN %dgSQL% USING(BookID)
+echoIfCols fn.ln.nn.st %indent%INNER JOIN AuthorBooks USING(BookID)
+echoIfCols fn.ln.nn    %indent%INNER JOIN Authors USING(AuthorID)
+echoIfCols ot          %indent%LEFT OUTER JOIN OriginalTitles USING(BookID)
+echoIfCols st          %indent%LEFT OUTER JOIN Stories USING(AuthorID, BookID)
+echoIfCols sp.se       %indent%LEFT OUTER JOIN BookSeries USING(BookID)
+echoIfCols se          %indent%LEFT OUTER JOIN Series USING(SeriesID)
+echoIfCols so          %indent%LEFT OUTER JOIN Sources USING(SourceID)
+echoIfCols ge.gi       %indent%LEFT OUTER JOIN BookGenres USING(BookID)
+echoIfCols ge          %indent%LEFT OUTER JOIN Genres USING(GenreID)
+return
+
+:
+:addBook
+:
+setlocal
+REM Allow use of "&" in entered titles. Change compound char to one which will (hopefully) NEVER be used.
+setdos /c}
+
+:enterbook
+set i=1
+do
+	set aid=%[aid%i]
+	do forever
+		input /C /E Enter AuthorID(%1): %%aid
+		REM Allow listing of author if a AuthorID (only numbers) is not given
+		if %@isnumber[%aid] == 1 .OR. not defined aid leave
+		setlocal
+			setdos /c&
+			REM aid is supposed to be lastname here
+			gosub listAuthor a %aid%*
+		endlocal
+		unset aid
+	enddo
+	if not defined aid leave
+	set aid%i=%aid%
+	set story=%[story%i]
+	input /C /E Enter story name (optional): %%story
+	set story%i=%story%
+	inc i
+enddo
+if not defined aid .and. %i% == 1 goto addbook_end
+
+do forever
+	input /C /E Enter book title: %%title
+	if defined title leave
+enddo
+if not defined dr set dr=%_isodate%
+do forever
+	input /C /E Date read: %%dr
+	if defined dr leave
+enddo
+do forever
+	input /C /E Book SourceId: %%sourceId
+	if %@isnumber[%sourceId] == 1 leave	
+	setlocal
+		setdos /c&
+		REM sourceId is supposed to be source name here
+		gosub listSources so *%sourceId%*
+	endlocal
+	unset sourceId
+enddo
+do forever
+	input /C /E Book GenreId: %%genreId
+	if %@isnumber[%genreId] == 1 leave	
+	setlocal
+		setdos /c&
+		REM genreId is supposed to be genre name here
+		gosub listGenre g *%genreId%*
+	endlocal
+	unset genreId
+enddo
+input /C /E     Original title (optional): %%ot
+inkey /C /K"es" Enter language (E/S): %%lang
+inkey /C /K"yn" Own book? %%own
+inkey /C /K"yn" Bought ebook? %%beb
+input /C /D /E  SeriesID? %%sid
+iff defined sid then
+	do forever
+		input /C /D /E Part in Series: %%part
+		if defined part leave
+	enddo
+endiff
+
+if %lang% == e (set lang=en) else (set lang=sv)
+set own=%@if[%own == y,1,0]
+set beb=%@if[%beb == y,1,0]
+
+REM Ok, book is entered, now display the entered data and ask confirmation.
+
+echo.
+set count=%@dec[%i]
+do i = 1 to %count%
+	echos Author %i:` `
+	echojustify 6 %[aid%i]
+	if defined story%i echojustify 30 '%[story%i]'
+	(echo SELECT "Last Name", "First Name" FROM Authors WHERE AuthorID = %[aid%i];) | litt_out_helper
+enddo
+echo.
+
+echo Title         : '%title%'
+echo Date Read     : '%dr%'
+echos Source        : %sourceId% -` `
+(echo SELECT "Source" FROM Sources WHERE SourceID = %sourceId%;) | litt_out_helper
+echo Language      : '%lang%'
+echo Owned         : %own%
+echo Bought Ebook  : %beb%
+if defined ot echo Original title: '%ot%'
+if defined sid echos Series        : ID%sid% (Part %part%) - ` `
+if defined sid (echo SELECT "Series" FROM Series WHERE SeriesID = %sid%;) | litt_out_helper
+if defined genreId echos Genre         : ID%genreId% - ` `
+if defined genreId (echo SELECT "Genre" FROM Genres WHERE GenreID = %genreId%;) | litt_out_helper
+echo.
+
+inkey /C /K"yne" Add book (Y/N/Edit): %%answer
+if %answer% == n goto addbook_end
+if %answer% == e goto enterbook
+
+REM Got confirm, add the book!
+
+set bookid=%@execstr[(echo SELECT max(BookId) FROM Books;) | sqlite3.exe %littdb%]
+inc bookid
+
+(
+	(echo PRAGMA foreign_keys = ON;)
+	(echo BEGIN TRANSACTION;)
+	(echo INSERT INTO Books ("BookID","Title","Language","Owned","Bought Ebook") VALUES(%bookid%,'%title%','%lang%',%own%,%beb%);)
+	(echo INSERT INTO DatesRead ("BookID","Date Read","SourceID") VALUES(%bookid%,'%dr%',%sourceId%);)
+	(for /L %i in (1,1,%count%) (
+		(echo INSERT INTO AuthorBooks ("AuthorID","BookID") VALUES(%[aid%i],%bookid%);)
+		(if defined story%i (echo INSERT INTO Stories ("StoryID","AuthorID","BookID","Story") VALUES(NULL,%[aid%i],%bookid%,'%[story%i]');))
+	))
+	(if defined ot (echo INSERT INTO OriginalTitles ("BookID","Original Title") VALUES(%bookid%,'%ot%');))
+	(if defined sid (echo INSERT INTO BookSeries ("BookID", "SeriesID", "Part in Series") VALUES(%bookid%,%sid%,%part%);))
+	(if defined genreId (echo INSERT INTO BookGenres ("BookID", "GenreID") VALUES(%bookid%,%genreId%);))
+	(echo COMMIT;)
+) | litt_input
+
+unset /Q title ot
+inc part
+
+REM inkey /C /K"yne" Add another book? (Y/N):  %%answer
+REM if %answer% == y goto enterbook
+
+:addBook_end
+endlocal
+return
+
+
+:
+:setDateRead
+:
+set bookid=%2
+
+iff not defined bookid then
+	echoerr Enter BookId!
+	return
+endiff
+
+alias showdrs=`((echo SELECT "BookID","Title","Date Read" FROM Books LEFT OUTER JOIN DatesRead USING(BookID) ^
+                       WHERE BookId = %bookID%;) | litt_out_helper)`
+
+echo.
+showdrs
+echo.
+
+inkey /C /K"acd" (A)dd, (C)hange or (D)elete "Date Read" for "%bookID%"? %%answer
+
+iff %answer% == a then
+	input /C Enter date to add: %%drtoadd
+	iff defined drtoadd then
+		(echo PRAGMA foreign_keys = ON; ^
+			INSERT INTO DatesRead ("BookID","Date Read") ^
+			VALUES(%bookID%,'%drtoadd%');) | litt_input
+	endiff
+elseiff %answer% == c then
+	input /C Enter date to change: %%drtochange
+	if defined drtochange (input /C Enter new date: %%drnewdate)
+	iff defined drtochange .and. defined drnewdate then
+		(echo PRAGMA foreign_keys = ON; ^
+			UPDATE DatesRead SET "Date Read" = '%drnewdate%' ^
+			WHERE "BookID" = %bookID% and "Date Read" = '%drtochange%';) | litt_input
+	endiff
+elseiff %answer% == d then
+	input /C Enter date to delete: %%drtodelete
+	iff defined drtodelete then
+		(echo PRAGMA foreign_keys = ON; ^
+			DELETE FROM DatesRead ^
+			WHERE "BookID" = %bookID% and "Date Read" = '%drtodelete%';) | litt_input
+	endiff
+endiff
+
+echo.
+showdrs
+echo.
+return
+
+
+:
+:setBookSource [bookIdArg dateReadArg]
+:
+iff "%bookIdArg%" != "" .and. "%dateReadArg%" != "" then
+	set bookId=%bookIdArg%
+	set dr=%@unquote[%dateReadArg%]
+elseiff "%bookIdArg%" != "" then
+	set bookId=%bookIdArg%
+	unset /Q dr
+else
+	set bookId=0
+	unset /Q dr
+endiff
+
+REM We will use redirection in this function. No need for '<' and '>' in the SQL (WHERE) though.
+setdos /X+6
+
+iff not exist "%TEMP%\sources.lst" .OR. %action% == set-bs-clean then
+(
+	(echo 0- ***** Quit *****) &
+	(((echo .separator `-`) & (echo SELECT * FROM Sources ORDER BY Source;)) | litt_out_helper)
+) > "%TEMP%\sources.lst"
+endiff
+
+iff not defined dr then
+	REM Interactively go through all BookId/DateRead with SourceID = 0 (not assigned)
+	((echo .mode csv) & (echo select Books."BookID", "Date Read", "Title", "Last Name", "First Name" ^
+		from books join authorbooks using (bookid) join authors using (authorid) join datesread using(bookid) ^
+		where ("SourceID" = 0) and (Books.BookId BETWEEN %bookId% and 1000000) order by Books."BookID";)) | litt_out_helper > %TEMP%\setBookSource.tmp
+
+	do line in @%TEMP%\setBookSource.tmp
+		set title="Select BS: %@unquote[%line%]"
+		set title=%@replace[^,,_,%title]
+		gosub setBookSource_getSourceId
+		iff defined sid then
+			iff %sid% = 0 then
+				leave
+			else
+				set bookId=%@field[",",0,%line%]
+				set dr=%@unquote[%@field[",",1,%line%]]
+				gosub setBookSource_doUpdate
+			endiff
+		endiff
+	enddo
+else
+	(echo select * from Books join AuthorBooks using (BookId) join Authors using (AuthorId) ^
+	                    join DatesRead using(BookId) left outer join Sources using(SourceID) ^
+	       where Books.BookId = %bookId% AND DatesRead."Date Read" = '%dr%';) | litt_out_helper
+	set title="Select BS for BookId: %bookId% and Date Read: %dr%"
+	gosub setBookSource_getSourceId
+	iff defined sid then
+		iff %sid% GT 0 then
+			gosub setBookSource_doUpdate
+		endiff
+	endiff
+endiff
+
+setdos /x-6
+return
+
+:setBookSource_getSourceId
+REM Caller provides title
+REM sel might contain '&'
+setdos /x-5
+set sel=%@select["%TEMP%\sources.lst",-100,400,1100,1200,%title%]
+iff defined sel then
+	set sid=%@field["-",0,%sel]
+else
+	unset /Q sid
+endiff
+setdos /x+5
+return
+
+:setBookSource_doUpdate
+REM Caller provides sid, bookId and dr.
+(echo UPDATE DatesRead SET "SourceID" = %sid% WHERE "BookID" = %bookid% AND "Date Read" = '%dr%';) | litt_input
+((echo select Books."BookID", "Date Read", "Title", "Source" ^
+	from books inner join datesread using(bookid) inner join Sources using(sourceid) ^
+	where "BookID" = %bookid% and "Date Read" = '%dr%';)) | litt_out_helper
+return
+
+
+:
+:setBookGenre
+:
+set bookid=%2
+set gcmd=%3
+set curGenreid=%4
+
+if not defined gcmd set gcmd=a
+
+if not defined bookid (echoerr BookId missing & return)
+if not (%gcmd% == a .or. %gcmd% == c .or. %gcmd% == d) (echoerr Invalid set-genre command %gcmd%! & return)
+if not defined curGenreid .and. (%gcmd% == c .or. %gcmd% == d) (echoerr Current GenreID missing & return)
+
+alias showgenre=`((echo SELECT "BookID","Title","GenreID","Genre" ^
+                        FROM Books JOIN BookGenres USING(BookId) JOIN Genres USING(GenreId) ^
+                        WHERE BookId = %bookID%;) | litt_out_helper)`
+
+echo.
+showgenre
+echo.
+
+iff %gcmd% == a .or. %gcmd% == c then
+	iff %gcmd% == c then
+		echo Changing genre %curGenreId% for book %bookid%
+	else
+		echo Adding a new genre to book %bookid%
+	endiff
+	echo.
+
+	do forever
+		input /C /E New genreId: %%genreId
+		if %@isnumber[%genreId] == 1 leave	
+		setlocal
+			REM genreId is supposed to be genre name here
+			gosub listGenre g *%genreId%*
+		endlocal
+		unset genreId
+	enddo
+
+	(echo PRAGMA foreign_keys = ON; & ^
+	 if %gcmd% == c (
+	 	echo UPDATE BookGenres SET "GenreID" = %genreId% WHERE "BookID" = %bookID% AND "GenreID" = %curGenreid%;
+	 ) else (
+	 	echo INSERT INTO BookGenres ("BookID","GenreID") VALUES(%bookID%,%genreId%); ^
+	 ) ^
+	) | litt_input
+elseiff %gcmd% == d then
+	inkey /C /K"yn" Delete genre %curGenreId% for book %bookID% (y/n)? %%answer
+	if %answer% == n return
+
+	echo DELETE FROM BookGenres WHERE "BookID" = %bookID% AND "GenreID" = %curGenreid%; | litt_input
+endiff
+
+echo.
+showgenre
+echo.
+return
+
+
+:
+:listseries [seriesName]
+:
+addMainWhereCond %seriesName% se
+iff %action% == s then
+	runSingleTableOutputCmd si.se Series si
+else
+	runListData  se.sp.bt.dr.bi.ln.fn  dr.bi.bt
+endiff
+return
+
+:
+:listgenre [action genreName]
+:
+addMainWhereCond %genreName% ge
+iff %action% == g then
+	runSingleTableOutputCmd gi.ge Genres ge
+else
+	runListData  bi.bt.ge.dr.nn  dr.bi.bt
+endiff
+return
+
+
+:
+:addBookToSeries
+:
+set bookid=%2
+set seriesid=%3
+set part=%4
+
+iff not defined bookid .OR. not defined seriesid .OR. not defined part then
+	echoerr Enter BookId, SeriesID and part!
+	return
+endiff
+
+echo.
+(echo SELECT "Title" FROM Books WHERE BookId = %bookID%;) | litt_out_helper
+echos `  ==>  `
+(echo SELECT "Series" FROM Series WHERE SeriesId = %seriesID%;) | litt_out_helper
+echo.
+
+inkey /C /K"yn" Add BookID "%bookID%" to SeriesID "%seriesID%" as part "%part%"? %%answer
+iff "%answer%" == "y" then
+	(echo PRAGMA foreign_keys = ON; ^
+	      INSERT INTO BookSeries ("BookID","SeriesID","Part in Series") ^
+	      VALUES(%bookID%,%seriesID%,%part%);) | litt_input
+endiff
+
+return
+
+:
+:addSeries
+:
+set seriesid=%2
+
+if not defined seriesid set seriesid=NULL
+input /C Enter series name: %%series
+
+inkey /C /K"yn" Add (%seriesid%,"%series%") to Series? %%answer
+iff "%answer%" == "y" then
+	(echo INSERT INTO Series ("SeriesID","Series") VALUES(%seriesID%,"%series%");) | litt_input
+endiff
+return
+
+:
+:addGenre
+:
+set genreid=%2
+
+if not defined genreid set genreid=NULL
+input /C Enter genre name: %%genre
+
+inkey /C /K"yn" Add (%genreid%,"%genre%") to Genre? %%answer
+iff "%answer%" == "y" then
+	(echo INSERT INTO Genres ("GenreID","Genre") VALUES(%genreid%,"%genre%");) | litt_input
+endiff
+return
+
+:
+:liststories [storyTitle]
+:
+addMainWhereCond %storyTitle% st
+
+gosub extractSelectedColumns bi.bt.30.st.50.ln.fn.dr
+gosub createOrderBy bt
+(
+	echoOptionValues
+	echo %SELECT% %outSelect% FROM Books
+	echoIfCols dr INNER JOIN DatesRead USING(BookID)
+	echoIfCols ot LEFT OUTER JOIN OriginalTitles USING(BookID)
+	echo          INNER JOIN AuthorBooks USING(BookID)
+	echo          INNER JOIN Authors USING(AuthorID)
+	echoIfCols st INNER JOIN Stories USING(AuthorID, BookID)
+	echo WHERE %@makeWhereCond[]
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+:
+:listSources [action sourceName]
+:
+addMainWhereCond %sourceName% so
+iff %action% == so then
+	runSingleTableOutputCmd soid.so Sources so
+else
+	runListData  dr.so.50.bt.30.ln.fn  so
+endiff
+return
+
+
+REM Extracts a single "count condition" from a string for the given column name. Result put into %resVarName%.
+:extractCountConditionForColumn [colName condString resVarName]
+alias getcf=`((set %2=%@field[".",%1,%condString]) & (if not defined %2 (echoerr Faulty countConditionValue "%condString" & goto end)))`
+getcf 0 val
+iff %@isnumber[%val] then
+	set %resVarName%=%colName%` >= `%val%
+else
+	switch %val%
+		case lt
+			getcf 1 val
+			set %resVarName%=%colName%` < `%val%
+		case gt
+			getcf 1 val
+			set %resVarName%=%colName%` > `%val%
+		case eq
+			getcf 1 val
+			set %resVarName%=%colName%` = `%val%
+		case range
+			getcf 1 r1 & getcf 2 r2
+			set %resVarName%=%r1%` <= `%colName% AND %colName%` <= `%r2%
+		default
+			echoerr Invalid operator "%val% in countConditionValue "%condString"
+			goto end
+	endswitch
+endiff
+unalias getcf
+return
+
+:
+:listAuthorBookCounts [bookCountCondition bRRs]
+:
+gosub extractCountConditionForColumn %@getColName[abc] %@optarg[0,%bookCountCondition] havingCountCond
+gosub extractSelectedColumns nn.abc
+gosub createOrderBy abc.desc
+(
+	echoOptionValues
+	echo %SELECT% %outSelect% 
+	echo FROM Books INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID) 
+	if 1 = %bRRs% echo INNER JOIN DatesRead USING(BookID)
+	echo WHERE %@makeWhereCond[]
+	echo GROUP BY AuthorID
+	echo HAVING %havingCountCond%
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+:
+:listGenreBookCounts [bookCountCondition bRRs]
+:
+gosub extractCountConditionForColumn %@getColName[gbc] %@optarg[0,%bookCountCondition] havingCountCond
+gosub extractSelectedColumns ge.35.gbc
+gosub createOrderBy gbc.desc
+(
+	echoOptionValues
+	echo %SELECT% %outSelect% 
+	echo FROM Books INNER JOIN BookGenres USING(BookID) INNER JOIN Genres USING(GenreID) 
+	if 1 = %bRRs% echo INNER JOIN DatesRead USING(BookID)
+	echo WHERE %@makeWhereCond[]
+	echo GROUP BY GenreID
+	echo HAVING %havingCountCond%
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+
+:
+:booksReadPerDate [booksReadCondition]
+:
+gosub extractCountConditionForColumn Count(CalcDR) %@optarg[2,%booksReadCondition] havingCountCond
+REM We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
+set calcDR=case when (time("Date Read") > '00:00:00' and time("Date Read") < '06:00:00') then date("Date Read", '-6 hours') else date("Date Read") end
+gosub extractSelectedColumns dr.bt.ln.fn
+(
+	echoOptionValues
+	echo %SELECT% %outSelect%
+	echo FROM Books INNER JOIN DatesRead USING(BookID) INNER JOIN AuthorBooks USING(BookID) INNER JOIN Authors USING(AuthorID)
+	echo WHERE %calcDR% IN
+	echo  (SELECT CalcDR FROM (SELECT %calcDR% as CalcDR FROM DatesRead WHERE "Date Read" > "2001-10")
+	echo   GROUP BY CalcDR 
+	echo   HAVING %havingCountCond%) 
+	echo AND %@makeWhereCond[]
+	echo ORDER BY "Date Read";
+) | litt_output
+return
+
+:
+:booksReadPerPeriod [periodDef, period, periodCondition, nextParamNr, paramCount]
+:
+set begin=%@optarg[0,%nextParamNr%]
+set end=%@optarg[0,%paramCount%]
+set bppColCnt=%@eval[((%end - %begin) + 1) \ 2]
+iff %bppColCnt% GT 0 then
+	do i = 1 to %bppColCnt%
+		set bppColName%[i]=%[%@eval[%begin% + 2*%@dec[%i%] +1]]
+		set bppColDef%[i]=%[%@eval[%begin% + 2*%@dec[%i%]]] 
+		echojustify 15 %[bppColName%i%] & echo %[bppColDef%i%]
+	enddo
+	echo.
+endiff
+gosub booksReadPerPeriodParsed %periodDef% %period% %periodCondition%
+return
+
+:
+:booksReadPerPeriodParsed [periodDef, period, periodCondition]
+:
+set outWidths=%@len[%@unquotes[%period%]] %@len[Total]
+do %bppColCnt% (set cn=%@unquotes[%[bppColName%_do_loop%]] & set outWidths=%outWidths% %@max[4,%@getColWidth[%cn%],%@len[%cn%]])
+gosub createOrderBy %period% 1
+(
+	echoOptionValues
+	echos %SELECT% Main.%period% AS %period%, Total & do %bppColCnt% (echos `, `%[bppColName%_do_loop%])
+	echo ` FROM`
+		echo (SELECT %period%, Count(BookID) as Total FROM 
+		echo    (SELECT BookID, strftime('%periodDef%', "Date Read") AS %period%
+		echo     FROM Books 
+		echo     INNER JOIN DatesRead USING(BookID) 
+		echo     WHERE "Date Read" > "2002")
+		echo  GROUP BY %period%
+		iff defined whereCondParsed then
+		echo  HAVING %@likearg[%whereCondParsed%]
+		endiff		
+		echo  `) Main`
+	for /L %iCol in (1,1,%bppColCnt%) do (
+		gosub resetWhereCond dr
+		gosub extractWhereCond AND %[bppColDef%iCol]
+		echo LEFT OUTER JOIN
+		echo (SELECT %period%, Count(BookID) AS %[bppColName%iCol] FROM 
+		echo    (SELECT Books.BookID, strftime('%periodDef%', "Date Read") as %period% 
+		echo     FROM Books
+		gosub    echoBookAuxTables 4
+		echo     WHERE %@makeWhereCond["Date Read" > "2002"])
+		echo  GROUP BY %period%)
+		echo USING(%period%)
+	)
+	if "%periodCondition%" != "" .AND. "%periodCondition%" != "*"  (
+		echo WHERE %@likearg[Main.%period% LIKE '%periodCondition%*']
+	)
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+
+:
+:listRereads
+:
+set SELECTPREFIX=`DISTINCT `
+gosub createOrderBy brc.desc.ln.bt.dr
+gosub extractSelectedColumns brc.bt.dr.ng
+(
+	echoOptionValues
+	echo %SELECT% %outSelect%
+	echo FROM (SELECT BookID, Count(BookID) As ReadCount FROM DatesRead GROUP BY BookID HAVING Count(BookID) > 1)
+	echo INNER JOIN Books USING(BookID)
+	gosub echoBookAuxTables
+	echo WHERE %@makeWhereCond[]
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+
+:
+:listSametitle
+:
+set SELECTPREFIX=`DISTINCT `
+gosub createOrderBy bt.bi
+gosub extractSelectedColumns bi.bt.ng.btc
+(
+	echoOptionValues
+	echo %SELECT% %outSelect%
+	echo FROM (SELECT Title, Count(Title) As TitleCount FROM Books GROUP BY Title HAVING Count(Title) > 1)
+	echo INNER JOIN Books USING(Title)
+	gosub echoBookAuxTables
+	echo WHERE %@makeWhereCond[]
+	echo ORDER BY %outOrderBy%;
+) | litt_output
+return
+
+
+REM Extracts the given short names to an ORDER BY statement %outOrderBy%.
+REM Will use %colOrder% or %selColumns% instead if set.
+:createOrderBy [defColOrder bAllowCustom]
+:
+iff defined colOrder then
+	set cols=%colOrder%
+elseiff defined selColumns then
+	set cols=%selColumns%
+else 
+	set cols=%defColOrder%
+endiff
+set i=0
+do while %i% LT %@fields[".",%cols]
+	set sn=%@field[".",%i,%cols]
+	set colName=%@getColName[%sn%]
+	iff defined colName then
+		set userOrderColumns=%@if[defined userOrderColumns,%userOrderColumns%.,]%sn%
+	elseiff "%bAllowCustom%" == "1" then
+		set colName=%sn%
+	else
+		echoerr Error: '%sn%' is not a short column name!
+		goto end
+	endiff
+	set ad=%@field[".",%@inc[%i],%cols]
+	iff "%ad%" == "asc" .or. "%ad%" == "desc" then
+		set colName=%colName%` `%ad%
+		inc i
+	endiff
+	if defined outOrderBy (set outOrderBy=%outOrderBy%,%colName%) else (set outOrderBy=%colName%)
+	inc i
+enddo
+return
+
+:extraColumnsizes [colSizes]
+:
+alias getsf=`((set %2=%@field[".",%1,%colSizes]) & (if not defined %2 (echoerr Faulty colSizes "%colSizes%" & goto end)))`
+set i=0
+do while %i% LT %@fields[".",%colSizes]
+	getsf %i% sn
+	inc i
+	getsf %i% val
+	inc i
+	set ovrSize%sn%=%val%
+enddo
+return
+
+REM Extracts %wcVal% "WHERE condition" option to %whereCondParsed% and %whereCondCols%.
+REM The first one will contain the actual SQL WHERE code and the second one the short column 
+REM names included in the wcValue.
+REM May be called multiple times, which causes the wcValue:s to be <logop>:ed.
+:extractWhereCond [logop wcVal]
+:
+setlocal
+alias getwf=`((set %2=%@unquotes[%@field[".",%1,%wcVal]]) & (if not defined %2 (echoerr Faulty whereCondition "%wcVal%" & goto end)))`
+set i=0
+do while %i% LT %@fields[".",%wcVal]
+	getwf %i% sn
+	set whereCondCols=%@if[defined whereCondCols,%whereCondCols%.%sn%,%sn%]
+	setColName %sn% colName
+	inc i
+	getwf %i% val
+	switch %val%
+		case lt
+			set oper=`<`
+		case gt
+			set oper=`>`
+		case eq
+			set oper=`=`
+		case nq .OR. ne
+			set oper=notlike
+		case isnull
+			set oper=isnull
+		case isempty
+			set oper=isempty
+	endswitch
+	
+	iff defined oper then
+		iff "%oper%" NE "isnull" .and. "%oper%" NE "isempty" then
+			inc i
+			getwf %i% val
+		endiff
+	else 
+		set oper=LIKE
+	endiff
+	
+	if %@isColNumeric[%sn] != 1 set val='%val%'	
+	
+	switch "%oper%"
+		case "notlike"
+			set partCond=ifnull(%colName%,'') NOT LIKE %val%
+		case "isnull"
+			set partCond=%colName% IS NULL
+		case "isempty"
+			set partCond=%colName% = ''
+		default
+			set partCond=%colName% %oper% %val%
+	endswitch
+	unset oper
+	
+	if defined WCond (set WCond=%WCond% AND %partCond%) else (set WCond=%partCond%)
+	inc i
+enddo
+
+iff defined WCond then
+	iff defined whereCondParsed then
+		set whereCondParsed=`(`%whereCondParsed%`)` %logop% `(`%WCond%`)`
+	else
+		set whereCondParsed=`(`%WCond%`)`
+	endiff
+	unset WCond
+endiff
+
+endlocal whereCondCols whereCondParsed
+return
+
+:resetWhereCond [wcCols wcVal]
+set whereCondCols=%wcCols%
+set whereCondParsed=%wcVal%
+return
+
+
+REM Extract the columns to be SELECTed from columnInfos into %outSelect% and the widths into %outWidths%
+REM NOTE: If %addColumns% is set that will be appended to the end of %outSelect%
+REM NOTE: If %selColumns% is set that will be used instead of defColumnInfos
+:extractSelectedColumns [defColumnInfos]
+:
+iff defined selColumns then
+	set cis=%selColumns%
+else
+	set cis=%defColumnInfos%
+endiff
+if defined addColumns set cis=%cis%.%addColumns%
+set usedDisplayColumns=%cis%
+
+alias getfield=`set %2=%@field[".",%1,%cis]`
+set i=0
+do while %i% LT %@fields[".",%cis]
+	getfield %i sn
+	setColName %sn% colName
+	set colLabel=%@getColLabel[%sn%]
+	if defined colLabel set colName=%colName% AS %colLabel%
+	if defined outSelect (set outSelect=%outSelect%,%colName%) else (set outSelect=%SELECTPREFIX%%colName%)
+	getfield %@inc[%i] val
+	iff %@isnumber[%val] then
+		inc i
+		set w=%val%
+	else
+		set w=%@getColWidth[%sn]
+	endiff
+	set outWidths=%@if[defined outWidths,%outWidths% ,]%w%
+	inc i
+enddo
+return
+
+REM Parse command line options. 
+REM Checks ALL batch file args from start to end; more convenient for the user. Assumes no other arguments start with - or /.
+:
+:parseOptions
+:
+::echo %0$
+do forever
+	set foundOption=0
+	do iCmdLineArg = 1 to %#
+		set arg=%[%iCmdLineArg]
+		REM special case for "-" as it's used for "empty" values sometimes, and we might want to query for it.
+		iff "%@left[1,%arg]" == "-" .AND. "%arg%" NE "-" then
+			gosub parseSingleOption %arg
+			shift /%iCmdLineArg
+			set foundOption=1
+			leave
+		endiff
+	enddo
+	if %foundOption% == 0 leave
+enddo
+::echo %0$
+return
+
+:parseSingleOption [value]
+switch "%@instr[1,1,%value]"
+	case "d"
+		set dumpMode=%@instr[2,%value]
+		rem echo dumpMode="%dumpMode"
+	case "h"
+		set headerOnOff=%@instr[2,%value]
+		rem echo headerOnOff="%headerOnOff"
+	case "o"
+		set colOrder=%@instr[2,%value]
+		rem echo colOrder="%colOrder"
+	case "c"
+		set selColumns=%@instr[2,%value]
+		rem echo selColumns="%selColumns"
+	case "a"
+		rem We assume that options are parsed from the beginning to end.
+		set addColumns=%@if[defined addColumns,%addColumns%.,]%@instr[2,%value]
+  		rem echo addColumns="%addColumns"
+	case "w"
+		REM Can be parsed directly, as it does not need extra/default arguments or other information.
+		REM Also must be parsed directly as we will allow multiple -w arguments!
+		gosub extractWhereCond OR %@instr[2,%value]
+	case "s"
+		gosub extraColumnsizes %@instr[2,%value]
+	case "q"
+		set qMode=1
+	case "u"
+		set SELECTPREFIX=`DISTINCT `
+	case "x"
+		set SELECT=EXPLAIN QUERY PLAN SELECT
+		set EXPLAIN_QUERY_PLAN=1
+	default
+		echoerr Invalid option "%value"!
+endswitch
+return
+
+:
+:showhelp
+:
+text
+Usage: LITT [<options>] action <action arguments>
+
+Supported actions:
+   a  [<last name>] [<first name>] (Lists authors with given last name (and first name)).
+   aa [<last name>] [<first name>] (Same as above, but also includes all books by the authors).
+   b  [<title>]                    (Lists all books matching the given title).
+   bb [<title>]                    (Same as above, but includes more details)
+   st [<story>]                    (Only lists books with separate stories)
+   s  [<series>]                   (Lists series)
+   g  [<genre>]                    (Lists genre)
+   so [<source>]                   (Lists book sources - where a certain book "read" was gotten)
+   soo [<source>]                  (Lists book sources WITH read books for the sources)
+   
+   add-a                           (Adds a new author)
+   add-b                           (Adds a new book)
+   add-s                           (Adds a new series)
+   add-g                           (Adds a new genre)
+   
+   abc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each author, second param = 1 => re-reads included.
+                                    Supports virtual column abc - book count - for selection and ordering, but not for WHERE.)
+   gbc [<bookCountCond>] [<bRRs>]  (Lists the number of read books for each genre, similar to abc)
+   brd [<booksReadCond>]           (Lists the dates and books where [cond] books where read.)
+   brm/bry/brmy/brym/brwd [-h]     (Lists the number of books read per month/year/etc. Supports -wdrc in addition to date param.)
+endtext
+
+iff "%1" == "h" then
+text
+
+       [<dateCondition>] {<column def (where condition)> <column name>}
+       
+       Can also use brp which is more generic, it takes [<period col def (strftime string)>] [<period col name]>
+       BEFORE the parameters the previos ones do.
+       
+endtext
+endiff
+
+text
+   two "brd lite"                  (Lists dates with two or more books read)
+   rereads                         (Lists re-read books. Can use extra virtual column "brc" - Read Count)
+   sametitle                       (Lists books with same title. Can use extra virtual column "btc" - Book Title Count)
+   
+   b2s <BookID> <SeriesID> <part>  (Adds a book to a series)
+   
+   set-dr <BookID>                 (Add/Change or Delete DateRead for a book)
+   set-bs <BookID> <DateRead>      (Set/Change the book source for a read date of a book)
+   set-bs-clean                    (Same as above - also params - but re-creates the temp file with book sources)
+   set-g <BookID> [C|D CurGenreID] (Add, Change or Delete genre for a book. Need to specify current GenreID for C and D)
+   
+   all                             (Lists "everything")
+   dump                            (Dumps the database as SQL)
+   h                               (Show more extensive help)
+   
+NOTE: As wildcards in most match arguments "*" (any string) and "_" (any character) can be used. Wild-cards (*) around the first 8
+      listing actions also supported for similar effect, e.g. *b* will list all books containing the given title string, while
+      b* will list books starting with it instead.
+      
+Options:
+    -d[dumpMode]    (Determines how the results are displayed)
+    -h[on|off]      (Determines if a header row is shown or not)
+    -c[selColumns]  (Determines the included colums, overrides default columns for the action)
+    -a[addColumns]  (Include these columns in addition to the default ones for the action)
+    -o[colOrder]    (Determines sort order for results)
+    -w[whereCond]   (Adds a WHERE condition - will be AND:ed with the one specified by the action and arguments.
+                     If several -w options are included their values will be OR:ed.)
+    -s[colSizes]    (Override the default column sizes)
+    -q              (Debug - dumps the SQLITE commands instead of producing results.)
+    -u              (Makes sure the results only contain UNIQUE/DISTICT values)
+    
+    Note: Not all options are meaningful to all actions. In those cases they are simply ignored.
+endtext          
+
+iff "%1" == "h" then
+text
+
+selColumns format: <shortName>[.<width>]{.<shortName>[.<width>]}
+colOrder format: <shortName>[.asc|desc]{.<shortName>[.asc|desc]}
+whereCond format: <shortName>[.<cmpOper>].<cmpArg>{.<shortName>[.<cmpOper>].<cmpArg>}
+          cmpOper: lt,gt,eq,nq,isnull,isempty ("LIKE" if none is given, isnull & isempty take no cmpArg)
+colSizes format: Same as selColumns format
+
+bookCountCond and booksReadCond formats:
+	<number>        Only includes authors with book count >= <number>
+	lt.<number>     Only includes authors with book count < <number>
+	gt.<number>     Only includes authors with book count > <number>
+	eq.<number>     Only includes authors with book count = <number>
+	range.<n1>.<n2> Only includes authors with book count in range [n1,n2]
+
+Dumpmode values:
+    csv      Comma-separated values
+    column   Left-aligned columns. (specified (or default) widths are used)
+    html     HTML <table> code
+    line     One value per line
+    insert   SQL insert statements for TABLE
+    list     Values delimited by .separator string
+    tabs     Tab-separated values
+    tcl      TCL list elements
+
+Column short name values:
+    bt,bi,btl       - Book title, BookID, length of book title
+    ln,fn,lnl,fnl   - Last/First Name & length thereof
+    nn/ng           - Full name/Aggregated full name(s) per book.
+    gi,ge           - GenreID and Genre
+    dr/dg,dw,dwl,ti - Date read/Aggregated dates, DOW for Date read, DOW string, Time
+    own,la,beb      - Owned, Language, Bought Ebook
+    st,stid         - Story,StoryID
+    se,si,sp        - Series, SeriesID, Part in Series
+    so,soid         - Source, SourceID
+
+endtext
+endiff
+return
+
+
+:
+:
+:end
+:
+:
+REM Restore prev code page if we changed it.
+setdos /x0
+iff defined prevcp then
+	iff %prevcp% != %_codepage% then
+		chcp %prevcp% > NUL
+	endiff
+endiff
+option //DuplicateBugs=%prevbugs%
+quit
+
+
+
+
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+REM                                    Undocumented "one off" actions here
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+REM ***********************************************************************************************************
+
+:
+:setLang
+:
+do i = 1 to %@execstr[((echo select max(bookid) from books;) | sqlite3.exe %littdb%)]
+	color red on white
+	echo.
+	(echo select * from books where bookid = %i;) | litt_out_helper
+	echo.
+	color black on white	
+	inkey /C /K"sen" Enter language: %%lang
+	iff %lang% == s then
+		set lang=sv
+	elseiff %lang% == e then
+		set lang=en
+	else
+		unset lang
+	endiff
+
+	iff defined lang then
+		(echo UPDATE books SET "Language" = '%lang%' WHERE "BookID" = %i;) | litt_input
+		(echo select * from books where bookid = %i;) | litt_out_helper
+	endiff
+enddo
+return
+
+:
+:setOwned
+:
+setdos /x0
+((echo .mode csv) & (echo select Books."BookID", "Title", "Last Name", "First Name", "Date Read" from books ^
+      join authorbooks using (bookid) join authors using (authorid) join datesread using(bookid) ^
+      where "owned" = 0 and "bought ebook" = 0 and "language" LIKE 'sv';)) | litt_out_helper > setlang.tmp
+setdos /x-6
+
+do line in @setlang.tmp
+	color red on white
+	echo.
+	echo %line%
+	echo.
+	color black on white	
+	inkey /C Own? (Y/N) %%own
+	iff "%own%" == "y" then
+		set bookId=%@field[",",0,%line%]
+		echo %bookId%
+		(echo UPDATE Books SET "Owned" = 1 WHERE "BookID" = %bookId%;) | litt_input
+		(echo select * from Books where "BookID" = %bookId%;) | litt_out_helper
+	endiff
+enddo
+return
+
+:
+:setBoughtEbook
+:
+setdos /x0
+((echo .mode csv) & (echo select Books."BookID", "Title", "Last Name", "First Name", "Date Read", "Owned" from books ^
+      join authorbooks using (bookid) join authors using (authorid) join datesread using(bookid) ^
+      where Books."BookID" between 1370 and 2000 AND "Owned" = 0 AND "Bought Ebook" = 0;)) | litt_out_helper > setbe.tmp
+setdos /x-6
+
+do line in @setbe.tmp
+	color blue on white
+	echo.
+	echo %line%
+	echo.
+	color black on white	
+	inkey /C /K"yn" Bought Ebook? (Y/N) %%own
+	iff "%own%" == "y" then
+		set bookId=%@field[",",0,%line%]
+		echo %bookId%
+		(echo UPDATE Books SET "Bought Ebook" = 1 WHERE "BookID" = %bookId%;) | litt_input
+		(echo select * from Books where "BookID" = %bookId%;) | litt_out_helper
+	endiff
+enddo
+return
+
+:
+:setGenre
+:
+setdos /x0
+((echo .mode csv) & (echo select Books."BookID", "Title", "Last Name", "First Name", "Date Read", "GenreID" from books ^
+      join authorbooks using (bookid) join authors using (authorid) join datesread using(bookid) left outer join BookGenres using(bookid) ^
+      where GenreID IS NULL ^
+      order by Books."BookID" DESC;)) | litt_out_helper > setgenre.tmp
+setdos /x-6
+
+do line in @setgenre.tmp
+	color blue on white
+	echo.
+	echo %line%
+	REM call google.btm %@field[",",1,%line%] %@field[",",2,%line%] %@field[",",3,%line%]
+	echo.
+	color black on white
+
+	do forever
+		unset genreId
+		input /C /E Book GenreId: %%genreId
+		if %@isnumber[%genreId] == 1 leave	
+		setlocal
+		REM genreId is supposed to be genre name here
+		gosub listGenre g *%genreId%*
+		endlocal
+	enddo
+	set bookId=%@field[",",0,%line%]
+	
+	echo BookID %bookId% <= GenreID %genreid%
+	(
+		(echo PRAGMA foreign_keys = ON;)
+		(echo BEGIN TRANSACTION;)
+		(echo INSERT INTO BookGenres ("BookID", "GenreID") VALUES(%bookid%,%genreId%);)
+		(echo COMMIT;)
+	) | litt_input
+	
+	setlocal
+	set selColumns=bt.nn.ge
+	addMainWhereCond %bookid% bi
+	gosub listbook bb
+	endlocal
+enddo
+return
