@@ -250,27 +250,14 @@ namespace Utils
 	template <typename T>
 	std::string toStr(T value) { return std::to_string(value); }
 
-	template <typename T, typename CFunc>
-	bool toIntType(std::string const& str, T& value, CFunc cfunc)
+	template <typename T>
+	bool toInt(std::string const& str, T& value)
 	{
-		errno = 0;
-		char* endPtr;
-		T v = cfunc(str.c_str(), &endPtr, 10);
-		if (endPtr == str.c_str() || *endPtr != '\0' || errno == ERANGE) {
-			return false;
-		}
-		value = v;
-		return true;
-	}
-
-	bool toInt(std::string const& str, int& value)
-	{
-		return toIntType(str, value, strtol);
-	}
-
-	bool toULongLong(std::string const& str, unsigned long long & value)
-	{
-		return toIntType(str, value, strtoull);
+		errno = 0; char* endPtr; T v;
+		if constexpr (std::is_same<T, unsigned long long>::value) v = strtoull(str.c_str(), &endPtr, 10);
+		else if constexpr (std::is_same<T, int>::value)           v = strtol  (str.c_str(), &endPtr, 10);
+		else static_assert(false, "Unsupported number type");
+		return (endPtr == str.c_str() || *endPtr != '\0' || errno == ERANGE) ? false : (value = v, true);
 	}
 
 	void replaceAll(std::string& str, const std::string& from, const std::string& to)
@@ -470,8 +457,8 @@ namespace LittDefs
 		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
 	}
 
-	constexpr auto& toSecondsValue = toULongLong;
-	constexpr auto& toIdValue = toULongLong;
+	constexpr auto& toSecondsValue = toInt<unsigned long long>;
+	constexpr auto& toIdValue      = toInt<unsigned long long>;
 
 	struct TableInfo {
 		TableInfo* parent = nullptr; // Parent table, i.e. table that will need to be included in the current query if this table is. May be null.
