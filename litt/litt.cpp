@@ -245,10 +245,10 @@ namespace Utils
 	}
 
 	template <typename T>
-	void operator+=(std::vector<T>& a, const std::vector<T>& b)
-	{
-	    a.insert(a.end(), b.begin(), b.end());
-	}
+	void operator+=(std::vector<T>& a, const std::vector<T>& b) { a.insert(a.end(), b.begin(), b.end()); }
+
+	template <typename T>
+	std::string toStr(T value) { return std::to_string(value); }
 
 	template <typename T, typename CFunc>
 	bool toIntType(std::string const& str, T& value, CFunc cfunc)
@@ -336,7 +336,7 @@ namespace Utils
 
 	void toLowerCase(std::string& str)
 	{
-		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return static_cast<char>(tolower(c)); });
+		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return (char)tolower(c); });
 	}
 
 	int calcIsbn10CheckDigit(const char* isbn)
@@ -653,9 +653,8 @@ namespace Input
 			recs[i].Event.KeyEvent.wVirtualScanCode = 0;
 			recs[i].Event.KeyEvent.uChar.AsciiChar = str[i];
 		}
-		if (DWORD n; !WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), recs.data(), recs.size(), &n)) {
+		if (DWORD n; !WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), recs.data(), recs.size(), &n))
 			fprintf(stderr, "Failed to prefill input! Error code = %i", GetLastError());
-		}
 	}
 
 	std::string input(const char* prompt, InputOptions options = required)
@@ -692,7 +691,7 @@ namespace Input
 
 	void input(int& value, const char* prompt, InputOptions options = required) 
 	{   // No negative, empty or NULL values for now!
-		std::string str = (value >= 0) ? std::to_string(value) : "";
+		std::string str = (value >= 0) ? toStr(value) : "";
 		do input(str, prompt, R"(\d+)", options); while (!toInt(str, value));
 	}
 
@@ -706,7 +705,7 @@ namespace Input
 		InputListFunction const& listValues,
 		InputOptions const options = required)
 	{
-		if (value != EmptyId) prefillInput(std::to_string(value));
+		if (value != EmptyId) prefillInput(toStr(value));
 		for (;;) {
 			auto str = input(prompt, options);
 			value = EmptyId; if (str.empty()) break; // Done, empty id allowed and inputted.
@@ -852,7 +851,7 @@ public:
 		throwError();
 	}
 
-	std::string nextIntAsStr() { return std::to_string(nextInt()); }
+	std::string nextIntAsStr() { return toStr(nextInt()); }
 };
 
 class Output {
@@ -991,7 +990,7 @@ public:
 		if (m_stdOutIsConsole) {
 			auto ws = utf8ToWide(str, len);
 			if (DWORD nw; !WriteConsole(m_stdOutHandle, ws.c_str(), ws.length(), &nw, 0))
-				throw std::runtime_error("WriteConsole failed with error code: " + std::to_string(GetLastError()));
+				throw std::runtime_error("WriteConsole failed with error code: " + toStr(GetLastError()));
 		}
 		else {
 			int res;
@@ -1005,7 +1004,7 @@ public:
 			}
 			if (res != 1) {
 				m_error = true;
-				throw std::runtime_error("fwrite failed to write all data, errno: " + std::to_string(errno));
+				throw std::runtime_error("fwrite failed to write all data, errno: " + toStr(errno));
 			}
 		}
 	}
@@ -2381,8 +2380,8 @@ public:
 				}
 			}
 			if (litt.m_limit > 0) {
-				m_query.append("\nLIMIT ").append(std::to_string(litt.m_limit));
-				if (litt.m_offset > 0) m_query.append(" OFFSET ").append(std::to_string(litt.m_offset));
+				m_query.append("\nLIMIT ").append(toStr(litt.m_limit));
+				if (litt.m_offset > 0) m_query.append(" OFFSET ").append(toStr(litt.m_offset));
 			}
 
 			// Needed when called multiple times in same LITT session (like when listing items for book input!)
@@ -3056,7 +3055,7 @@ ORDER BY Dupe DESC, "Book read")";
 		case Count::stories: return "bcst";
 		case Count::sources: return "bcso";
 		case Count::categories: return "bcc";
-		default: throw std::logic_error("Invalid Count value: " + std::to_string((int)m_count));
+		default: throw std::logic_error("Invalid Count value: " + toStr((int)m_count));
 		}
 	}
 
@@ -3067,7 +3066,7 @@ ORDER BY Dupe DESC, "Book read")";
 		case DRRange::last: return DRR_LAST;
 		case DRRange::middle: return DRR_MID;
 		case DRRange::random: return DRR_RAND;
-		default: throw std::logic_error("Invalid DRRange value: " + std::to_string((int)m_drRange));
+		default: throw std::logic_error("Invalid DRRange value: " + toStr((int)m_drRange));
 		}
 	}
 
@@ -3477,7 +3476,7 @@ ORDER BY Dupe DESC, "Book read")";
 					if (getStoryId(ad.storyId, ad.story)) {
 						ad.storyRating.clear(); // no rating => existing story, so don't add to Stories or StoryGenres
 						// Lookup existing genres so they can be added to the book.
-						ad.storyGenres = selectIds("SELECT GenreID from StoryGenres WHERE StoryID=" + std::to_string(ad.storyId));
+						ad.storyGenres = selectIds("SELECT GenreID from StoryGenres WHERE StoryID=" + toStr(ad.storyId));
 					}
 					else {
 						ad.storyId = nextStoryId++;
@@ -3918,7 +3917,7 @@ ORDER BY Dupe DESC, "Book read")";
 			auto fy = intarg(0, "firstYear", getLocalTime().wYear - 4);
 			auto ly = intarg(1, "lastYear", fy + 4);
 			appendToWhere(getWhereCondition(fmt("dr.range.%i-01-01.%i-12-31", fy, ly)));
-			std::vector<PeriodColumn> pcs; for (int y = fy; y <= ly; ++y) pcs.emplace_back(fmt("dr.%04d-*", y), std::to_string(y));
+			std::vector<PeriodColumn> pcs; for (int y = fy; y <= ly; ++y) pcs.emplace_back(fmt("dr.%04d-*", y), toStr(y));
 			listBooksReadPerPeriod("%m", "Month", WcS, std::move(pcs));
 			break; }
 		case a("add-a"):   addAuthor(); break;
