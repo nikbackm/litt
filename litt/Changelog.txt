@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-23: Grouped all Litt members together. Adjusted help.
  * 2019-09-23: The brmy listing now uses the last five years by default, like the *bcy listings.
  * 2019-09-23: Factored out fmtv function from std_string_fmt_impl macro thanks to va_copy.
  * 2019-09-23: Renamed short name "btst" to "bs" for naming consistency.

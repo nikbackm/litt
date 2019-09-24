@@ -8,15 +8,15 @@ void showHelp(int level = 0)
 R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
-   h[0|1|2]                       Show help, level 0..2, level 2 is default.
+   h[0..2]                        Show help, level 0..2, level 2 is default.
    b|bb   [title]                 List books - with minimum/full details.
-   a|aa   [lastName] [firstName]  List authors - without/with books.
    st|stt [story]                 List stories - without/with books.
+   a|aa   [lastName] [firstName]  List authors - without/with books.
    ps     [lastName] [firstName]  List pseudonyms.
    ot     [origTitle]             List original titles for books.
    s      [series]                List series.
    g      [genre]                 List genres.
-   so     [source]                List book sources where a certain book "read" was gotten.
+   so     [source]                List sources for read books.
    c      [bookCategory]          List book categories.
    l      [language]              List languages.
 
@@ -1036,6 +1036,7 @@ enum class ExQ { None = 0, Graph = 1, VMCode = 2, Raw = 3 };
 class Litt {
 	TableInfos m_tableInfos;
 	std::map<std::string, ColumnInfo> m_columnInfos; // short name => ColumnInfo. NO operator names! E.g. asc,desc,lt,eq.
+	mutable decltype(m_columnInfos) m_ancis; // Holds ColumnInfo:s for dynamically added "actual name" columns.
 	std::unique_ptr<sqlite3, SqliteCloser> m_conn;
 	Output m_output;
 	int const consoleCodePage = GetConsoleCP();
@@ -1579,8 +1580,7 @@ public:
 			throw std::invalid_argument("Cannot find: " + m_dbPath);
 			
 		sqlite3* conn = nullptr;
-		int const rc = sqlite3_open(m_dbPath.c_str(), &conn); m_conn.reset(conn);
-		if (rc != SQLITE_OK)
+		if (int rc = sqlite3_open(m_dbPath.c_str(), &conn); m_conn.reset(conn), rc != SQLITE_OK)
 			throw std::runtime_error(fmt("Cannot open database: %s", sqlite3_errmsg(conn)));
 
 		/*auto createCollation = [conn](const char* name, int(*xCompare)(void*, int, const void*, int, const void*)) {
@@ -1598,8 +1598,6 @@ public:
 		createScalarFunc("isbn10", 1, isbn10);
 		createScalarFunc("isbn13", 1, isbn13);
 	}
-
-	mutable decltype(m_columnInfos) m_ancis; // Holds ColumnInfo:s for "actual name" columns.
 
 	ColumnInfo const* getColumn(std::string const& sn, bool allowActualName = false) const
 	{
@@ -3953,13 +3951,11 @@ ORDER BY Dupe DESC, "Book read")";
 }; // Litt
 
 int main(int argc, char **argv)
-{
-	try {
-		(argc < 2) ? showHelp() : Litt(argc, argv).executeAction();
-		return 0;
-	}
-	catch (std::exception& ex) {
-		fprintf(stderr, "%s\n", ex.what());
-		return 1;
-	}
+try {
+	(argc < 2) ? showHelp() : Litt(argc, argv).executeAction();
+	return 0;
+}
+catch (std::exception& ex) {
+	fprintf(stderr, "%s\n", ex.what());
+	return 1;
 }
