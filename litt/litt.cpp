@@ -306,11 +306,6 @@ namespace Utils
 		return toNarrow(codePage, wstr.c_str(), wstr.length());
 	}
 
-	std::string quote(std::string const& str)
-	{
-		return (!str.empty() && str.front() != '"') ? ("\"" + str + "\"") : str;
-	}
-
 	std::string unquote(std::string const& str)
 	{
 		auto res = str;
@@ -449,12 +444,6 @@ namespace LittDefs
 	{
 		if (!glob) std::replace(str.begin(), str.end(), Wc, '%');
 		return escSqlVal(str, tryToTreatAsNumeric);
-	}
-
-	unsigned colWidth(std::string const& str)
-	{
-		auto const w = str.length();
-		return (w > 2) ? w - 2 : w; // Don't include quotes in column width, they will not be printed.
 	}
 
 	constexpr auto& toSecondsValue = toInt<unsigned long long>;
@@ -3135,11 +3124,12 @@ ORDER BY Dupe DESC, "Book read")";
 
 	struct PeriodColumn {
 		std::string def;
-		std::string name; // Used in SQL so need to be quoted in case it contains spaces, is a number etc.
+		std::string name; // Used in SQL as-is so need to be quoted in case it contains spaces, is a number etc.
 
-		PeriodColumn(std::string d, std::string const& n) : def(std::move(d)), name(quote(n)) {}
+		PeriodColumn(std::string const& d, std::string const& n) : def(d), name(quote(n)) {}
 
-		unsigned colWidth() const { return LittDefs::colWidth(name); }
+		static std::string quote(std::string const& name) { return "\"" + name + "\""; }
+		static unsigned    width(std::string const& name) { return name.length() - 2; } // Assumes quoted name.
 	};
 
 	std::vector<PeriodColumn> getPeriodColumns(int fromActionArgIndex)
@@ -3173,15 +3163,15 @@ ORDER BY Dupe DESC, "Book read")";
 		std::string const& cond,
 		std::vector<PeriodColumn>&& columns) // Take ownership so we can modify it
 	{
-		// Total with empty def (i.e. include all) as first column. Avoids duplicating code this way!
-		columns.emplace(columns.begin(), "", "Total");
+		columns.emplace(columns.begin(), "", "Total"); // Total as first column; empty def => include all.
+		period = PeriodColumn::quote(period);          // Will be used in SQL as-is.
 
-		std::string whatCol; unsigned colWidths = 4u; std::string nonBookSn;
+		std::string whatCol; unsigned minWidth = 4u; std::string nonBookSn;
 		switch (m_count) {
 		case Count::books: whatCol = "BookID"; break;
-		case Count::pages: whatCol = "Pages"; colWidths = 5u; break;
-		case Count::words: whatCol = "Words"; colWidths = 8u; break;
-		case Count::kwords: whatCol = "Words"; colWidths = 5u; break;
+		case Count::pages: whatCol = "Pages"; minWidth = 5u; break;
+		case Count::words: whatCol = "Words"; minWidth = 8u; break;
+		case Count::kwords: whatCol = "Words"; minWidth = 5u; break;
 		case Count::authors: nonBookSn = "ai"; break;
 		case Count::genres: nonBookSn = "gi"; break;
 		case Count::stories: nonBookSn = "stid"; break;
@@ -3195,14 +3185,11 @@ ORDER BY Dupe DESC, "Book read")";
 			nonBookCol->usedInQuery = true;
 			whatCol = nonBookCol->nameDef;
 		}
+		std::string countColDef = getColumn(getCountColumn())->nameDef;
 
-		std::string sn = getCountColumn();
-		std::string colOp = getColumn(sn)->nameDef;
-
-		period = quote(period);
 		OutputQuery q(*this);
-		q.columnSettings.emplace_back(colWidth(period), JLeft);
-		for (auto& c : columns) { q.columnSettings.emplace_back(std::max(colWidths, c.colWidth()), JRight); }
+		q.columnSettings.emplace_back(PeriodColumn::width(period), JLeft);
+		for (auto& c : columns) q.columnSettings.emplace_back(std::max(minWidth, PeriodColumn::width(c.name)), JRight);
 		std::string periodFunc;
 		if      (periodDef == "%Y")    periodFunc = SUBSTR(DR,1,4);
 		else if (periodDef == "%m")    periodFunc = SUBSTR(DR,6,2);
@@ -3218,7 +3205,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 		for (auto& c : columns) {
 			auto ccond = c.def.empty() ? whereCondition() : appendConditions(LogOp_AND, whereCondition(), getWhereCondition(c.def));
-			q.xad("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + colOp + " FROM");
+			q.xad("INSERT INTO mdb.Res (" + period + ", " + c.name + ") SELECT " + period + ", " + countColDef + " FROM");
 			q.add(" (SELECT " + distinct + whatCol + ", " + periodFunc + " AS " + period);
 			q.add("  FROM Books JOIN mdb.DR USING(BookID)");
 			q.initTablesAndColumns(Table::books); // Call here to pick up new tables from c.def, same startTable => many calls safe.
