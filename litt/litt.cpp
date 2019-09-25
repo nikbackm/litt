@@ -309,16 +309,14 @@ namespace Utils
 	std::string unquote(std::string const& str)
 	{
 		auto res = str;
-		if (res.length() >= 2 && res.front() == '"' && res.back() == '"') {
-			res.erase(0, 1);
-			res.pop_back();
-		}
+		if (!res.empty() && res.back()  == '"') res.pop_back();
+		if (!res.empty() && res.front() == '"') res.erase(0, 1);
 		return res;
 	}
 
 	void toLowerCase(std::string& str)
 	{
-		std::transform(str.begin(), str.end(), str.begin(), [](char c) { return (char)tolower(c); });
+		std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return (char)tolower(c); });
 	}
 
 	int calcIsbn10CheckDigit(const char* isbn)
