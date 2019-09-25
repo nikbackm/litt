@@ -11,7 +11,7 @@ Basic list actions:
    h[0..2]                        Show help, level 0..2, level 2 is default.
    b|bb   [title]                 List books - with minimum/full details.
    st|stt [story]                 List stories - without/with books.
-   a|aa   [lastName] [firstName]  List authors - without/with books.
+   a      [lastName] [firstName]  List authors.
    ps     [lastName] [firstName]  List pseudonyms.
    ot     [origTitle]             List original titles for books.
    s      [series]                List series.
@@ -2874,14 +2874,11 @@ public:
 		runStandardOutputQuery(query, startTable);
 	}
 
-	void listAuthors(std::string const& action, std::string const& ln, std::string const& fn)
+	void listAuthors(std::string const& ln, std::string const& fn)
 	{
 		addActionWhereCondition("ln", ln);
 		addActionWhereCondition("fn", fn);
-		if (action == "a")
-			runListData("ai.nn.30", "ai", Table::authors); 
-		else
-			runListData("bi.nn.bsra.bs.dr.so.bsgg", "ai.dr.bi", Table::authors);
+		runListData("ai.nn.30", "ai", Table::authors); 
 	}
 
 	void listPseudonyms(std::string const& ln, std::string const& fn)
@@ -3328,7 +3325,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 	#define LIST_F(listCode) [&](std::string const& s) { resetListingData(""); listCode; }
 	InputListFunction getListBook()   { return LIST_F(listBooks  ("b",  s + WcS)); }
-	InputListFunction getListAuthor() { return LIST_F(listAuthors("a",  s + WcS, "")); }
+	InputListFunction getListAuthor() { return LIST_F(listAuthors(s + WcS, "")); }
 	InputListFunction getListStory()  { return LIST_F(listStories("st", s + WcS)); }
 	InputListFunction getListSource() { return LIST_F(listSources(WcS + s + WcS)); }
 	InputListFunction getListGenre()  { return LIST_F(listGenres (WcS + s + WcS)); }
@@ -3840,8 +3837,8 @@ ORDER BY Dupe DESC, "Book read")";
 		switch (auto const& act = m_action; a(act.c_str())) {
 		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp(act=="h" ? 2 : act[1]-'0'); break;
 		case a("b"):  case a("bb"):  listBooks(act, arg(0)); break;
-		case a("a"):  case a("aa"):  listAuthors(act, arg(0), arg(1)); break;
 		case a("st"): case a("stt"): listStories(act, arg(0)); break;
+		case a("a"):  listAuthors(arg(0), arg(1)); break;
 		case a("ps"): listPseudonyms(arg(0), arg(1)); break;
 		case a("ot"): listOriginalTitles(); break;
 		case a("s"):  listSeries(arg(0)); break;
