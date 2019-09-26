@@ -1,12 +1,13 @@
 LITT Changelog:
 ===============
- * 2019-09-24: Removed aa listing, can just modify the aa alias for same effect. (Not so for bb due to special where handling)
- * 2019-09-24: Simplified unquote, now also unquotes partial (either end) quotes.
- * 2019-09-24: Moved quote and colWidth inside PeriodColumn, only used there and assumed to be.
- * 2019-09-23: Now has a single toInt template for all number conversions thanks to constexpr if.
- * 2019-09-23: Added toStr for brevity.
- * 2019-09-23: Grouped all Litt members together. Adjusted help.
- * 2019-09-23: The brmy listing now uses the last five years by default, like the *bcy listings.
+ * 2019-09-26: Simplified help.
+ * 2019-09-25: Removed aa listing, can just modify the aa alias for same effect. (Not so for bb due to special where handling)
+ * 2019-09-25: Simplified unquote, now also unquotes partial (either end) quotes.
+ * 2019-09-25: Moved quote and colWidth inside PeriodColumn, only used there and assumed to be.
+ * 2019-09-24: Now has a single toInt template for all number conversions thanks to constexpr if.
+ * 2019-09-24: Added toStr for brevity.
+ * 2019-09-24: Grouped all Litt members together. Adjusted help.
+ * 2019-09-24: The brmy listing now uses the last five years by default, like the *bcy listings.
  * 2019-09-23: Factored out fmtv function from std_string_fmt_impl macro thanks to va_copy.
  * 2019-09-23: Renamed short name "btst" to "bs" for naming consistency.
  * 2019-09-23: Removed redundant listings: ll, ss, gg, soo, cc. 

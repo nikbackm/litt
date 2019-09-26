@@ -9,14 +9,14 @@ R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
    h[0..2]                        Show help, level 0..2, level 2 is default.
-   b|bb   [title]                 List books - with minimum/full details.
-   st|stt [story]                 List stories - without/with books.
+   b|bb   [title]                 List books   - normal/extended listing
+   st|stt [story]                 List stories - normal/extended listing
    a      [lastName] [firstName]  List authors.
    ps     [lastName] [firstName]  List pseudonyms.
-   ot     [origTitle]             List original titles for books.
+   ot     [origTitle]             List original titles.
    s      [series]                List series.
    g      [genre]                 List genres.
-   so     [source]                List sources for read books.
+   so     [source]                List sources.
    c      [bookCategory]          List book categories.
    l      [language]              List languages.
 
@@ -51,26 +51,26 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
 )", stdout); if (1 <= level) fputs(
 R"(
 Adding and modifying data:
-   add-b                                   Add a book.
-   add-dr   [BookID] [dr] [SourceId]       Add a 'date read' for a book with given source.
+   add-b                                   Add a book, including stories.
+   add-dr   [BookID] [dr] [SourceId]       Add a date read for a book with given source.
    add-a    [lastName] [firstName]         Add an author.
    add-s    [series]                       Add a series.
    add-g    [genre]                        Add a genre.
    add-so   [source]                       Add a book source.
    add-c    [category]                     Add a book category.
    add-l    [language]                     Add a book language.
-   add-st   [BookID] [AID] [story] [rat]   Add a story for a book.
-   add-bg   [BookID] [GenreID]             Add a genre for a book.
-   add-stg  [StoryID] [GenreID]            Add a genre for a story.
+   add-st   [BookID] [AID] [story] [rat]   Add a story to a book.
+   add-bg   [BookID] [GenreID]             Add a genre to a book.
+   add-stg  [StoryID] [GenreID]            Add a genre to a story.
    
    set-r    [BookID] [rating]              Set rating for a book.
    set-str  [StoryID] [rating]             Set rating for a story.
-   set-dr   [BookID] [newDr|delete] [dr|i] Change or delete 'date read' for a book. Dr/Index optional if #dr = 1.
-   set-so   [BookID] [SourceId] [dr|i]     Change source for a 'date read'. Dr/Index optional if #dr = 1.
-   set-g    [BookID] [GenreID] [newGID]    Change genre for a book. (Specify newGID=0 to delete)
-   set-stg  [StoryID] [GenreID] [newGID]   Change genre for a story. (see above)
-   set-ot   [BookID] [origTitle|delete]    Set or delete the original title for a book.
-   set-s    [BookID] [SID] [part|delete]   Set or delete series for a book.
+   set-dr   [BookID] [newDr|delete] [dr|i] Change or delete a date read for a book. Dr/Index optional if #dr = 1.
+   set-so   [BookID] [SourceId] [dr|i]     Change source for a date read. Dr/Index optional if #dr = 1.
+   set-g    [BookID] [GenreID] [newGID]    Change a genre for a book. (Specify newGID=0 to delete)
+   set-stg  [StoryID] [GenreID] [newGID]   Change a genre for a story. (see above)
+   set-ot   [BookID] [origTitle|delete]    Set or delete original title for a book.
+   set-s    [BookID] [SID] [part|delete]   Set or delete a series for a book.
    set-bd   [BookID] [pubdate]             Set first publication date for a book.
    set-otd  [BookID] [otPubdate]           Set first publication date of the original title for a book.
    set-own  [BookID] [owned]               Set owned for a book.
