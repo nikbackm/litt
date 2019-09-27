@@ -52,30 +52,28 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
 R"(
 Adding and modifying data:
    add-b                                   Add a book, including stories.
-   add-dr   [BookID] [dr] [SourceId]       Add a date read for a book with given source.
-   add-a    [lastName] [firstName]         Add an author.
-   add-s    [series]                       Add a series.
-   add-g    [genre]                        Add a genre.
-   add-so   [source]                       Add a book source.
-   add-c    [category]                     Add a book category.
-   add-l    [language]                     Add a book language.
-   add-st   [BookID] [AID] [story] [rat]   Add a story to a book.
-   add-bg   [BookID] [GenreID]             Add a genre to a book.
-   add-stg  [StoryID] [GenreID]            Add a genre to a story.
+   add-dr   <BookID> <dr> <SourceId>       Add a date read for a book with given source.
+   add-a    <lastName> <firstName>         Add an author.
+   add-s    <series>                       Add a series.
+   add-g    <genre>                        Add a genre.
+   add-so   <source>                       Add a book source.
+   add-c    <category>                     Add a book category.
+   add-l    <language>                     Add a book language.
+   add-st   <BID> <AID> <story> <ra> {GID} Add a story to a book.
    
-   set-r    [BookID] [rating]              Set rating for a book.
-   set-str  [StoryID] [rating]             Set rating for a story.
-   set-dr   [BookID] [newDr|delete] [dr|i] Change or delete a date read for a book. Dr/Index optional if #dr = 1.
-   set-so   [BookID] [SourceId] [dr|i]     Change source for a date read. Dr/Index optional if #dr = 1.
-   set-g    [BookID] [GenreID] [newGID]    Change a genre for a book. (Specify newGID=0 to delete)
-   set-stg  [StoryID] [GenreID] [newGID]   Change a genre for a story. (see above)
-   set-ot   [BookID] [origTitle|delete]    Set or delete original title for a book.
-   set-s    [BookID] [SID] [part|delete]   Set or delete a series for a book.
-   set-bd   [BookID] [pubdate]             Set first publication date for a book.
-   set-otd  [BookID] [otPubdate]           Set first publication date of the original title for a book.
-   set-own  [BookID] [owned]               Set owned for a book.
+   set-r    <BookID> <rating>              Set rating for a book.
+   set-str  <StoryID> <rating>             Set rating for a story.
+   set-dr   <BookID> <newDr|delete> <dr|i> Change or delete a date read for a book. Dr/Index optional if #dr = 1.
+   set-so   <BookID> <SourceId> <dr|i>     Change source for a date read. Dr/Index optional if #dr = 1.
+   set-bg   <BookID>  <GenreID> [oldGID|0] Add, replace (specify oldGID) or delete (specify 0) a genre for a book.
+   set-stg  <StoryID> <GenreID> [oldGID|0] Same as above, but for story.
+   set-ot   <BookID> <origTitle|delete>    Set or delete original title for a book.
+   set-s    <BookID> <SID> <part|delete>   Set or delete a series for a book.
+   set-bd   <BookID< <pubdate>             Set first publication date for a book.
+   set-otd  <BookID< <otPubdate>           Set first publication date of the original title for a book.
+   set-own  <BookID> <owned>               Set owned for a book.
 
-   execute   [sqlString]                   Execute the given SQL string. Use with CAUTION!
+   execute  <sqlString>                    Execute the given SQL string. Use with CAUTION!
 )", stdout); if (2 <= level) fputs(
 R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
@@ -1789,7 +1787,8 @@ public:
 		InputOptions iopt = Input::required) const
 	{
 		IdValue val = EmptyId; return index < m_args.size()
-			? toIdValue(m_args[index], val) ? checkFunc(val), val : throw argEx(index, name)
+			? toIdValue(m_args[index], val)
+				? ((iopt==optional && val==EmptyId ? (void)0 : checkFunc(val)), val) : throw argEx(index, name)
 			: (input(val, fmt("Enter %s", name).c_str(), checkFunc, listFunc, iopt), val);
 	}
 
@@ -3302,7 +3301,7 @@ ORDER BY Dupe DESC, "Book read")";
 		return !rs.empty() ? rs[0].at(0) : throw std::runtime_error(fmt("Could not find %s", name));
 	}
 
-	void checkExists(std::string const& sql, const char* name) const { selectValue(sql, name); }
+	void exist(std::string const& sql, std::string const& name) const { selectValue(sql, name.c_str()); }
 
 	std::string selDV(const char* valCol, Table table, const char* idCol, IdValue id) const
 	{
@@ -3644,54 +3643,48 @@ ORDER BY Dupe DESC, "Book read")";
 		}
 	}
 
-	void addBookGenre()
-	{
-		if (auto bookId = bidargi(0)) {
-			auto genreId = gidargi(1);
-			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selBook(bookId))))
-				executeWriteSqlf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu, %llu)", bookId, genreId);
-		}
-	}
-
-	void addStoryGenre()
-	{
-		if (auto storyId = stidargi(0)) {
-			auto genreId = gidargi(1);
-			if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selStory(storyId))))
-				executeWriteSqlf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu, %llu)", storyId, genreId);
-		}
-	}
-
 	void setBookGenre()
 	{
-		if (auto bookId = bidargi(0)) {
+		if (auto id = bidargi(0)) {
 			auto genreId = gidargi(1);
-			checkExists(fmt("SELECT GenreID FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId),
-				fmt("GenreID %llu for BookID %llu", genreId, bookId).c_str());
-			if (auto newGI = gidargi(2, "New GenreID", optional)) {
-				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selBook(bookId))))
-					executeWriteSqlf("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", newGI, bookId, genreId);
+			if (IdValue oldGId; hasArg(2) && (oldGId = gidargi(2, "", optional), true)) {
+				auto c = (oldGId == EmptyId) ? genreId : oldGId;
+				exist(fmt("SELECT 1 FROM BookGenres WHERE (BookID,GenreID)=(%llu,%llu)",id,c), fmt("GenreID %llu for BookID %llu",c,id));
+				if (oldGId == EmptyId) { // Remove genreId
+					if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selBook(id))))
+						executeWriteSqlf("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", id, genreId);
+				}
+				else { // Replace oldGId with genreId
+					if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(oldGId)), S(selGenre(genreId)), S(selBook(id))))
+						executeWriteSqlf("UPDATE BookGenres SET GenreID=%llu WHERE BookID=%llu AND GenreID=%llu", genreId, id, oldGId);
+				}
 			}
-			else {
-				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selBook(bookId))))
-					executeWriteSqlf("DELETE FROM BookGenres WHERE BookID=%llu AND GenreID=%llu", bookId, genreId);
+			else { // Add genreId
+				if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selBook(id))))
+					executeWriteSqlf("INSERT OR IGNORE INTO BookGenres (BookID,GenreID) VALUES (%llu,%llu)", id, genreId);
 			}
 		}
 	}
 
 	void setStoryGenre()
 	{
-		if (auto storyId = stidargi(0)) {
+		if (auto id = stidargi(0)) {
 			auto genreId = gidargi(1);
-			checkExists(fmt("SELECT GenreID FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId),
-				fmt("GenreID %llu for StoryID %llu", genreId, storyId).c_str());
-			if (auto newGI = gidargi(2, "New GenreID", optional)) {
-				if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(genreId)), S(selGenre(newGI)), S(selStory(storyId))))
-					executeWriteSqlf("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu", newGI, storyId, genreId);
+			if (IdValue oldGId; hasArg(2) && (oldGId = gidargi(2, "", optional), true)) {
+				auto c = (oldGId == EmptyId) ? genreId : oldGId;
+				exist(fmt("SELECT 1 FROM StoryGenres WHERE (StoryID,GenreID)=(%llu,%llu)",id,c), fmt("GenreID %llu for StoryID %llu",c,id));
+				if (oldGId == EmptyId) { // Remove genreId
+					if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selStory(id))))
+						executeWriteSqlf("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", id, genreId);
+				}
+				else { // Replace oldGId with genreId
+					if (confirmf("Change '%s' => '%s' for '%s'", S(selGenre(oldGId)), S(selGenre(genreId)), S(selStory(id))))
+						executeWriteSqlf("UPDATE StoryGenres SET GenreID=%llu WHERE StoryID=%llu AND GenreID=%llu", genreId, id, oldGId);
+				}
 			}
-			else {
-				if (confirmf("Remove '%s' from '%s'", S(selGenre(genreId)), S(selStory(storyId))))
-					executeWriteSqlf("DELETE FROM StoryGenres WHERE StoryID=%llu AND GenreID=%llu", storyId, genreId);
+			else {  // Add genreId
+				if (confirmf("Add '%s' => '%s'", S(selGenre(genreId)), S(selStory(id))))
+					executeWriteSqlf("INSERT OR IGNORE INTO StoryGenres (StoryID,GenreID) VALUES (%llu,%llu)", id, genreId);
 			}
 		}
 	}
@@ -3898,9 +3891,7 @@ ORDER BY Dupe DESC, "Book read")";
 		case a("add-b"):   addBook(); break;
 		case a("add-st"):  addStory(); break;
 		case a("set-s"):   setBookSeries(); break;
-		case a("add-bg"):  addBookGenre(); break;
-		case a("add-stg"): addStoryGenre(); break;
-		case a("set-g"):   setBookGenre(); break;
+		case a("set-bg"):  setBookGenre(); break;
 		case a("set-stg"): setStoryGenre(); break;
 		case a("add-dr"):  addDateRead(); break;
 		case a("set-dr"):  setBookDateRead(); break;

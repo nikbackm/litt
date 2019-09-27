@@ -1,5 +1,6 @@
 LITT Changelog:
 ===============
+ * 2019-09-27: Merged add-bg into set-bg and add-stg into set-stg. Clarified help for add/modify actions.
  * 2019-09-26: Simplified help.
  * 2019-09-25: Removed aa listing, can just modify the aa alias for same effect. (Not so for bb due to special where handling)
  * 2019-09-25: Simplified unquote, now also unquotes partial (either end) quotes.
