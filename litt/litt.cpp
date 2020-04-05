@@ -26,7 +26,7 @@ Basic list actions:
    sameisbn                       List books with same ISBN.
    samestory                      List stories with same title.
    titlestory                     List books with same title as a story - Duplicates shown.
-   brd [booksReadCond]            List the dates and books where [cond] (default 2) books where read.
+   brd [brCond=2] [hours=6]       List the dates and books where [brCond] (default 2) books where read.
 
 List book counts or sums as determined by --cnt option. Can use virtual columns bc, bcp, bcw and bckw:
    abc|gbc|cbc [bookCountCond] [bRRs]  - For author, genre, category. bRRs=1 => include re-reads.
@@ -3098,11 +3098,9 @@ ORDER BY Dupe DESC, "Book read")";
 		runOutputQuery(q);
 	}
 
-	void listBooksReadPerDate(std::string countCond)
+	void listBooksReadPerDate(std::string countCond, int h) // h = Number of hours after midnight that counts as the previous day.
 	{
-		if (countCond.empty()) countCond = "2";
-		// We count dates between time 00:00 to 06:00 as the previous day (was up late reading, so want them counted to prev day).
-		auto drTimeWindow = "CASE WHEN (time(" DR ") > '00:00:00' AND time(" DR ") < '06:00:00') THEN date(" DR ", '-6 hours') ELSE date(" DR ") END";
+		auto drTimeWindow = fmt("CASE WHEN (time(" DR ") > '00:00:00' AND time(" DR ") < '%02i:00:00') THEN date(" DR ", '-%i hours') ELSE date(" DR ") END", h, h);
 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		OutputQuery q(*this, "dr.bt.nn", "Books", "dr.bt.nn");
@@ -3865,7 +3863,7 @@ ORDER BY Dupe DESC, "Book read")";
 			}
 			listYearlyBooksCounts(count, firstYear, lastYear, snSel, snGby, startTable);
 			break; }
-		case a("brd"):  listBooksReadPerDate(arg(0)); break;
+		case a("brd"):  listBooksReadPerDate(arg(0, "2"), intarg(1, "hoursAfterMidnight", 6)); break;
 		case a("brwd"): listBooksReadPerPeriod("%w", "Weekday", arg(0, WcS), getPeriodColumns(1)); break;
 		case a("brm"):  listBooksReadPerPeriod("%Y-%m", "Year-Month", arg(0, WcS), getPeriodColumns(1)); break;
 		case a("bry"):  listBooksReadPerPeriod("%Y", "Year", arg(0, WcS), getPeriodColumns(1)); break;
