@@ -1152,13 +1152,13 @@ class Litt {
 #define SUBSTR(e, start, len) "substr(" e "," #start "," #len ")"
 #define STRFTIME(fmt, e) "strftime('" fmt "'," e ")"
 #define ROUND_TO_INT(strExpr) CAST("INTEGER", "round(" strExpr ",0)")
-#define DATE_FULL(col) "CASE WHEN length(" col ") = 10 THEN " col " ELSE " SUBSTR(col "||'-01-01'", 1, 10) " END"
+#define DATE_FULL(col) "iif(length(" col ") = 10, " col ", " SUBSTR(col "||'-01-01'", 1, 10) ")"
 #define DAYS(col) STRFTIME("%J", col) /* No cast included, must check for NULL first sometimes */
 #define DR Q("Date Read")
 #define A_NAME  "ltrim(" Q("First Name") "||' '||" Q("Last Name") ")"
 #define A_NAMES "group_concat(" A_NAME ",', ')"
 #define SEPART "Series||' '||" Q("Part in Series")
-#define APPEND_OPT_COL(mand, opt) "CASE WHEN " opt " IS NULL THEN " mand " ELSE " mand "||' ['||" opt "||']' END"
+#define APPEND_OPT_COL(mand, opt) "iif(" opt " IS NULL, " mand ", " mand "||' ['||" opt "||']')"
 	
 public:
 	Litt(int argc, char** argv)
@@ -1285,10 +1285,10 @@ public:
 #define DRR_2      "substr(" DR ",13)"
 #define DRR_IDAYS  "(julianday(" DRR_2 ") - julianday(" DRR_1 "))"
 #define DRR_FIRST   DRR_1
-#define DRR_LAST   "CASE WHEN " IS_DRR " THEN " DRR_2 " ELSE " DRR_1 " END"
-#define DRR_MID    "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", (" DRR_IDAYS " / 2) || ' days') ELSE " DRR_1 " END"
-#define DRR_RAND   "CASE WHEN " IS_DRR " THEN date(" DRR_1 ", abs(random() % " DRR_IDAYS ") || ' days') ELSE " DRR_1 " END"
-#define DRR_DAYS   "CASE WHEN " IS_DRR " THEN " DRR_IDAYS " ELSE 0.0 END"
+#define DRR_LAST   "iif(" IS_DRR ", " DRR_2 ", " DRR_1 ")"
+#define DRR_MID    "iif(" IS_DRR ", date(" DRR_1 ", (" DRR_IDAYS " / 2) || ' days'), " DRR_1 ")"
+#define DRR_RAND   "iif(" IS_DRR ", date(" DRR_1 ", abs(random() % " DRR_IDAYS ") || ' days'), " DRR_1 ")"
+#define DRR_DAYS   "iif(" IS_DRR ", " DRR_IDAYS ", 0.0)"
 		// Columns for displaying the DR-range values with format "yyyy-mm-dd..yyyy-mm-dd".
 		ciText("drrf", DRR_FIRST, 10, Tables(&t.datesRead), "DRRFirst");
 		ciText("drrl", DRR_LAST,  10, Tables(&t.datesRead), "DRRLast");
@@ -2995,9 +2995,9 @@ R"(  ag AS (SELECT BookID, group_concat(AuthorID,',') AS ais FROM AuthorBooks GR
 	void listTitlestory()
 	{
 		auto sql =
-R"(SELECT B.BookID AS BookID, CASE WHEN B.AuthorID = S.AuthorID THEN 'YES' ELSE '-' END AS Dupe, B.Title AS Title, 
+R"(SELECT B.BookID AS BookID, iif(B.AuthorID = S.AuthorID, 'YES', '-') AS Dupe, B.Title AS Title, 
        BRating||'/'||SRating||'/'||SBRating AS "B/S/SB Rating", "Book read", "Book source", 
-       CASE WHEN B.AuthorID <> S.AuthorID THEN BookAuthor ELSE '* see story *' END AS 'Book Author',
+       iif(B.AuthorID <> S.AuthorID, BookAuthor, '* see story *') AS 'Book Author',
        S.BookID||'/'||S.StoryID AS 'B/StoryID', "Story Author", "Story book title", "Story read", "Story source"
 FROM (SELECT BookID,AuthorID,Title,Books.Rating AS BRating,"Date Read" AS "Book read",Source AS "Book source",)" A_NAME R"( AS BookAuthor
       FROM Books,AuthorBooks USING(BookID),Authors USING(AuthorID),DatesRead USING(BookID),Sources USING(SourceID)
@@ -3100,7 +3100,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 	void listBooksReadPerDate(std::string countCond, int h) // h = Number of hours after midnight that counts as the previous day.
 	{
-		auto drTimeWindow = fmt("CASE WHEN (time(" DR ") > '00:00:00' AND time(" DR ") < '%02i:00:00') THEN date(" DR ", '-%i hours') ELSE date(" DR ") END", h, h);
+		auto drTimeWindow = fmt("iif(time(" DR ") > '00:00:00' AND time(" DR ") < '%02i:00:00', date(" DR ", '-%i hours'), date(" DR "))", h, h);
 
 		getColumn("dr")->usedInQuery = true; // in case of -c!
 		OutputQuery q(*this, "dr.bt.nn", "Books", "dr.bt.nn");
