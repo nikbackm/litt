@@ -126,7 +126,7 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
     <PostBuildEvent>
-      <Command>copy "$(TargetPath)" c:\bin\</Command>
+      <Command>if defined LITT_OUTPUT_PATH (copy "$(TargetPath)" %LITT_OUTPUT_PATH%)</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
