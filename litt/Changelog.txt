@@ -1,5 +1,7 @@
 LITT Changelog:
 ===============
+ * 2020-10-31: Re-added the SQLite hack from 2019-09-04: Modified (hacked) sqlite patternCompare function to support case sensitive 
+               like matches for "ÅÄÖ". Was lost when updated SQLite to 3.32.
  * 2020-05-23: Uses iif SQL function instead of CASE WHEN where possible.
  * 2020-05-23: Upgraded to SQLite 3.32.
  * 2020-04-05: Added hoursAfterMidnight parameter to brd listing, default is 6, like the hard-coded value before.
