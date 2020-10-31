@@ -1,7 +1,7 @@
 LITT Changelog:
 ===============
  * 2020-10-31: Re-added the SQLite hack from 2019-09-04: Modified (hacked) sqlite patternCompare function to support case sensitive 
-               like matches for "ÅÄÖ". Was lost when updated SQLite to 3.32.
+               like matches for "Ã…Ã„Ã–". Was lost when updated SQLite to 3.32.
  * 2020-05-23: Uses iif SQL function instead of CASE WHEN where possible.
  * 2020-05-23: Upgraded to SQLite 3.32.
  * 2020-04-05: Added hoursAfterMidnight parameter to brd listing, default is 6, like the hard-coded value before.
@@ -81,7 +81,7 @@ LITT Changelog:
  * 2019-09-05: Changed the *br* listings (listBooksReadPerPeriod) so that they no longer fail
                when hitting the 64 table JOIN limit in SQLite (Had one JOIN per output column).
  * 2019-09-04: Modified (hacked) sqlite patternCompare function to support case sensitive 
-               like matches for "ÅÄÖ".
+               like matches for "Ã…Ã„Ã–".
                Added SQLite compile time option SQLITE_OMIT_LIKE_OPTIMIZATION due to above.
  * 2019-09-04: Added support for GLOB operator via glob and nglob in -w option.
  * 2019-09-03: ANSI now uses 0m as default color instead of 30m. (Removed last TODO:s)
@@ -342,8 +342,8 @@ LITT Changelog:
                ybca/g/s now calculates lastYear from firstYear instead of calculating both from current year.
  * 2017-06-12: Now sorts aa by Date Read too, just like bb, and not via Last Name.
  * 2017-06-12: Added ybca/g/s; Yearly book counts (top lists) for authors, genres and sources.
- * 2017-06-11: bi har nu inte längre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
-               behöva det för "ambiguity".
+ * 2017-06-11: bi har nu inte lÃ¤ngre "Books." med i namnet => funkar med ansi och cons. Nyare SQLITE verkar inte 
+               behÃ¶va det fÃ¶r "ambiguity".
  * 2017-06-08: Now uses regex_search instead of regex_match also for --cons (already used it for --ansi) => no need to 
                specify trailing and/or preceding ".*" to match the whole value.
                Converts regex values to utf-8 before using them.
@@ -441,7 +441,7 @@ LITT Changelog:
 :: * 2013-09-17
 ::   - Added virtual column abc to listAuthorBookCounts.
 ::   - Added bRRs (include re-reads) second optional parameter to listAuthorBookCounts.
-::   - Bug fix: Invalid DateReads (BE, PO etc.) no longer listed as 'Lördag' with dwl, but are left empty ''.
+::   - Bug fix: Invalid DateReads (BE, PO etc.) no longer listed as 'LÃ¶rdag' with dwl, but are left empty ''.
 ::   - Bug fix: Had to change "@if[defined..." back to "iff defined..." in extractExtraWhereCond, otherwise commas in the
 ::     variables to be combined would mess with the @if! :(
 :: * 2013-09-16
@@ -483,30 +483,30 @@ LITT Changelog:
 ::   - Cleaned up query for abc, removed unneeded outer select.
 ::   - bb and abc now uses nn instead of ln.fn by default.
 :: * 2013-09-11
-::   - Lade till virtuell kolumn "nng" som innehåller "FirstName LastName" för ALLA författare för en bok.
-::   - Lade samtidigt till virtuell kolumn "nn" som innehåller "FirstName LastName".
-::   - Lade samtidigt till kolumn listnings-namn (används som "AS label" i SELECT) till columnInfo
+::   - Lade till virtuell kolumn "nng" som innehÃ¥ller "FirstName LastName" fÃ¶r ALLA fÃ¶rfattare fÃ¶r en bok.
+::   - Lade samtidigt till virtuell kolumn "nn" som innehÃ¥ller "FirstName LastName".
+::   - Lade samtidigt till kolumn listnings-namn (anvÃ¤nds som "AS label" i SELECT) till columnInfo
 ::   - Lade till "isempty" WHERE operator.
-::   - drm och dry stöder nu -wdrc for Count("Date Read") via drcCI
-::   - Använder nu nya "listdata" för aa, bb, ss och soo listningar. (Undviker duplicerad kod.)
-::   - Använder runSqlOutputCmd för enrads-listningar (a, b, s, so) (Lite smidigare)
-::   - Uppdaterade hjälptexten.
-::   - Diverse mindre ändringar/korrigeringar. (t.ex @makeWhereCond[] => @likearg[] i brm och bry)
+::   - drm och dry stÃ¶der nu -wdrc for Count("Date Read") via drcCI
+::   - AnvÃ¤nder nu nya "listdata" fÃ¶r aa, bb, ss och soo listningar. (Undviker duplicerad kod.)
+::   - AnvÃ¤nder runSqlOutputCmd fÃ¶r enrads-listningar (a, b, s, so) (Lite smidigare)
+::   - Uppdaterade hjÃ¤lptexten.
+::   - Diverse mindre Ã¤ndringar/korrigeringar. (t.ex @makeWhereCond[] => @likearg[] i brm och bry)
 :: * 2013-09-10
 ::   - Lade till booksReadPerMonth (brm) och booksReadPerYear (bry)
 ::   - Replaced Y with TYPE when listing query code.
 :: * 2013-09-09
-::   - Använder CalcDR i booksReadPerDate, som räknar datum med klockslag mellan 00:00 och 06:00 till föregående dag. Detta för att räkna 
+::   - AnvÃ¤nder CalcDR i booksReadPerDate, som rÃ¤knar datum med klockslag mellan 00:00 och 06:00 till fÃ¶regÃ¥ende dag. Detta fÃ¶r att rÃ¤kna 
 ::     dessa till dagen "innan" vid brd-listningar.
-::   - Strippar även bort klockslaget från datumet vid brd, annars skulle det ju inte funka alls! (Ifall jag inte läser ut två böcker vid
-::     samma tidpunkt - på minuten när!)
-::   - Behåller "brdOld" för tillfället för jämförelser.
+::   - Strippar Ã¤ven bort klockslaget frÃ¥n datumet vid brd, annars skulle det ju inte funka alls! (Ifall jag inte lÃ¤ser ut tvÃ¥ bÃ¶cker vid
+::     samma tidpunkt - pÃ¥ minuten nÃ¤r!)
+::   - BehÃ¥ller "brdOld" fÃ¶r tillfÃ¤llet fÃ¶r jÃ¤mfÃ¶relser.
 :: * 2013-09-07
-::   - Matar nu in BookSourceId "för hand" när en ny bok läggs till. (Lättare så, eftersom jag oftast använder 36 eller 52
-::     ändå. Den speciella setBookSource proceduren funkar heller inte när det finns mellanrum i %dr%, klockslaget
-::     lämnas bort vide anrop, så det borde fixas när den behövs.
+::   - Matar nu in BookSourceId "fÃ¶r hand" nÃ¤r en ny bok lÃ¤ggs till. (LÃ¤ttare sÃ¥, eftersom jag oftast anvÃ¤nder 36 eller 52
+::     Ã¤ndÃ¥. Den speciella setBookSource proceduren funkar heller inte nÃ¤r det finns mellanrum i %dr%, klockslaget
+::     lÃ¤mnas bort vide anrop, sÃ¥ det borde fixas nÃ¤r den behÃ¶vs.
 :: * 2013-09-03
-::   - Lade till dwl för Veckodag (med bokstäver)
+::   - Lade till dwl fÃ¶r Veckodag (med bokstÃ¤ver)
 ::   - Added support for dw (Date Read DOW) calculated column (can be used as a real column).
 ::     - At the same time, uses TPIPE to handle * => % conversion and CP1252 => UTF-8, since that
 ::       makes it far easier to manage % in dynamic query strings. (Letting TPIPE handle utf8 conversion here
@@ -514,8 +514,8 @@ LITT Changelog:
 ::     - Also added btl, lnl och fnl at the same time, which is length(Field	), can be fun.
 ::     - Also added isColNumeric to the colummInfos, so we can determine if the WHERE params should have '' around it or not.
 ::       Useful, since strftime() works well only WITH '', while length() works the other way around.
-::   - Lägger nu till HH:MM till "Date Read" för att klara fallet när en bok läses om samma dag som också andra
-::     läses och ändå alltid sortera i rätt ordning.
+::   - LÃ¤gger nu till HH:MM till "Date Read" fÃ¶r att klara fallet nÃ¤r en bok lÃ¤ses om samma dag som ocksÃ¥ andra
+::     lÃ¤ses och Ã¤ndÃ¥ alltid sortera i rÃ¤tt ordning.
 :: * 2013-08-26
 ::   - Added booksReadPerDate (brd) view command
 :: * 2013-04-01
@@ -557,13 +557,13 @@ LITT Changelog:
 :: * 2011-12-27
 ::   - lade till mera options: twomore, rereads, sametitle
 :: * 2011-12-05
-::   - "nq" operator använder nu "NOT LIKE" istället för "<>" (support wildcards)
-::   - createOrderBy lägger nu inte till kolumner (till variabler som påverkar inkluderade tabeller och
-::     således resultatet) som inte används. Dvs använder selColumns i stället för defArg ifall det är satt.
+::   - "nq" operator anvÃ¤nder nu "NOT LIKE" istÃ¤llet fÃ¶r "<>" (support wildcards)
+::   - createOrderBy lÃ¤gger nu inte till kolumner (till variabler som pÃ¥verkar inkluderade tabeller och
+::     sÃ¥ledes resultatet) som inte anvÃ¤nds. Dvs anvÃ¤nder selColumns i stÃ¤llet fÃ¶r defArg ifall det Ã¤r satt.
 :: * 2011-12-03/4
-::   - Kan nu ange ett start bookId for set-bs kommandot, så börjar det gå igenom alla böcker/dateread utan bs från det.
+::   - Kan nu ange ett start bookId for set-bs kommandot, sÃ¥ bÃ¶rjar det gÃ¥ igenom alla bÃ¶cker/dateread utan bs frÃ¥n det.
 :: * 2011-11-21
-::   - BUG FIX: Måste enabla & när man anropas setBookSource från addBook! Också problem med unset ot, konstigt?
+::   - BUG FIX: MÃ¥ste enabla & nÃ¤r man anropas setBookSource frÃ¥n addBook! OcksÃ¥ problem med unset ot, konstigt?
 :: * 2011-07-02
 ::   - Can now list authors when adding book so you don't have to know the authorID before.
 :: * 2011-01-14
@@ -572,33 +572,33 @@ LITT Changelog:
 :: * 2011-01-02
 ::   - Added -s[colSize] option to change the default column sizes (useful for columns included by default for an action)
 :: * 2010-12-24
-::   - listauthor (aa) använder nu samma QUERY som listbook (bb)
+::   - listauthor (aa) anvÃ¤nder nu samma QUERY som listbook (bb)
 :: * 2010-12-18
-::   - ICONV för att convertera mellan utf-8, utf-16 och cp1252. Endast i set-bs för tillfället.
+::   - ICONV fÃ¶r att convertera mellan utf-8, utf-16 och cp1252. Endast i set-bs fÃ¶r tillfÃ¤llet.
 :: * 2010-12-14
-::   - Implementerade setBookSource och började lägga till Source värden för böcker.
+::   - Implementerade setBookSource och bÃ¶rjade lÃ¤gga till Source vÃ¤rden fÃ¶r bÃ¶cker.
 :: * 2010-12-11
-::   - Lade till addAuthor (så det fungerar)
+::   - Lade till addAuthor (sÃ¥ det fungerar)
 :: * 2010-12-08/09
-::   - Började ändra gamla datum till "hyfsade" gissningar och slutledningar enligt gamla brev etc.
-::   - Lägger nu till äldre (tidigare "glömda" böcker) med "nya" bokID istället för att shifta rum åt dem
-::     enligt gissning på när del lästes. Använder i stället "flytande" DateRead för att visa deras "ålder".
+::   - BÃ¶rjade Ã¤ndra gamla datum till "hyfsade" gissningar och slutledningar enligt gamla brev etc.
+::   - LÃ¤gger nu till Ã¤ldre (tidigare "glÃ¶mda" bÃ¶cker) med "nya" bokID istÃ¤llet fÃ¶r att shifta rum Ã¥t dem
+::     enligt gissning pÃ¥ nÃ¤r del lÃ¤stes. AnvÃ¤nder i stÃ¤llet "flytande" DateRead fÃ¶r att visa deras "Ã¥lder".
 :: * 2010-12-04
-::   - Fick äntligen add-book att fungera
+::   - Fick Ã¤ntligen add-book att fungera
 :: * 2010-11-30: 
 ::   - started this log :)
 ::   - Now @unquotes[] given search args (author, title, series, story) so spaces can be includes.
 ::   - @makeWhereCond[] now protects itself against comma:s in arguments.
 :: --------------------------------------------------------------------------------------------------
-:: * 2001/2 (runt jul/nyår)
-::   - Lade till DateRead (till Books, inte som skild tabell som nu). Första bok med "riktigt" DateRead kanske 
-::     "Stjärnor utan svindel" (ID 480 läst 13-01-2002)? Lade också till det för böcker lästa tidigare enligt kvalificerade
-::    gissningar (köp/leveransdatum från bokus etc) ända tillbaka till ID 453 i rad) (ID 470 blev dock utan, no info available)
-:: * "2001-07-16" (mycket ungefärligt) Lades också till DR för tidigare böcker än 453 när någorlunda god info (bokus o.dy.) fanns.
-::   - Började med BookID from (ID 453 2001-07-16 Goodkind Terry Faith of the Fallen). Tidigare böcker förlorade
-::     "läsordning" och är till synes sorterade enligt författens LastName (ln.fn band samman books med authors
-::     och var primärnyckel).
-:: * 1997 (däromkring) Började med Litteratur databasen i Paradox i samband med kursen i Databaser.
-:: * 1994 vår/sommar - började använda Paradox på KKC.
+:: * 2001/2 (runt jul/nyÃ¥r)
+::   - Lade till DateRead (till Books, inte som skild tabell som nu). FÃ¶rsta bok med "riktigt" DateRead kanske 
+::     "StjÃ¤rnor utan svindel" (ID 480 lÃ¤st 13-01-2002)? Lade ocksÃ¥ till det fÃ¶r bÃ¶cker lÃ¤sta tidigare enligt kvalificerade
+::    gissningar (kÃ¶p/leveransdatum frÃ¥n bokus etc) Ã¤nda tillbaka till ID 453 i rad) (ID 470 blev dock utan, no info available)
+:: * "2001-07-16" (mycket ungefÃ¤rligt) Lades ocksÃ¥ till DR fÃ¶r tidigare bÃ¶cker Ã¤n 453 nÃ¤r nÃ¥gorlunda god info (bokus o.dy.) fanns.
+::   - BÃ¶rjade med BookID from (ID 453 2001-07-16 Goodkind Terry Faith of the Fallen). Tidigare bÃ¶cker fÃ¶rlorade
+::     "lÃ¤sordning" och Ã¤r till synes sorterade enligt fÃ¶rfattens LastName (ln.fn band samman books med authors
+::     och var primÃ¤rnyckel).
+:: * 1997 (dÃ¤romkring) BÃ¶rjade med Litteratur databasen i Paradox i samband med kursen i Databaser.
+:: * 1994 vÃ¥r/sommar - bÃ¶rjade anvÃ¤nda Paradox pÃ¥ KKC.
 :: ***************************************************************************************************
 
