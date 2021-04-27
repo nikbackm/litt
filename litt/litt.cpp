@@ -1539,9 +1539,6 @@ public:
 			}
 		}
 
-		if (m_action.empty())
-			throw std::invalid_argument("Action argument(s) missing");
-
 		if (m_dbPath.empty()) {
 			char mydocs[MAX_PATH];
 			m_dbPath = GetEnvironmentVariableA("MYDOCS", mydocs, MAX_PATH)
@@ -3826,7 +3823,7 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		constexpr auto a = actionHash;
 		switch (auto const& act = m_action; a(act.c_str())) {
-		case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp(act=="h" ? 2 : act[1]-'0'); break;
+		case a(""): case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp(act=="h" ? 2 : act[1]-'0'); break;
 		case a("b"):  case a("bb"):  listBooks(act, arg(0)); break;
 		case a("st"): case a("stt"): listStories(act, arg(0)); break;
 		case a("a"):  listAuthors(arg(0), arg(1)); break;
@@ -3909,8 +3906,7 @@ ORDER BY Dupe DESC, "Book read")";
 
 int main(int argc, char **argv)
 try {
-	(argc < 2) ? showHelp() : Litt(argc, argv).executeAction();
-	return 0;
+	Litt(argc, argv).executeAction();
 }
 catch (std::exception& ex) {
 	fprintf(stderr, "%s\n", ex.what());
