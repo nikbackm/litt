@@ -4,8 +4,7 @@
 
 void showHelp(int level = 0)
 {
-	fputs(
-R"(Usage: LITT {options} <action with arguments> {options}
+	fputs(R"(Usage: LITT {options} <action with arguments> {options}
 
 Basic list actions:
    h[0..2]                        Show help, level 0..2, level 2 is default.
@@ -48,8 +47,7 @@ List book counts or sums as determined by --cnt option. Can use virtual columns 
 
    brp <periodColumn-strftime-def> <periodColumnName> [periodCondition] {<columnWhereCond> <columnName>}
                                        - Generalization of brm,bry,brwd, can customize the period and its name.
-)", stdout); if (1 <= level) fputs(
-R"(
+)", stdout); if (1 <= level) fputs(R"(
 Adding and modifying data:
    add-b                                   Add a book, including stories.
    add-dr   <BookID> <dr> <SourceId>       Add a date read for a book with given source.
@@ -74,8 +72,7 @@ Adding and modifying data:
    set-own  <BookID> <owned>               Set owned for a book.
 
    execute  <sqlString>                    Execute the given SQL string. Use with CAUTION!
-)", stdout); if (2 <= level) fputs(
-R"(
+)", stdout); if (2 <= level) fputs(R"(
 NOTE: As wildcards in most match arguments and options "*" (any string) and "_" (any character) can be used. Wild-cards "*" 
       around the listing actions also gives a similar effect, e.g. *b* will list all books containing the given title 
       string, while b* will only list books starting with it instead.
