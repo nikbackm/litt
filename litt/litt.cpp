@@ -3820,7 +3820,9 @@ ORDER BY Dupe DESC, "Book read")";
 	{
 		constexpr auto a = actionHash;
 		switch (auto const& act = m_action; a(act.c_str())) {
-		case a(""): case a("h"): case a("h0"): case a("h1"): case a("h2"): showHelp(act=="h" ? 2 : act[1]-'0'); break;
+		case a(""): showHelp(0); break;
+		case a("h"): showHelp(2); break;
+		case a("h0"): case a("h1"): case a("h2"): showHelp(act[1] - '0'); break;
 		case a("b"):  case a("bb"):  listBooks(act, arg(0)); break;
 		case a("st"): case a("stt"): listStories(act, arg(0)); break;
 		case a("a"):  listAuthors(arg(0), arg(1)); break;
